@@ -10,7 +10,7 @@ echo "==> Shop Organizer bootstrap"
 if ! command -v brew &>/dev/null; then
   echo "==> Installing Homebrew..."
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  # Apple Silicon: add brew to PATH for this session
+  # Apple Silicon
   if [[ -f /opt/homebrew/bin/brew ]]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
   fi
@@ -18,23 +18,18 @@ else
   echo "==> Homebrew already installed"
 fi
 
-# ── Node.js (via nvm) ─────────────────────────────────────────────────────────
-if ! command -v nvm &>/dev/null; then
-  echo "==> Installing nvm..."
-  brew install nvm
-  mkdir -p "$HOME/.nvm"
-  export NVM_DIR="$HOME/.nvm"
-  # shellcheck disable=SC1091
-  source "$(brew --prefix nvm)/nvm.sh"
-else
-  export NVM_DIR="$HOME/.nvm"
-  # shellcheck disable=SC1091
-  [ -s "$(brew --prefix nvm)/nvm.sh" ] && source "$(brew --prefix nvm)/nvm.sh"
+# Ensure brew is on PATH for Apple Silicon macs
+if [[ -f /opt/homebrew/bin/brew ]]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 
-echo "==> Installing Node.js LTS..."
-nvm install --lts
-nvm use --lts
+# ── Node.js (via Homebrew — no PATH sourcing needed) ─────────────────────────
+if ! command -v node &>/dev/null; then
+  echo "==> Installing Node.js..."
+  brew install node
+else
+  echo "==> Node $(node --version) already installed"
+fi
 
 echo "==> Node $(node --version) / npm $(npm --version)"
 
@@ -70,22 +65,15 @@ if [[ ! "$(ls -A data/*.xlsx 2>/dev/null)" ]]; then
   echo ""
 fi
 
-# ── nvm shell setup reminder ──────────────────────────────────────────────────
-SHELL_RC="$HOME/.zshrc"
-if ! grep -q 'NVM_DIR' "$SHELL_RC" 2>/dev/null; then
-  echo "" >> "$SHELL_RC"
-  echo '# nvm' >> "$SHELL_RC"
-  echo 'export NVM_DIR="$HOME/.nvm"' >> "$SHELL_RC"
-  echo '[ -s "$(brew --prefix nvm)/nvm.sh" ] && source "$(brew --prefix nvm)/nvm.sh"' >> "$SHELL_RC"
-  echo "==> Added nvm to $SHELL_RC"
-fi
+# ── Build ─────────────────────────────────────────────────────────────────────
+echo "==> Building app..."
+npm run build
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
 echo "==> Done! To start the app:"
 echo ""
-echo "    cd $APP_DIR"
-echo "    npm run build && npm start"
+echo "    cd $APP_DIR && npm start"
 echo ""
 echo "    Then open http://localhost:3000"
 echo ""
