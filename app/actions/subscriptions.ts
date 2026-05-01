@@ -11,11 +11,6 @@ import { planTotalMeals, addWorkingDays } from "@/lib/utils/subscription";
 
 export async function createSubscriptionAction(formData: FormData) {
   const customerId = formData.get("customerId") as string;
-  const existing = (await import("@/lib/data/subscriptions"))
-    .getAllSubscriptions()
-    .find((s) => s.customerId === customerId);
-  if (existing) throw new Error("Customer already has a subscription");
-
   const plan = formData.get("plan") as string;
   const mealsPerDay = parseInt(formData.get("mealsPerDay") as string, 10);
   const packagePrice = parseFloat(formData.get("packagePrice") as string);
