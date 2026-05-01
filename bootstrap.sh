@@ -69,11 +69,9 @@ fi
 echo "==> Building app..."
 npm run build
 
-# ── Done ──────────────────────────────────────────────────────────────────────
+# ── Start ─────────────────────────────────────────────────────────────────────
 echo ""
-echo "==> Done! To start the app:"
+echo "==> Starting app..."
+echo "    Open http://localhost:3000 in your browser (Ctrl+C to stop)"
 echo ""
-echo "    cd $APP_DIR && npm start"
-echo ""
-echo "    Then open http://localhost:3000"
-echo ""
+npm start
