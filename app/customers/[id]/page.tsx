@@ -7,7 +7,6 @@ import { notFound } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AddSubscriptionForm } from "./add-subscription-form";
-import { SubscriptionStatusButton } from "./subscription-status-button";
 import { SkipMealForm } from "./skip-meal-form";
 import { DeleteSkipButton } from "./delete-skip-button";
 import { EditCustomerForm } from "./edit-customer-form";
@@ -149,10 +148,6 @@ export default async function CustomerDetailPage({
             <div className="flex items-center gap-1">
               <EditSubscriptionForm sub={sub} pricing={pricing} />
               <DeleteSubscriptionButton id={sub.id} />
-              <SubscriptionStatusButton
-                subscriptionId={sub.id}
-                currentStatus={sub.status}
-              />
             </div>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
