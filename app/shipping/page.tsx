@@ -46,11 +46,14 @@ export default async function ShippingPage() {
     return m?.name ?? null;
   };
 
+  const seenCustomers = new Set<string>();
   const activeDeliveries = subscriptions
-    .filter((s) => isSubscriptionLive(s.status, s.renewalDate) && localDateStr(new Date(s.startDate)) <= today)
+    .filter((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate))
     .map((sub) => {
       const customer = customers.find((c) => c.phone === sub.customerId);
       if (!customer) return null;
+      if (seenCustomers.has(customer.id)) return null;
+      seenCustomers.add(customer.id);
 
       const isSkipped = skips.some((skip) => {
         return skip.subscriptionId === sub.id && localDateStr(new Date(skip.originalDay)) === today;

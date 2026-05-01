@@ -21,12 +21,15 @@ export default async function RoutePage() {
   );
 
   // Get active deliveries for today that have coordinates
+  const seenCustomers = new Set<string>();
   const deliveries = subscriptions
-    .filter((s) => isSubscriptionLive(s.status, s.renewalDate) && localDateStr(new Date(s.startDate)) <= today)
+    .filter((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate))
     .map((sub) => {
       const customer = customers.find((c) => c.phone === sub.customerId);
       const defaultAddr = customer ? defaultAddrMap.get(customer.id) : undefined;
       if (!customer || !defaultAddr?.latitude || !defaultAddr?.longitude) return null;
+      if (seenCustomers.has(customer.id)) return null;
+      seenCustomers.add(customer.id);
 
       const isSkipped = skips.some(
         (skip) => skip.subscriptionId === sub.id && localDateStr(new Date(skip.originalDay)) === today

@@ -4,7 +4,7 @@ import { getAllPricing } from "@/lib/data/pricing";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { planTotalMeals, mealsRemaining, isSubscriptionLive, formatDate } from "@/lib/utils/subscription";
+import { planTotalMeals, mealsRemaining, isSubscriptionLive, subscriptionStatus, formatDate } from "@/lib/utils/subscription";
 import { UpsertPricingForm } from "./upsert-pricing-form";
 import { DeletePricingButton } from "./delete-pricing-button";
 import { OpenInFinderButton } from "@/components/open-in-finder-button";
@@ -43,8 +43,8 @@ export default async function SubscriptionsPage() {
   const lookup = new Map(
     pricingEntries.map((e) => [`${e.plan}-${e.goal}-${e.mealsPerDay}`, e])
   );
-  const active = subscriptions.filter((s) => isSubscriptionLive(s.status, s.renewalDate));
-  const inactive = subscriptions.filter((s) => !isSubscriptionLive(s.status, s.renewalDate));
+  const active = subscriptions.filter((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate));
+  const inactive = subscriptions.filter((s) => !isSubscriptionLive(s.status, s.startDate, s.renewalDate));
 
   return (
     <div className="space-y-6">
@@ -171,7 +171,7 @@ export default async function SubscriptionsPage() {
                       </tr>
                     )}
                     {inactive.map((sub) => {
-                      const expired = sub.status === "active";
+                      const derivedStatus = subscriptionStatus(sub.status, sub.startDate, sub.renewalDate);
                       return (
                       <tr key={sub.id} className="hover:bg-accent/50 transition-colors">
                         <td className="px-4 py-2">
@@ -193,8 +193,8 @@ export default async function SubscriptionsPage() {
                         <td className="px-4 py-2">{sub._count.mealSkips > 0 ? sub._count.mealSkips : "—"}</td>
                         <td className="px-4 py-2 font-medium">₫{sub.packagePrice.toLocaleString()}</td>
                         <td className="px-4 py-2">
-                          <Badge variant={sub.status === "paused" ? "secondary" : "outline"}>
-                            {expired ? "expired" : sub.status}
+                          <Badge variant={derivedStatus === "upcoming" ? "secondary" : "outline"}>
+                            {derivedStatus}
                           </Badge>
                         </td>
                         <td className="px-2 py-2">

@@ -36,9 +36,31 @@ export function mealsRemaining(endDate: Date | string, mealsPerDay: number): num
   return Math.max(0, countWorkingDays(new Date(), new Date(endDate)) * mealsPerDay);
 }
 
-/** A subscription is live when it is active AND has meals remaining. */
-export function isSubscriptionLive(status: string, endDate: Date | string): boolean {
-  return status === "active" && mealsRemaining(endDate, 1) > 0;
+/** A subscription is live when today falls within [startDate, endDate] and it is not cancelled or paused. */
+export function isSubscriptionLive(status: string, startDate: Date | string, endDate: Date | string): boolean {
+  if (status === "cancelled" || status === "paused") return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setHours(0, 0, 0, 0);
+  return today >= start && today <= end;
+}
+
+/** Returns a derived display status based on dates, overriding with manual cancel/pause. */
+export function subscriptionStatus(status: string, startDate: Date | string, endDate: Date | string): string {
+  if (status === "cancelled") return "cancelled";
+  if (status === "paused") return "paused";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setHours(0, 0, 0, 0);
+  if (today < start) return "upcoming";
+  if (today > end) return "expired";
+  return "active";
 }
 
 /**

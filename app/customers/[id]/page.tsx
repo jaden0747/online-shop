@@ -18,7 +18,7 @@ import { EditSubscriptionForm } from "./edit-subscription-form";
 import { DeleteSubscriptionButton } from "./delete-subscription-button";
 import { CreateWeekOrderButton } from "./create-week-order-button";
 import { MealSelector } from "@/components/meal-selector";
-import { daysRemaining, mealsRemaining, isSubscriptionLive, formatDate } from "@/lib/utils/subscription";
+import { daysRemaining, mealsRemaining, isSubscriptionLive, subscriptionStatus, formatDate } from "@/lib/utils/subscription";
 import { currentWeekLabel, currentWeekMonday, formatWeekLabel } from "@/lib/utils/week";
 
 export const dynamic = "force-dynamic";
@@ -60,18 +60,14 @@ export default async function CustomerDetailPage({
     return { ...s, orders, mealSkips };
   });
 
-  // Only one subscription per customer
-  const sub = subscriptions[0] ?? null;
-  const isActive = sub ? isSubscriptionLive(sub.status, sub.renewalDate) : false;
-  const isExpired = sub?.status === "active" && !isActive;
+  // Compute per-subscription derived data
+  const subData = subscriptions.map((sub) => {
+    const isActive = isSubscriptionLive(sub.status, sub.startDate, sub.renewalDate);
+    const derivedStatus = subscriptionStatus(sub.status, sub.startDate, sub.renewalDate);
+    const currentWeekOrder = sub.orders.find((o) => o.weekLabel === weekLabel) ?? null;
 
-  // Compute this week's meal selection data
-  let allowedDays: number[] | null = null;
-  let skippedDayNums: number[] = [];
-  let currentWeekOrder = null as (typeof sub extends null ? null : NonNullable<typeof sub>["orders"][number]) | null;
-
-  if (sub) {
-    currentWeekOrder = sub.orders.find((o) => o.weekLabel === weekLabel) ?? null;
+    let allowedDays: number[] | null = null;
+    let skippedDayNums: number[] = [];
 
     if (isActive) {
       const subStart = new Date(sub.startDate);
@@ -84,11 +80,8 @@ export default async function CustomerDetailPage({
         const dayDate = new Date(weekMonday);
         dayDate.setDate(weekMonday.getDate() + i);
         dayDate.setHours(0, 0, 0, 0);
-        if (dayDate >= subStart && dayDate < subEnd) {
-          inPeriodDays.push(i + 1); // 1=Mon…5=Fri
-        }
+        if (dayDate >= subStart && dayDate <= subEnd) inPeriodDays.push(i + 1);
       }
-
       for (const dayNum of inPeriodDays) {
         const dayDate = new Date(weekMonday);
         dayDate.setDate(weekMonday.getDate() + dayNum - 1);
@@ -100,12 +93,12 @@ export default async function CustomerDetailPage({
         });
         if (isSkipped) skippedDayNums.push(dayNum);
       }
-
       allowedDays = inPeriodDays.length < 5 ? inPeriodDays : null;
     }
-  }
 
-  const deliveredCount = sub?.orders.filter((o) => o.status === "delivered").length ?? 0;
+    const deliveredCount = sub.orders.filter((o) => o.status === "delivered").length;
+    return { ...sub, isActive, derivedStatus, currentWeekOrder, allowedDays, skippedDayNums, deliveredCount };
+  });
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -132,29 +125,25 @@ export default async function CustomerDetailPage({
       </Card>
 
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Subscription</h2>
-        {!sub && <AddSubscriptionForm customerId={customer.id} pricing={pricing} />}
+        <h2 className="text-lg font-semibold">Subscriptions</h2>
+        <AddSubscriptionForm customerId={customer.id} pricing={pricing} />
       </div>
 
-      {!sub && (
+      {subData.length === 0 && (
         <p className="text-sm text-muted-foreground">No subscription yet.</p>
       )}
 
-      {sub && (
-        <Card>
+      {subData.map((sub) => (
+        <Card key={sub.id}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <div className="flex items-center gap-2">
               <CardTitle className="text-base capitalize">{sub.plan} plan</CardTitle>
               <Badge
                 variant={
-                  isActive
-                    ? "default"
-                    : isExpired || sub.status === "paused"
-                    ? "secondary"
-                    : "outline"
+                  sub.isActive ? "default" : sub.derivedStatus === "upcoming" ? "secondary" : "outline"
                 }
               >
-                {isExpired ? "expired" : sub.status}
+                {sub.derivedStatus}
               </Badge>
             </div>
             <div className="flex items-center gap-1">
@@ -190,7 +179,7 @@ export default async function CustomerDetailPage({
               </div>
             </div>
 
-            {(isActive || isExpired) && (
+            {(sub.isActive || sub.derivedStatus === "expired") && (
               <div className="flex gap-4 rounded-lg bg-muted/50 p-3">
                 <div className="text-center flex-1">
                   <p className="text-xl font-bold">
@@ -205,7 +194,7 @@ export default async function CustomerDetailPage({
                 </div>
                 <div className="w-px bg-border" />
                 <div className="text-center flex-1">
-                  <p className="text-xl font-bold">{deliveredCount}</p>
+                  <p className="text-xl font-bold">{sub.deliveredCount}</p>
                   <p className="text-xs text-muted-foreground">delivered</p>
                 </div>
               </div>
@@ -223,29 +212,29 @@ export default async function CustomerDetailPage({
             </div>
 
             {/* This week's meals */}
-            {isActive && (
+            {sub.isActive && (
               <div className="border-t pt-3 space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                     {formatWeekLabel(weekLabel)} — Meals
                   </p>
-                  {currentWeekOrder ? (
+                  {sub.currentWeekOrder ? (
                     <MealSelector
-                      orderId={currentWeekOrder.id}
+                      orderId={sub.currentWeekOrder.id}
                       menuItems={menuItems}
-                      existingSelections={currentWeekOrder.items.map((i) => ({
+                      existingSelections={sub.currentWeekOrder.items.map((i) => ({
                         day: i.day,
                         mealSlot: i.mealSlot,
                         menuItemId: i.menuItemId,
                         quantity: i.quantity,
                         notes: i.notes,
                       }))}
-                      allowedDays={allowedDays}
-                      skippedDays={skippedDayNums}
+                      allowedDays={sub.allowedDays}
+                      skippedDays={sub.skippedDayNums}
                       mealsPerDay={sub.mealsPerDay}
-                      selectionCount={currentWeekOrder.items.length}
+                      selectionCount={sub.currentWeekOrder.items.length}
                       addresses={addresses}
-                      currentAddressId={currentWeekOrder.addressId ?? null}
+                      currentAddressId={sub.currentWeekOrder.addressId ?? null}
                     />
                   ) : (
                     <CreateWeekOrderButton
@@ -261,23 +250,20 @@ export default async function CustomerDetailPage({
                     const dayDate = new Date(weekMonday);
                     dayDate.setDate(weekMonday.getDate() + dayNum - 1);
                     dayDate.setHours(0, 0, 0, 0);
-
-                    const subStart = new Date(sub.startDate);
-                    subStart.setHours(0, 0, 0, 0);
-                    const subEnd = new Date(sub.renewalDate);
-                    subEnd.setHours(0, 0, 0, 0);
-                    const inPeriod = dayDate >= subStart && dayDate < subEnd;
-                    const isSkipped = skippedDayNums.includes(dayNum);
+                    const subStart = new Date(sub.startDate); subStart.setHours(0, 0, 0, 0);
+                    const subEnd = new Date(sub.renewalDate); subEnd.setHours(0, 0, 0, 0);
+                    const inPeriod = dayDate >= subStart && dayDate <= subEnd;
+                    const isSkipped = sub.skippedDayNums.includes(dayNum);
 
                     let content: React.ReactNode;
                     if (!inPeriod) {
                       content = <span className="text-muted-foreground/40">—</span>;
                     } else if (isSkipped) {
                       content = <span className="text-amber-600">Skip</span>;
-                    } else if (!currentWeekOrder) {
+                    } else if (!sub.currentWeekOrder) {
                       content = <span className="text-muted-foreground">—</span>;
                     } else {
-                      const items = currentWeekOrder.items.filter((i) => i.day === dayNum);
+                      const items = sub.currentWeekOrder.items.filter((i) => i.day === dayNum);
                       if (items.length === 0) {
                         content = <span className="text-muted-foreground">—</span>;
                       } else {
@@ -288,7 +274,6 @@ export default async function CustomerDetailPage({
                         content = <span className="truncate text-foreground">{names[0]}{names.length > 1 ? ` +${names.length - 1}` : ""}</span>;
                       }
                     }
-
                     return (
                       <div key={dayNum} className="space-y-0.5">
                         <p className="font-medium text-muted-foreground">{DAY_NAMES[dayNum - 1]}</p>
@@ -307,7 +292,7 @@ export default async function CustomerDetailPage({
                   Skips / Reschedules
                 </p>
                 <div className="flex items-center gap-2">
-                  {isActive && <SkipTodayButton subscriptionId={sub.id} />}
+                  {sub.isActive && <SkipTodayButton subscriptionId={sub.id} />}
                   <SkipMealForm
                     subscriptionId={sub.id}
                     startDate={new Date(sub.startDate).toISOString().split("T")[0]}
@@ -323,18 +308,14 @@ export default async function CustomerDetailPage({
                   <span>
                     Skip {formatDate(skip.originalDay)}
                     {skip.replacementDay && (
-                      <span className="text-muted-foreground">
-                        {" "}→ deliver {formatDate(skip.replacementDay)}
-                      </span>
+                      <span className="text-muted-foreground"> → deliver {formatDate(skip.replacementDay)}</span>
                     )}
                     {!skip.replacementDay && (
                       <span className="text-muted-foreground"> (no replacement)</span>
                     )}
                   </span>
                   <div className="flex items-center gap-2">
-                    {skip.reason && (
-                      <span className="text-muted-foreground">{skip.reason}</span>
-                    )}
+                    {skip.reason && <span className="text-muted-foreground">{skip.reason}</span>}
                     <DeleteSkipButton id={skip.id} />
                   </div>
                 </div>
@@ -347,16 +328,14 @@ export default async function CustomerDetailPage({
                 {sub.orders.slice(0, 3).map((o) => (
                   <div key={o.id} className="flex justify-between text-xs">
                     <span>{o.weekLabel}</span>
-                    <Badge variant="outline" className="text-xs">
-                      {o.status.replace(/_/g, " ")}
-                    </Badge>
+                    <Badge variant="outline" className="text-xs">{o.status.replace(/_/g, " ")}</Badge>
                   </div>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
-      )}
+      ))}
     </div>
   );
 }

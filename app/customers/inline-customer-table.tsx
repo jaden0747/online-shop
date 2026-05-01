@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { updateCustomerAction } from "../actions/customers";
+import { isSubscriptionLive } from "@/lib/utils/subscription";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 
@@ -21,6 +22,8 @@ type Sub = {
   goal: string;
   mealsPerDay: number;
   status: string;
+  startDate: string;
+  renewalDate: string;
 };
 
 type Props = {
@@ -143,7 +146,7 @@ export function InlineCustomerTable({ customers, subscriptions }: Props) {
           )}
           {filtered.map((c) => {
             const sub = subscriptions.find(
-              (s) => s.customerId === c.phone && s.status === "active"
+              (s) => s.customerId === c.phone && isSubscriptionLive(s.status, s.startDate, s.renewalDate)
             ) ?? null;
 
             return (

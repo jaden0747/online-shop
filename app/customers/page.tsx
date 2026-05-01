@@ -44,6 +44,8 @@ export default async function CustomersPage() {
               goal: s.goal,
               mealsPerDay: s.mealsPerDay,
               status: s.status,
+              startDate: s.startDate,
+              renewalDate: s.renewalDate,
             }))}
           />
         </CardContent>

@@ -35,8 +35,14 @@ function buildWeekData(
     return d;
   });
 
+  const seenCustomers = new Set<string>();
   const activeCustomers = subscriptions
-    .filter((s) => isSubscriptionLive(s.status, s.renewalDate))
+    .filter((s) => {
+      if (!isSubscriptionLive(s.status, s.startDate, s.renewalDate)) return false;
+      if (seenCustomers.has(s.customerId)) return false;
+      seenCustomers.add(s.customerId);
+      return true;
+    })
     .map((sub) => {
       const cust = customers.find((c) => c.phone === sub.customerId);
       if (!cust) return null;

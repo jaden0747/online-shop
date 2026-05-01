@@ -5,7 +5,7 @@ import { getAllSubscriptions } from "@/lib/data/subscriptions";
 import { getAllOrders, getAllOrderItems } from "@/lib/data/orders";
 import { getMenuItemsByWeek } from "@/lib/data/menu";
 import { currentWeekLabel } from "@/lib/utils/week";
-import { formatDate } from "@/lib/utils/subscription";
+import { formatDate, isSubscriptionLive } from "@/lib/utils/subscription";
 
 const DAY_NAMES = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -19,7 +19,7 @@ export async function GET() {
 
   const customers = getAllCustomers().sort((a, b) => a.name.localeCompare(b.name));
   const addresses = getAllAddresses();
-  const subscriptions = getAllSubscriptions().filter((s) => s.status === "active");
+  const subscriptions = getAllSubscriptions().filter((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate));
   const orders = getAllOrders().filter((o) => o.weekLabel === weekLabel);
   const orderIds = new Set(orders.map((o) => o.id));
   const orderItems = getAllOrderItems().filter((it) => orderIds.has(it.orderId));
