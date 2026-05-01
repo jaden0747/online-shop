@@ -1,0 +1,3 @@
+name,phone,address,zone,notes,subscription_type,subscription_goal,meals_per_day,start_date,skip_days_used
+Nguyen Van A,0901234567,"123 Le Loi, District 1",District 1,Allergic to peanuts,weekly,cutting,2,27/04/2026,0
+Tran Thi B,0912345678,"456 Nguyen Hue, District 3",District 3,,monthly,maintenance,1,27/04/2026,1
