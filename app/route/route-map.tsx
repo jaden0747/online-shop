@@ -56,7 +56,9 @@ const DEFAULT_HUB = { lat: 10.7769, lng: 106.7009, address: "Hub" };
 const DEFAULT_PRICE_PER_KM = 5000;
 
 export function RouteMap({ deliveries }: RouteMapProps) {
-  const [MapComponent, setMapComponent] = useState<React.ComponentType<unknown> | null>(null);
+  // Wrapped in an object so React doesn't treat the component fn as a state updater
+  const [mapModule, setMapModule] = useState<{ Component: React.ComponentType<any> } | null>(null);
+  const MapComponent = mapModule?.Component ?? null;
   const [routeGeometries, setRouteGeometries] = useState<([number, number][] | null)[]>([]);
   const [isCalculating, setIsCalculating] = useState(false);
   const [geometryFailed, setGeometryFailed] = useState(false);
@@ -204,7 +206,7 @@ export function RouteMap({ deliveries }: RouteMapProps) {
 
   // Dynamic Leaflet load
   useEffect(() => {
-    import("./leaflet-map").then((mod) => setMapComponent(() => mod.LeafletMap));
+    import("./leaflet-map").then((mod) => setMapModule({ Component: mod.LeafletMap as React.ComponentType<any> }));
   }, []);
 
   const totalDistance = clusterData.reduce((s, c) => s + c.totalDist, 0);
@@ -335,7 +337,6 @@ export function RouteMap({ deliveries }: RouteMapProps) {
         <Card className="overflow-hidden">
           <CardContent className="p-0 h-[calc(100vh-260px)] min-h-[500px]">
             {MapComponent ? (
-              // @ts-expect-error dynamic import
               <MapComponent
                 clusterData={clusterData}
                 routeGeometries={routeGeometries}
