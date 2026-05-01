@@ -25,8 +25,6 @@ export default async function SubscriptionsPage() {
   const pricingEntries = getAllPricing();
 
   const customerMap = new Map(customers.map((c) => [c.phone, c]));
-  const existingCustomerIds = new Set(rawSubscriptions.map((s) => s.customerId));
-  const customersWithoutSub = customers.filter((c) => !existingCustomerIds.has(c.id));
   const skipCountMap = new Map<string, number>();
   for (const skip of skips) {
     skipCountMap.set(skip.subscriptionId, (skipCountMap.get(skip.subscriptionId) ?? 0) + 1);
@@ -56,7 +54,7 @@ export default async function SubscriptionsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <NewSubscriptionDialog customers={customersWithoutSub} pricing={pricingEntries} />
+          <NewSubscriptionDialog customers={customers} pricing={pricingEntries} />
           <OpenInFinderButton file="subscriptions.xlsx" />
         </div>
       </div>
