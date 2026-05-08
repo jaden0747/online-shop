@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { useDarkMode, TILE_URL_LIGHT, TILE_URL_DARK, TILE_ATTRIBUTION_LIGHT, TILE_ATTRIBUTION_DARK } from "@/lib/utils/use-dark-mode";
 
 type Delivery = {
   id: string;
@@ -221,6 +222,24 @@ export function LeafletMap({
   zoomToFitRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const markerRefs = useRef<Map<string, L.Marker>>(new Map());
+  const iconCache = useRef<Map<string, L.DivIcon>>(new Map());
+  const hubIconRef = useRef<L.DivIcon | null>(null);
+  const dark = useDarkMode();
+  const tileUrl = dark ? TILE_URL_DARK : TILE_URL_LIGHT;
+  const tileAttr = dark ? TILE_ATTRIBUTION_DARK : TILE_ATTRIBUTION_LIGHT;
+
+  function getNumberedIcon(num: number, color: string, selected: boolean): L.DivIcon {
+    const key = `${num}|${color}|${selected}`;
+    if (!iconCache.current.has(key)) {
+      iconCache.current.set(key, createNumberedIcon(num, color, selected));
+    }
+    return iconCache.current.get(key)!;
+  }
+
+  function getHubIcon(): L.DivIcon {
+    if (!hubIconRef.current) hubIconRef.current = createHubIcon();
+    return hubIconRef.current;
+  }
 
   if (clusterData.length === 0) return null;
 
@@ -269,10 +288,30 @@ export function LeafletMap({
   return (
     <MapContainer bounds={bounds} className="h-full w-full" scrollWheelZoom={true}>
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        key={tileUrl}
+        attribution={tileAttr}
+        url={tileUrl}
         detectRetina={true}
       />
+      {/* Casing pass — dark outline drawn first (below colored lines) */}
+      {!isCalculating && clusterData.map((cluster, ci) => {
+        const geom = routeGeometries[ci];
+        const pts: [number, number][] = geom ?? cluster.ordered.map((d) => [d.lat, d.lng]);
+        const segments = buildOffsetSegments(pts, ci, edgeShippers);
+        return segments.map((seg, si) => (
+          <Polyline
+            key={`casing-${clusterData.length}-${ci}-${cluster.color}-${si}`}
+            positions={seg}
+            pathOptions={{
+              color: dark ? "#000000" : "#ffffff",
+              weight: 6,
+              opacity: 0.6,
+              dashArray: geom ? undefined : "8 5",
+            }}
+          />
+        ));
+      })}
+      {/* Color pass — thinner colored line on top */}
       {!isCalculating && clusterData.map((cluster, ci) => {
         const geom = routeGeometries[ci];
         const pts: [number, number][] = geom ?? cluster.ordered.map((d) => [d.lat, d.lng]);
@@ -283,15 +322,15 @@ export function LeafletMap({
             positions={seg}
             pathOptions={{
               color: cluster.color,
-              weight: 6,
-              opacity: 0.85,
+              weight: 4,
+              opacity: 0.95,
               dashArray: geom ? undefined : "8 5",
             }}
           />
         ));
       })}
 
-      <Marker position={[hub.lat, hub.lng]} icon={createHubIcon()}>
+      <Marker position={[hub.lat, hub.lng]} icon={getHubIcon()}>
         <Popup>
           <div className="text-sm">
             <p className="font-bold">Hub</p>
@@ -311,7 +350,7 @@ export function LeafletMap({
               <Marker
                 key={`${clusterData.length}-${ci}-${d.id}-${cluster.color}`}
                 position={[d.lat, d.lng]}
-                icon={createNumberedIcon(idx + 1, pinColor, isSelected)}
+                icon={getNumberedIcon(idx + 1, pinColor, isSelected)}
                 ref={(m) => {
                   if (m) markerRefs.current.set(d.id, m);
                   else markerRefs.current.delete(d.id);

@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { useDarkMode, TILE_URL_LIGHT, TILE_URL_DARK, TILE_ATTRIBUTION_LIGHT, TILE_ATTRIBUTION_DARK } from "@/lib/utils/use-dark-mode";
 
 export type Pin = {
   id: string;
@@ -97,6 +98,9 @@ export function CoverageLeafletMap({
   zoomToFitRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const markerRefs = useRef<Map<string, L.Marker>>(new Map());
+  const dark = useDarkMode();
+  const tileUrl = dark ? TILE_URL_DARK : TILE_URL_LIGHT;
+  const tileAttr = dark ? TILE_ATTRIBUTION_DARK : TILE_ATTRIBUTION_LIGHT;
 
   if (pins.length === 0) return null;
 
@@ -108,8 +112,9 @@ export function CoverageLeafletMap({
   return (
     <MapContainer bounds={bounds} className="h-full w-full" scrollWheelZoom>
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        key={tileUrl}
+        attribution={tileAttr}
+        url={tileUrl}
         detectRetina={true}
       />
       <FitBounds pins={pins} />

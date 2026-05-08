@@ -22,10 +22,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="flex flex-col h-full">
         <ThemeProvider>
           <TestingBanner />
-          <div className="flex flex-1 min-h-0">
-            <Sidebar />
-            <main className="flex-1 overflow-y-auto p-6 bg-background">{children}</main>
-          </div>
+          <Sidebar />
+          <main className="flex-1 overflow-y-auto p-6 bg-background">{children}</main>
           <DataFileWatcher />
         </ThemeProvider>
       </body>

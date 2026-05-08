@@ -128,3 +128,27 @@
     @apply font-sans;
   }
 }
+
+/* Leaflet popup dark mode overrides */
+.dark .leaflet-popup-content-wrapper,
+.dark .leaflet-popup-tip {
+  background-color: oklch(0.205 0 0);
+  color: oklch(0.985 0 0);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+
+.dark .leaflet-popup-content-wrapper {
+  border: 1px solid oklch(1 0 0 / 10%);
+}
+
+.dark .leaflet-popup-content a {
+  color: oklch(0.708 0 0);
+}
+
+.dark .leaflet-container a.leaflet-popup-close-button {
+  color: oklch(0.708 0 0);
+}
+
+.dark .leaflet-container a.leaflet-popup-close-button:hover {
+  color: oklch(0.985 0 0);
+}

@@ -6,6 +6,8 @@ import { getMenuItemsByWeek } from "@/lib/data/menu";
 import { isSubscriptionLive, daysRemaining, isTodayWeekday } from "@/lib/utils/subscription";
 import { currentWeekLabel, currentWeekMonday } from "@/lib/utils/week";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DashboardCharts } from "./dashboard-charts";
+import { CustomerNameButton } from "./customer-name-button";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +75,71 @@ export default async function DashboardPage() {
       return { name: item?.name ?? `Option ${slot}`, count };
     });
 
+  // ── Chart data ──────────────────────────────────────────────────────────────
+
+  // Chart 1: Subscription mix by plan and goal
+  const planCounts = new Map<string, number>();
+  const goalCounts = new Map<string, number>();
+  for (const s of activeSubs) {
+    planCounts.set(s.plan, (planCounts.get(s.plan) ?? 0) + 1);
+    goalCounts.set(s.goal, (goalCounts.get(s.goal) ?? 0) + 1);
+  }
+  const planMix = Array.from(planCounts.entries()).map(([name, value]) => ({ name, value }));
+  const goalMix = Array.from(goalCounts.entries()).map(([name, value]) => ({ name, value }));
+
+  // Chart 2: Deliveries per weekday this week
+  const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+  const weekdayDeliveries = weekDates.map((d, i) => ({
+    day: DAY_NAMES[i],
+    count: subscriptions.filter((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate, d)).length,
+  }));
+
+  // Chart 3: All meal selections this week
+  const mealSelections = Array.from(slotCounts.entries())
+    .map(([slot, count]) => {
+      const item = menuItems.find((m) => m.slot === slot);
+      return { name: item?.name ?? `Option ${slot}`, count };
+    })
+    .sort((a, b) => b.count - a.count);
+
+  // Chart 4: Active customers by zone
+  const activeCustomerPhones = new Set(activeSubs.map((s) => s.customerId));
+  const zoneCounts = new Map<string, number>();
+  for (const c of customers) {
+    if (activeCustomerPhones.has(c.phone)) {
+      const z = c.zone?.trim() || "Unknown";
+      zoneCounts.set(z, (zoneCounts.get(z) ?? 0) + 1);
+    }
+  }
+  const zoneData = Array.from(zoneCounts.entries())
+    .map(([zone, count]) => ({ zone, count }))
+    .sort((a, b) => b.count - a.count);
+
+  // Chart 5: Renewal timeline buckets
+  const renewalBuckets = [
+    { bucket: "0-2d", min: -Infinity, max: 2 },
+    { bucket: "3-7d", min: 3, max: 7 },
+    { bucket: "8-14d", min: 8, max: 14 },
+    { bucket: "15-30d", min: 15, max: 30 },
+    { bucket: "30d+", min: 31, max: Infinity },
+  ];
+  const renewalData = renewalBuckets.map(({ bucket, min, max }) => ({
+    bucket,
+    count: activeSubs.filter((s) => {
+      const d = daysRemaining(s.renewalDate);
+      return d >= min && d <= max;
+    }).length,
+  }));
+
+  // Chart 6: Meals-per-day distribution
+  const mpdCounts = new Map<number, number>();
+  for (const s of activeSubs) {
+    mpdCounts.set(s.mealsPerDay, (mpdCounts.get(s.mealsPerDay) ?? 0) + 1);
+  }
+  const mealsPerDayData = Array.from(mpdCounts.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([meals, count]) => ({ meals: `${meals} meal${meals > 1 ? "s" : ""}`, count }));
+
   // Recent customers: last 7 by createdAt
   const recentCustomers = [...customers]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -89,7 +156,7 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center gap-3">
         <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true" className="text-primary shrink-0">
           <path d="M14 26 C14 26 6 20 6 12 C6 7.58 9.58 4 14 4 C18.42 4 22 7.58 22 12 C22 20 14 26 14 26Z" fill="currentColor" opacity="0.18"/>
@@ -99,20 +166,16 @@ export default async function DashboardPage() {
         <h1 className="text-3xl font-heading font-semibold tracking-tight">Oli Healthy</h1>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* ── Row 1: 4 KPI stat cards ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Today's Deliveries */}
         <Card>
-          <CardHeader>
-            <CardTitle>Today&apos;s Deliveries</CardTitle>
+          <CardHeader className="pb-1 pt-4 px-4">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Today&apos;s Deliveries</CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <span className="text-3xl font-bold">
-              {todayIsWeekday ? `${todayDeliveryCount} deliveries today` : "No deliveries today"}
-            </span>
-            <Link
-              href="/shipping"
-              className="text-sm font-medium underline-offset-4 hover:underline text-muted-foreground"
-            >
+          <CardContent className="px-4 pb-4">
+            <p className="text-3xl font-bold">{todayIsWeekday ? todayDeliveryCount : "—"}</p>
+            <Link href="/shipping" className="text-xs text-muted-foreground hover:underline underline-offset-2 mt-1 inline-block">
               View Shipping →
             </Link>
           </CardContent>
@@ -120,33 +183,70 @@ export default async function DashboardPage() {
 
         {/* Active Subscriptions */}
         <Card>
-          <CardHeader>
-            <CardTitle>Active Subscriptions</CardTitle>
+          <CardHeader className="pb-1 pt-4 px-4">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active Subs</CardTitle>
           </CardHeader>
-          <CardContent>
-            <span className="text-3xl font-bold">{activeSubs.length} active</span>
+          <CardContent className="px-4 pb-4">
+            <p className="text-3xl font-bold">{activeSubs.length}</p>
+            <p className="text-xs text-muted-foreground mt-1">subscriptions live</p>
           </CardContent>
         </Card>
 
+        {/* This Week */}
+        <Card>
+          <CardHeader className="pb-1 pt-4 px-4">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">This Week</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <p className="text-3xl font-bold">{thisWeekSubIds.size}</p>
+            <Link href="/menu" className="text-xs text-muted-foreground hover:underline underline-offset-2 mt-1 inline-block">
+              View Menu →
+            </Link>
+          </CardContent>
+        </Card>
+
+        {/* Kitchen Top Meal */}
+        <Card>
+          <CardHeader className="pb-1 pt-4 px-4">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Top Meal Today</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            {topMeals[0] ? (
+              <>
+                <p className="text-sm font-semibold leading-tight truncate">{topMeals[0].name}</p>
+                <p className="text-2xl font-bold mt-0.5">{topMeals[0].count}<span className="text-base font-normal text-muted-foreground ml-1">orders</span></p>
+              </>
+            ) : (
+              <p className="text-muted-foreground text-sm">No selections yet</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Row 2: Expiring Soon + Recent Customers (2+2 cols) ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Expiring Soon */}
         <Card>
-          <CardHeader>
-            <CardTitle>Expiring Soon</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Expiring Soon</CardTitle>
           </CardHeader>
           <CardContent>
             {expiringSoon.length === 0 ? (
               <p className="text-muted-foreground text-sm">None expiring soon</p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="divide-y">
                 {expiringSoon.map(({ sub, days }) => {
                   const customer = customerMap.get(sub.customerId);
                   return (
-                    <li key={sub.id} className="flex items-center justify-between text-sm">
-                      <span className="font-medium">{customer?.name ?? sub.customerId}</span>
-                      <span className="text-muted-foreground text-xs">
+                    <li key={sub.id} className="grid grid-cols-[1fr_auto_auto] items-center py-1.5 text-sm gap-x-3">
+                      <CustomerNameButton
+                        customerId={sub.customerId}
+                        name={customer?.name ?? sub.customerId}
+                      />
+                      <span className="text-muted-foreground text-xs text-right tabular-nums">
                         {new Date(sub.renewalDate).toLocaleDateString("en-GB")}
                       </span>
-                      <span className={`font-semibold ${expiryColor(days)}`}>
+                      <span className={`font-semibold text-xs text-right tabular-nums w-10 ${expiryColor(days)}`}>
                         {days === 0 ? "today" : `${days}d`}
                       </span>
                     </li>
@@ -157,58 +257,21 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* This Week's Orders */}
-        <Card>
-          <CardHeader>
-            <CardTitle>This Week&apos;s Orders</CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <span className="text-3xl font-bold">{thisWeekSubIds.size} this week</span>
-            <Link
-              href="/menu"
-              className="text-sm font-medium underline-offset-4 hover:underline text-muted-foreground"
-            >
-              View Menu →
-            </Link>
-          </CardContent>
-        </Card>
-
-        {/* Kitchen Prep Summary */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Kitchen Prep Summary</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {topMeals.length === 0 ? (
-              <p className="text-muted-foreground text-sm">No selections yet</p>
-            ) : (
-              <ul className="space-y-2">
-                {topMeals.map(({ name, count }) => (
-                  <li key={name} className="flex items-center justify-between text-sm">
-                    <span className="font-medium truncate">{name}</span>
-                    <span className="text-muted-foreground ml-2 shrink-0">{count}×</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
         {/* Recent Customers */}
         <Card>
-          <CardHeader>
-            <CardTitle>Recent Customers</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Recent Customers</CardTitle>
           </CardHeader>
           <CardContent>
             {recentCustomers.length === 0 ? (
               <p className="text-muted-foreground text-sm">No customers yet</p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="divide-y">
                 {recentCustomers.map((c) => (
-                  <li key={c.id} className="flex items-center justify-between text-sm">
-                    <span className="font-medium">{c.name}</span>
-                    <span className="text-muted-foreground text-xs">{c.phone}</span>
-                    <span className="text-muted-foreground text-xs">
+                  <li key={c.id} className="grid grid-cols-[1fr_auto_auto] items-center py-1.5 text-sm gap-x-3">
+                    <CustomerNameButton customerId={c.id} name={c.name} />
+                    <span className="text-muted-foreground text-xs text-right tabular-nums">{c.phone}</span>
+                    <span className="text-muted-foreground text-xs text-right tabular-nums w-20">
                       {new Date(c.createdAt).toLocaleDateString("en-GB")}
                     </span>
                   </li>
@@ -218,6 +281,17 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Row 3+: Charts ── */}
+      <DashboardCharts
+        planMix={planMix}
+        goalMix={goalMix}
+        weekdayDeliveries={weekdayDeliveries}
+        mealSelections={mealSelections}
+        zoneData={zoneData}
+        renewalData={renewalData}
+        mealsPerDayData={mealsPerDayData}
+      />
     </div>
   );
 }

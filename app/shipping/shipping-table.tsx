@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ShippingCustomerCell } from "./customer-overlay-trigger";
 import {
@@ -199,6 +199,40 @@ export function ShippingTable({
     return rows;
   }, [cluster, withCoords, effectiveDeliveries, manualOrder]);
 
+  const tableRef = useRef<HTMLDivElement>(null);
+  const [copying, setCopying] = useState(false);
+
+  const captureTablePng = async (): Promise<Blob> => {
+    if (!tableRef.current) throw new Error("table not mounted");
+    const { toPng } = await import("html-to-image");
+    const bg = getComputedStyle(document.documentElement).getPropertyValue("--background").trim();
+    const backgroundColor = bg ? `hsl(${bg})` : (document.documentElement.classList.contains("dark") ? "#0f172a" : "#ffffff");
+    const dataUrl = await toPng(tableRef.current, { backgroundColor, pixelRatio: 2 });
+    const res = await fetch(dataUrl);
+    return res.blob();
+  };
+
+  const handleExportPNG = async () => {
+    const blob = await captureTablePng();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `shipping-${date}.png`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const handleCopyPNG = async () => {
+    setCopying(true);
+    try {
+      const blobPromise = captureTablePng();
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blobPromise })]);
+    } catch (e) {
+      console.error("Copy to clipboard failed:", e);
+    } finally {
+      setCopying(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
       <div className="px-3 pt-2 flex items-center gap-3 text-xs">
@@ -226,12 +260,31 @@ export function ShippingTable({
             </button>
           )}
         </label>
-        <span className="text-muted-foreground ml-auto">
+        <span className="text-muted-foreground">
           {cluster.k > 0 ? `${cluster.k} shipper${cluster.k > 1 ? "s" : ""} planned` : "no route planned"}
         </span>
+        <div className="flex gap-1 ml-auto">
+          <button
+            type="button"
+            onClick={handleExportPNG}
+            className="h-7 px-3 text-xs rounded border bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            title="Download shipping table as PNG"
+          >
+            Export PNG
+          </button>
+          <button
+            type="button"
+            onClick={handleCopyPNG}
+            disabled={copying}
+            className="h-7 px-3 text-xs rounded border bg-background hover:bg-accent transition-colors disabled:opacity-50"
+            title="Copy shipping table PNG to clipboard"
+          >
+            {copying ? "Copying…" : "Copy PNG"}
+          </button>
+        </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" ref={tableRef}>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">

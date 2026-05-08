@@ -1,7 +1,11 @@
 import { getAllCustomers, getAllAddresses } from "@/lib/data/customers";
 import { getAllSubscriptions, getAllSkips } from "@/lib/data/subscriptions";
 import { getSettings } from "@/lib/data/settings";
+import { getMenuItemsByWeek } from "@/lib/data/menu";
+import { getSelectionsByWeek } from "@/lib/data/selections";
+import { getNotesByWeek } from "@/lib/data/notes";
 import { isSubscriptionLive } from "@/lib/utils/subscription";
+import { weekLabelForDate } from "@/lib/utils/week";
 import { DayPicker } from "@/components/day-picker";
 import { RouteMap } from "./route-map";
 
@@ -31,6 +35,17 @@ export default async function RoutePage({
   const skips = getAllSkips();
   const settings = getSettings();
 
+  const dayNum = selectedDate.getDay() === 0 ? 7 : selectedDate.getDay();
+  const weekLabel = weekLabelForDate(selectedDate);
+  const menuItems = getMenuItemsByWeek(weekLabel);
+  const selections = getSelectionsByWeek(weekLabel);
+  const dayNotes = getNotesByWeek(weekLabel).filter((n) => n.day === dayNum);
+
+  const menuName = (day: number, slot: number): string | null => {
+    const m = menuItems.find((it) => it.day === day && it.slot === slot);
+    return m?.name ?? null;
+  };
+
   const defaultAddrMap = new Map(
     allAddresses.filter((a) => a.isDefault).map((a) => [a.customerId, a])
   );
@@ -58,6 +73,19 @@ export default async function RoutePage({
       );
       if (isSkipped && !isReplacement) return null;
 
+      const customerSelections = selections
+        .filter((sel) => sel.customerId === customer.phone && sel.day === dayNum)
+        .sort((a, b) => a.mealNum - b.mealNum);
+
+      const meals: string[] = [];
+      for (let mealNum = 1; mealNum <= sub.mealsPerDay; mealNum++) {
+        const sel = customerSelections.find((s) => s.mealNum === mealNum);
+        if (sel) {
+          const name = menuName(dayNum, sel.menuSlot);
+          if (name) meals.push(name);
+        }
+      }
+
       return {
         id: customer.id,
         name: customer.name,
@@ -65,9 +93,12 @@ export default async function RoutePage({
         address: defaultAddr.address,
         lat: defaultAddr.latitude as number,
         lng: defaultAddr.longitude as number,
+        meals,
+        permanentNote: customer.notes ?? null,
+        dateNote: dayNotes.find((n) => n.customerId === customer.phone)?.note ?? null,
       };
     })
-    .filter(Boolean) as { id: string; name: string; phone: string; address: string; lat: number; lng: number }[];
+    .filter(Boolean) as { id: string; name: string; phone: string; address: string; lat: number; lng: number; meals: string[]; permanentNote: string | null; dateNote: string | null }[];
 
   const isToday = selectedDateStr === todayStr();
 

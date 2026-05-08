@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useDarkMode } from "@/lib/utils/use-dark-mode";
 import {
   depotAwareClusters,
   fixedKClusters,
@@ -34,6 +35,9 @@ type Delivery = {
   address: string;
   lat: number;
   lng: number;
+  meals?: string[];
+  permanentNote?: string | null;
+  dateNote?: string | null;
 };
 
 type RouteMapProps = {
@@ -110,6 +114,7 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
   // Wrapped in an object so React doesn't treat the component fn as a state updater
   const [mapModule, setMapModule] = useState<{ Component: React.ComponentType<any> } | null>(null);
   const MapComponent = mapModule?.Component ?? null;
+  const dark = useDarkMode();
   const [routeGeometries, setRouteGeometries] = useState<([number, number][] | null)[]>([]);
   const [isCalculating, setIsCalculating] = useState(false);
   const [geometryFailed, setGeometryFailed] = useState(false);
@@ -402,29 +407,37 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
 
   const buildRouteCanvas = async (): Promise<HTMLCanvasElement> => {
     const CANVAS_W = 1600;
-    const MAP_W = 900;
+    const MAP_W = 720;
     const DETAIL_X = MAP_W;
     const DETAIL_W = CANVAS_W - MAP_W;
     const HEADER_H = 56;
-    const PAD = 20;
-    const STOP_H = 56;
-    const SHIP_H = 40;
+    const PAD = 16;
+    const SHIP_BANNER_H = 44;
+    const MIN_SECTION_H = 280;
+    const STOP_BASE_H = 50;
 
-    const totalDetailH =
-      clusterData.reduce((h, c) => {
-        const n = c.ordered.filter((d) => d.id !== "__hub__").length;
-        return h + SHIP_H + n * STOP_H + 10;
-      }, 0) +
-      HEADER_H +
-      PAD * 3;
-    const CANVAS_H = Math.max(900, Math.min(2600, totalDetailH));
+    function calcStopH(d: Delivery): number {
+      let h = STOP_BASE_H;
+      if (d.meals && d.meals.length > 0) h += 14;
+      if (d.permanentNote) h += 14;
+      if (d.dateNote) h += 14;
+      return h;
+    }
+
+    const sectionHeights = clusterData.map((cluster) => {
+      const stops = cluster.ordered.filter((d) => d.id !== "__hub__");
+      const stopsH = stops.reduce((h, d) => h + calcStopH(d), 0);
+      return Math.max(MIN_SECTION_H, SHIP_BANNER_H + stopsH + PAD * 2);
+    });
+
+    const CANVAS_H = HEADER_H + sectionHeights.reduce((a, b) => a + b, 0);
 
     const canvas = document.createElement("canvas");
     canvas.width = CANVAS_W;
     canvas.height = CANVAS_H;
     const ctx = canvas.getContext("2d")!;
 
-    // ── Header bar ──
+    // ── Overall header ──
     ctx.fillStyle = "#0f172a";
     ctx.fillRect(0, 0, CANVAS_W, HEADER_H);
     ctx.fillStyle = "#f8fafc";
@@ -443,85 +456,78 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
 
-    // ── Map area — fallback background ──
-    ctx.fillStyle = "#dde6f0";
-    ctx.fillRect(0, HEADER_H, MAP_W, CANVAS_H - HEADER_H);
+    let sectionY = HEADER_H;
 
-    // Collect all points for coordinate bounds
-    const allPts: { lat: number; lng: number }[] = [hub];
-    clusterData.forEach((c) => c.ordered.forEach((d) => { if (d.id !== "__hub__") allPts.push(d); }));
-    routeGeometries.forEach((g) => { if (g) g.forEach(([lat, lng]) => allPts.push({ lat, lng })); });
+    for (let ci = 0; ci < clusterData.length; ci++) {
+      const cluster = clusterData[ci];
+      const secH = sectionHeights[ci];
+      const stops = cluster.ordered.filter((d) => d.id !== "__hub__");
 
-    const lats = allPts.map((p) => p.lat);
-    const lngs = allPts.map((p) => p.lng);
-    const rawMinLat = Math.min(...lats), rawMaxLat = Math.max(...lats);
-    const rawMinLng = Math.min(...lngs), rawMaxLng = Math.max(...lngs);
-    const latPad = Math.max(rawMaxLat - rawMinLat, 0.006) * 0.20;
-    const lngPad = Math.max(rawMaxLng - rawMinLng, 0.006) * 0.20;
-    const minLat = rawMinLat - latPad, maxLat = rawMaxLat + latPad;
-    const minLng = rawMinLng - lngPad, maxLng = rawMaxLng + lngPad;
+      // Section backgrounds
+      ctx.fillStyle = "#dde6f0";
+      ctx.fillRect(0, sectionY, MAP_W, secH);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(DETAIL_X, sectionY, DETAIL_W, secH);
 
-    // Use the full map area (no inner padding — tiles fill edge to edge)
-    const mapTop = HEADER_H;
-    const mapH = CANVAS_H - HEADER_H;
-    const mapLeft = 0;
-    const mapW = MAP_W;
+      // ── Per-shipper map ──
+      const shipperPts: { lat: number; lng: number }[] = [hub];
+      stops.forEach((d) => shipperPts.push({ lat: d.lat, lng: d.lng }));
+      const geom = routeGeometries[ci] ?? null;
+      if (geom) geom.forEach(([lat, lng]) => shipperPts.push({ lat, lng }));
 
-    // Mercator-based coordinate transform
-    const z = chooseTileZoom(minLat, maxLat, minLng, maxLng, mapW, mapH);
-    const centerLat = (minLat + maxLat) / 2;
-    const centerLng = (minLng + maxLng) / 2;
-    const [cwx, cwy] = latLngToWorldPx(centerLat, centerLng, z);
-    const scx = mapLeft + mapW / 2;
-    const scy = mapTop + mapH / 2;
+      const lats = shipperPts.map((p) => p.lat);
+      const lngs = shipperPts.map((p) => p.lng);
+      const rawMinLat = Math.min(...lats), rawMaxLat = Math.max(...lats);
+      const rawMinLng = Math.min(...lngs), rawMaxLng = Math.max(...lngs);
+      const latSpan = Math.max(rawMaxLat - rawMinLat, 0.006);
+      const lngSpan = Math.max(rawMaxLng - rawMinLng, 0.006);
+      const minLat = rawMinLat - latSpan * 0.25, maxLat = rawMaxLat + latSpan * 0.25;
+      const minLng = rawMinLng - lngSpan * 0.25, maxLng = rawMaxLng + lngSpan * 0.25;
 
-    const toXY = (lat: number, lng: number): [number, number] => {
-      const [wx, wy] = latLngToWorldPx(lat, lng, z);
-      return [scx + (wx - cwx), scy + (wy - cwy)];
-    };
+      const mapH = secH;
+      const z = chooseTileZoom(minLat, maxLat, minLng, maxLng, MAP_W, mapH);
+      const centerLat = (minLat + maxLat) / 2;
+      const centerLng = (minLng + maxLng) / 2;
+      const [cwx, cwy] = latLngToWorldPx(centerLat, centerLng, z);
+      const scx = MAP_W / 2;
+      const scy = sectionY + mapH / 2;
 
-    // ── Fetch & draw OSM tiles ──
-    const txMin = Math.floor((cwx - mapW / 2) / 256);
-    const tyMin = Math.floor((cwy - mapH / 2) / 256);
-    const txMax = Math.floor((cwx + mapW / 2) / 256);
-    const tyMax = Math.floor((cwy + mapH / 2) / 256);
-    const maxTileIdx = Math.pow(2, z) - 1;
+      const toXY = (lat: number, lng: number): [number, number] => {
+        const [wx, wy] = latLngToWorldPx(lat, lng, z);
+        return [scx + (wx - cwx), scy + (wy - cwy)];
+      };
 
-    const tilePromises: Promise<{ tx: number; ty: number; img: HTMLImageElement } | null>[] = [];
-    for (let tx = txMin; tx <= txMax; tx++) {
-      for (let ty = tyMin; ty <= tyMax; ty++) {
-        if (tx < 0 || ty < 0 || tx > maxTileIdx || ty > maxTileIdx) continue;
-        const url = `https://tile.openstreetmap.org/${z}/${tx}/${ty}.png`;
-        tilePromises.push(
-          loadImage(url).then((img) => ({ tx, ty, img })).catch(() => null)
-        );
+      const txMin = Math.floor((cwx - MAP_W / 2) / 256);
+      const tyMin = Math.floor((cwy - mapH / 2) / 256);
+      const txMax = Math.floor((cwx + MAP_W / 2) / 256);
+      const tyMax = Math.floor((cwy + mapH / 2) / 256);
+      const maxTileIdx = Math.pow(2, z) - 1;
+
+      const tilePromises: Promise<{ tx: number; ty: number; img: HTMLImageElement } | null>[] = [];
+      for (let tx = txMin; tx <= txMax; tx++) {
+        for (let ty = tyMin; ty <= tyMax; ty++) {
+          if (tx < 0 || ty < 0 || tx > maxTileIdx || ty > maxTileIdx) continue;
+          const url = dark
+            ? `https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/${z}/${tx}/${ty}.png`
+            : `https://tile.openstreetmap.org/${z}/${tx}/${ty}.png`;
+          tilePromises.push(loadImage(url).then((img) => ({ tx, ty, img })).catch(() => null));
+        }
       }
-    }
-    const tiles = await Promise.all(tilePromises);
+      const tiles = await Promise.all(tilePromises);
 
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(mapLeft, mapTop, mapW, mapH);
-    ctx.clip();
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, sectionY, MAP_W, mapH);
+      ctx.clip();
 
-    tiles.forEach((t) => {
-      if (!t) return;
-      const sx = scx + (t.tx * 256 - cwx);
-      const sy = scy + (t.ty * 256 - cwy);
-      ctx.drawImage(t.img, sx, sy, 256, 256);
-    });
+      tiles.forEach((t) => {
+        if (!t) return;
+        const sx = scx + (t.tx * 256 - cwx);
+        const sy = scy + (t.ty * 256 - cwy);
+        ctx.drawImage(t.img, sx, sy, 256, 256);
+      });
 
-    ctx.restore();
-
-    // ── Overlay (routes + markers) clipped to map area ──
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(mapLeft, mapTop, mapW, mapH);
-    ctx.clip();
-
-    // Draw routes
-    clusterData.forEach((cluster, ci) => {
-      const geom = routeGeometries[ci];
+      // This shipper's route
       ctx.strokeStyle = cluster.color;
       ctx.lineWidth = 3;
       ctx.lineJoin = "round";
@@ -536,23 +542,21 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
         if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
       });
       ctx.stroke();
-    });
-    ctx.setLineDash([]);
+      ctx.setLineDash([]);
 
-    // Hub marker
-    const [hx, hy] = toXY(hub.lat, hub.lng);
-    ctx.fillStyle = "#0f172a";
-    ctx.beginPath(); ctx.arc(hx, hy, 14, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.arc(hx, hy, 14, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 11px system-ui,sans-serif";
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText("H", hx, hy);
+      // Hub marker
+      const [hx, hy] = toXY(hub.lat, hub.lng);
+      ctx.fillStyle = "#0f172a";
+      ctx.beginPath(); ctx.arc(hx, hy, 12, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(hx, hy, 12, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 10px system-ui,sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("H", hx, hy);
 
-    // Stop markers
-    clusterData.forEach((cluster) => {
-      cluster.ordered.filter((d) => d.id !== "__hub__").forEach((d, idx) => {
+      // Stop markers
+      stops.forEach((d, idx) => {
         const [x, y] = toXY(d.lat, d.lng);
         ctx.fillStyle = cluster.color;
         ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill();
@@ -563,73 +567,102 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(String(idx + 1), x, y);
       });
-    });
 
-    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-    ctx.restore(); // end map clip
+      ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+      ctx.restore();
 
-    // ── Divider ──
-    ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 1; ctx.setLineDash([]);
-    ctx.beginPath(); ctx.moveTo(MAP_W, HEADER_H); ctx.lineTo(MAP_W, CANVAS_H); ctx.stroke();
+      // Vertical divider (map | detail)
+      ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 1; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(MAP_W, sectionY); ctx.lineTo(MAP_W, sectionY + secH); ctx.stroke();
 
-    // ── Details panel ──
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(DETAIL_X, HEADER_H, DETAIL_W, CANVAS_H - HEADER_H);
+      // ── Detail panel ──
+      let dy = sectionY + PAD;
 
-    let dy = HEADER_H + PAD;
-
-    clusterData.forEach((cluster, ci) => {
-      const stops = cluster.ordered.filter((d) => d.id !== "__hub__");
-      if (stops.length === 0) return;
-
-      // Shipper heading
+      // Shipper banner
       ctx.fillStyle = cluster.color;
-      ctx.fillRect(DETAIL_X + PAD - 2, dy, 4, 22);
+      ctx.fillRect(DETAIL_X + PAD - 2, dy, 4, 24);
       ctx.fillStyle = "#0f172a";
-      ctx.font = "bold 14px system-ui,sans-serif";
-      ctx.fillText(`Shipper ${ci + 1}`, DETAIL_X + PAD + 10, dy + 15);
+      ctx.font = "bold 15px system-ui,sans-serif";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`Shipper ${ci + 1}`, DETAIL_X + PAD + 10, dy + 12);
       ctx.fillStyle = "#64748b";
       ctx.font = "12px system-ui,sans-serif";
       ctx.textAlign = "right";
       ctx.fillText(
-        `${cluster.totalDist.toFixed(1)} km · ${Math.ceil(cluster.totalTime)} min`,
-        DETAIL_X + DETAIL_W - PAD, dy + 15
+        `${cluster.totalDist.toFixed(1)} km · ${Math.ceil(cluster.totalTime)} min · ${Math.round(cluster.totalPrice).toLocaleString()}đ`,
+        DETAIL_X + DETAIL_W - PAD, dy + 12
       );
       ctx.textAlign = "left";
-      dy += SHIP_H;
+      ctx.textBaseline = "alphabetic";
+      dy += SHIP_BANNER_H;
 
+      // Banner separator
+      ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(DETAIL_X + PAD, dy - 8); ctx.lineTo(DETAIL_X + DETAIL_W - PAD, dy - 8); ctx.stroke();
+
+      // Stops
       stops.forEach((d, idx) => {
-        if (dy + STOP_H > CANVAS_H - PAD) return;
-
-        // Numbered circle
         ctx.fillStyle = cluster.color;
-        ctx.beginPath(); ctx.arc(DETAIL_X + PAD + 9, dy + 11, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(DETAIL_X + PAD + 8, dy + 10, 9, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 9px system-ui,sans-serif";
+        ctx.font = `bold ${idx + 1 > 9 ? "8" : "9"}px system-ui,sans-serif`;
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText(String(idx + 1), DETAIL_X + PAD + 9, dy + 11);
+        ctx.fillText(String(idx + 1), DETAIL_X + PAD + 8, dy + 10);
         ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
 
-        const tx = DETAIL_X + PAD + 26;
-        const maxTW = DETAIL_W - PAD * 2 - 26;
+        const tx = DETAIL_X + PAD + 24;
+        const maxTW = DETAIL_W - PAD * 2 - 24;
 
         ctx.fillStyle = "#0f172a";
         ctx.font = "bold 13px system-ui,sans-serif";
-        ctx.fillText(truncateText(ctx, d.name, maxTW), tx, dy + 14);
-
+        ctx.fillText(truncateText(ctx, d.name, maxTW - 140), tx, dy + 14);
         ctx.fillStyle = "#64748b";
         ctx.font = "11px system-ui,sans-serif";
-        ctx.fillText(d.phone, tx, dy + 28);
+        ctx.textAlign = "right";
+        ctx.fillText(d.phone, DETAIL_X + DETAIL_W - PAD, dy + 14);
+        ctx.textAlign = "left";
 
         ctx.fillStyle = "#475569";
         ctx.font = "11px system-ui,sans-serif";
-        ctx.fillText(truncateText(ctx, d.address, maxTW), tx, dy + 42);
+        ctx.fillText(truncateText(ctx, d.address, maxTW), tx, dy + 29);
 
-        dy += STOP_H;
+        let rowY = dy + 44;
+
+        if (d.meals && d.meals.length > 0) {
+          ctx.fillStyle = "#b45309";
+          ctx.font = "11px system-ui,sans-serif";
+          ctx.fillText(truncateText(ctx, `Meal: ${d.meals.join(", ")}`, maxTW), tx, rowY);
+          rowY += 14;
+        }
+
+        if (d.permanentNote) {
+          ctx.fillStyle = "#1d4ed8";
+          ctx.font = "italic 10px system-ui,sans-serif";
+          ctx.fillText(truncateText(ctx, `Note: ${d.permanentNote}`, maxTW), tx, rowY);
+          rowY += 14;
+        }
+
+        if (d.dateNote) {
+          ctx.fillStyle = "#0f766e";
+          ctx.font = "italic 10px system-ui,sans-serif";
+          ctx.fillText(truncateText(ctx, `Today: ${d.dateNote}`, maxTW), tx, rowY);
+          rowY += 14;
+        }
+
+        dy += calcStopH(d);
+
+        if (idx < stops.length - 1) {
+          ctx.strokeStyle = "#f1f5f9"; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(DETAIL_X + PAD + 24, dy - 4); ctx.lineTo(DETAIL_X + DETAIL_W - PAD, dy - 4); ctx.stroke();
+        }
       });
 
-      dy += 10;
-    });
+      // Section divider
+      ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 2; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(0, sectionY + secH); ctx.lineTo(CANVAS_W, sectionY + secH); ctx.stroke();
+
+      sectionY += secH;
+    }
 
     return canvas;
   };

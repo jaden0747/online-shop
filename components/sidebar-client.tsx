@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Users, UtensilsCrossed, ClipboardList, Truck, MapPin, Map, Settings2, FlaskConical } from "lucide-react";
+import { Home, Users, UtensilsCrossed, Truck, MapPin, Map, Settings2, FlaskConical } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const baseNav = [
@@ -22,35 +22,34 @@ export function SidebarClient({ testingMode }: { testingMode: boolean }) {
   const nav = testingMode ? [...baseNav, testingNavItem] : [...baseNav];
 
   return (
-    <aside className="w-14 shrink-0 border-r bg-sidebar h-full sticky top-0 flex flex-col items-center">
+    <header className="shrink-0 border-b bg-sidebar flex items-center px-3 h-12 gap-1 overflow-x-auto">
       <Link
         href="/"
-        className="h-14 w-full flex items-center justify-center border-b font-bold text-lg tracking-tight"
+        className="shrink-0 font-bold text-base tracking-tight px-2 mr-1"
         title="Oli Healthy"
       >
-        O
+        Oli
       </Link>
-      <nav className="flex-1 w-full py-3 flex flex-col items-center gap-1 overflow-y-auto">
+      <nav className="flex items-center gap-0.5">
         {nav.map(({ href, label, icon: Icon }) => {
           const active = href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
               key={href}
               href={href}
-              title={label}
-              aria-label={label}
               className={cn(
-                "h-10 w-10 flex items-center justify-center rounded-md transition-colors",
+                "flex items-center gap-1.5 px-3 h-8 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
                 active
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               )}
             >
-              <Icon size={18} />
+              <Icon size={15} />
+              {label}
             </Link>
           );
         })}
       </nav>
-    </aside>
+    </header>
   );
 }

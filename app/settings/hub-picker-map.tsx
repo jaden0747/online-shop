@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { useDarkMode, TILE_URL_LIGHT, TILE_URL_DARK, TILE_ATTRIBUTION_LIGHT, TILE_ATTRIBUTION_DARK } from "@/lib/utils/use-dark-mode";
 
 function hubIcon() {
   return L.divIcon({
@@ -39,6 +40,9 @@ export function HubPickerMap({
   onPick: (lat: number, lng: number) => void;
 }) {
   const markerRef = useRef<L.Marker | null>(null);
+  const dark = useDarkMode();
+  const tileUrl = dark ? TILE_URL_DARK : TILE_URL_LIGHT;
+  const tileAttr = dark ? TILE_ATTRIBUTION_DARK : TILE_ATTRIBUTION_LIGHT;
 
   // Keep marker in sync when lat/lng changes from inputs
   useEffect(() => {
@@ -54,8 +58,9 @@ export function HubPickerMap({
         scrollWheelZoom
       >
         <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          key={tileUrl}
+          url={tileUrl}
+          attribution={tileAttr}
           detectRetina={true}
         />
         <ClickHandler onPick={onPick} />
