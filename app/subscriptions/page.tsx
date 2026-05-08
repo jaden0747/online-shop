@@ -1,16 +1,16 @@
-import { getAllSubscriptions, getAllSkips } from "@/lib/data/subscriptions";
+import { getAllSubscriptions, getAllSkips, getAllExtras } from "@/lib/data/subscriptions";
 import { getAllCustomers } from "@/lib/data/customers";
 import { getAllPricing } from "@/lib/data/pricing";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { planTotalMeals, mealsRemaining, isSubscriptionLive, subscriptionStatus, formatDate } from "@/lib/utils/subscription";
+import { planTotalMeals, daysRemaining, isSubscriptionLive, subscriptionStatus, formatDate } from "@/lib/utils/subscription";
 import { UpsertPricingForm } from "./upsert-pricing-form";
 import { DeletePricingButton } from "./delete-pricing-button";
 import { OpenInFinderButton } from "@/components/open-in-finder-button";
 import { NewSubscriptionDialog } from "./new-subscription-dialog";
 import { EditSubscriptionRow } from "./edit-subscription-row";
-import Link from "next/link";
+import { CustomerOverlayTrigger } from "./customer-overlay-trigger";
 
 export const dynamic = "force-dynamic";
 
@@ -18,11 +18,54 @@ const PLANS = ["trial", "weekly", "monthly"];
 const GOALS = ["cutting", "maintenance", "bulking"];
 const MEALS_PER_DAY = [1, 2];
 
+function RenewalCell({ renewalDate }: { renewalDate: string }) {
+  const days = daysRemaining(renewalDate);
+  let textClass: string;
+  let barClass: string;
+  if (days >= 14) {
+    textClass = "text-green-600";
+    barClass = "bg-green-500";
+  } else if (days >= 7) {
+    textClass = "text-yellow-600";
+    barClass = "bg-yellow-500";
+  } else if (days >= 3) {
+    textClass = "text-orange-600";
+    barClass = "bg-orange-500";
+  } else {
+    textClass = "text-red-600";
+    barClass = "bg-red-500";
+  }
+  const fillPct = Math.min(100, Math.round((days / 14) * 100));
+  return (
+    <div className="min-w-[70px]">
+      <span className={`text-xs font-medium ${textClass}`}>{days} days</span>
+      <div className="mt-0.5 h-1 w-full rounded-full bg-muted">
+        <div className={`h-1 rounded-full ${barClass}`} style={{ width: `${fillPct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function PriceCell({ subscriptionPrice, shippingPrice }: { subscriptionPrice: number; shippingPrice: number }) {
+  const total = subscriptionPrice + shippingPrice;
+  return (
+    <div>
+      <span className="font-medium">₫{total.toLocaleString()}</span>
+      {shippingPrice > 0 && (
+        <p className="text-xs text-muted-foreground">
+          sub ₫{subscriptionPrice.toLocaleString()} + ship ₫{shippingPrice.toLocaleString()}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default async function SubscriptionsPage() {
   const rawSubscriptions = getAllSubscriptions();
   const customers = getAllCustomers();
   const skips = getAllSkips();
   const pricingEntries = getAllPricing();
+  const allExtras = getAllExtras();
 
   const customerMap = new Map(customers.map((c) => [c.phone, c]));
   const skipCountMap = new Map<string, number>();
@@ -43,6 +86,10 @@ export default async function SubscriptionsPage() {
   );
   const active = subscriptions.filter((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate));
   const inactive = subscriptions.filter((s) => !isSubscriptionLive(s.status, s.startDate, s.renewalDate));
+
+  function extrasFor(subId: string) {
+    return allExtras.filter((e) => e.subscriptionId === subId);
+  }
 
   return (
     <div className="space-y-6">
@@ -84,13 +131,9 @@ export default async function SubscriptionsPage() {
                   <thead>
                     <tr className="border-b bg-muted/50">
                       <th className="text-left px-4 py-2 font-medium">Customer</th>
-                      <th className="text-left px-4 py-2 font-medium">Phone</th>
                       <th className="text-left px-4 py-2 font-medium">Plan</th>
-                      <th className="text-left px-4 py-2 font-medium">Goal</th>
-                      <th className="text-left px-4 py-2 font-medium">Meals/day</th>
-                      <th className="text-left px-4 py-2 font-medium">Start</th>
-                      <th className="text-left px-4 py-2 font-medium">End</th>
-                      <th className="text-left px-4 py-2 font-medium">Meals left</th>
+                      <th className="text-left px-4 py-2 font-medium">Period</th>
+                      <th className="text-left px-4 py-2 font-medium">Renewal</th>
                       <th className="text-left px-4 py-2 font-medium">Skips</th>
                       <th className="text-left px-4 py-2 font-medium">Price</th>
                       <th className="w-10" />
@@ -99,7 +142,7 @@ export default async function SubscriptionsPage() {
                   <tbody className="divide-y">
                     {active.length === 0 && (
                       <tr>
-                        <td colSpan={11} className="px-4 py-6 text-center text-muted-foreground">
+                        <td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">
                           No active subscriptions.
                         </td>
                       </tr>
@@ -107,28 +150,30 @@ export default async function SubscriptionsPage() {
                     {active.map((sub) => (
                       <tr key={sub.id} className="hover:bg-accent/50 transition-colors">
                         <td className="px-4 py-2">
-                          <Link
-                            href={`/customers/${sub.customer.id}`}
-                            className="text-primary hover:underline font-medium"
-                          >
-                            {sub.customer.name}
-                          </Link>
+                          <CustomerOverlayTrigger
+                            customerId={sub.customer.id}
+                            name={sub.customer.name}
+                            phone={sub.customer.phone}
+                          />
                         </td>
-                        <td className="px-4 py-2 text-muted-foreground">{sub.customer.phone}</td>
+                        <td className="px-4 py-2 capitalize text-muted-foreground">
+                          {sub.plan} · {sub.goal} · {sub.mealsPerDay}×/day
+                        </td>
+                        <td className="px-4 py-2 text-muted-foreground whitespace-nowrap">
+                          {formatDate(sub.startDate)} – {formatDate(sub.renewalDate)}
+                        </td>
                         <td className="px-4 py-2">
-                          <Badge variant="outline" className="capitalize">{sub.plan}</Badge>
+                          <RenewalCell renewalDate={sub.renewalDate} />
                         </td>
-                        <td className="px-4 py-2 capitalize">{sub.goal}</td>
-                        <td className="px-4 py-2">{sub.mealsPerDay}×</td>
-                        <td className="px-4 py-2 text-muted-foreground">{formatDate(sub.startDate)}</td>
-                        <td className="px-4 py-2 text-muted-foreground">{formatDate(sub.renewalDate)}</td>
-                        <td className="px-4 py-2 font-medium">{mealsRemaining(sub.renewalDate, sub.mealsPerDay)}</td>
                         <td className="px-4 py-2">{sub._count.mealSkips > 0 ? sub._count.mealSkips : "—"}</td>
-                        <td className="px-4 py-2 font-medium">₫{sub.packagePrice.toLocaleString()}</td>
+                        <td className="px-4 py-2">
+                          <PriceCell subscriptionPrice={sub.subscriptionPrice} shippingPrice={sub.shippingPrice} />
+                        </td>
                         <td className="px-2 py-2">
                           <EditSubscriptionRow
                             sub={{ ...sub, startDate: String(sub.startDate), renewalDate: String(sub.renewalDate) }}
                             pricing={pricingEntries}
+                            extras={extrasFor(sub.id)}
                           />
                         </td>
                       </tr>
@@ -148,12 +193,8 @@ export default async function SubscriptionsPage() {
                   <thead>
                     <tr className="border-b bg-muted/50">
                       <th className="text-left px-4 py-2 font-medium">Customer</th>
-                      <th className="text-left px-4 py-2 font-medium">Phone</th>
                       <th className="text-left px-4 py-2 font-medium">Plan</th>
-                      <th className="text-left px-4 py-2 font-medium">Goal</th>
-                      <th className="text-left px-4 py-2 font-medium">Meals/day</th>
-                      <th className="text-left px-4 py-2 font-medium">Start</th>
-                      <th className="text-left px-4 py-2 font-medium">End</th>
+                      <th className="text-left px-4 py-2 font-medium">Period</th>
                       <th className="text-left px-4 py-2 font-medium">Skips</th>
                       <th className="text-left px-4 py-2 font-medium">Price</th>
                       <th className="text-left px-4 py-2 font-medium">Status</th>
@@ -163,7 +204,7 @@ export default async function SubscriptionsPage() {
                   <tbody className="divide-y">
                     {inactive.length === 0 && (
                       <tr>
-                        <td colSpan={11} className="px-4 py-6 text-center text-muted-foreground">
+                        <td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">
                           No inactive subscriptions.
                         </td>
                       </tr>
@@ -171,37 +212,40 @@ export default async function SubscriptionsPage() {
                     {inactive.map((sub) => {
                       const derivedStatus = subscriptionStatus(sub.status, sub.startDate, sub.renewalDate);
                       return (
-                      <tr key={sub.id} className="hover:bg-accent/50 transition-colors">
-                        <td className="px-4 py-2">
-                          <Link
-                            href={`/customers/${sub.customer.id}`}
-                            className="text-primary hover:underline font-medium"
-                          >
-                            {sub.customer.name}
-                          </Link>
-                        </td>
-                        <td className="px-4 py-2 text-muted-foreground">{sub.customer.phone}</td>
-                        <td className="px-4 py-2">
-                          <Badge variant="outline" className="capitalize">{sub.plan}</Badge>
-                        </td>
-                        <td className="px-4 py-2 capitalize">{sub.goal}</td>
-                        <td className="px-4 py-2">{sub.mealsPerDay}×</td>
-                        <td className="px-4 py-2 text-muted-foreground">{formatDate(sub.startDate)}</td>
-                        <td className="px-4 py-2 text-muted-foreground">{formatDate(sub.renewalDate)}</td>
-                        <td className="px-4 py-2">{sub._count.mealSkips > 0 ? sub._count.mealSkips : "—"}</td>
-                        <td className="px-4 py-2 font-medium">₫{sub.packagePrice.toLocaleString()}</td>
-                        <td className="px-4 py-2">
-                          <Badge variant={derivedStatus === "upcoming" ? "secondary" : "outline"}>
-                            {derivedStatus}
-                          </Badge>
-                        </td>
-                        <td className="px-2 py-2">
-                          <EditSubscriptionRow
-                            sub={{ ...sub, startDate: String(sub.startDate), renewalDate: String(sub.renewalDate) }}
-                            pricing={pricingEntries}
-                          />
-                        </td>
-                      </tr>
+                        <tr key={sub.id} className="hover:bg-accent/50 transition-colors">
+                          <td className="px-4 py-2">
+                            {/* TODO: wire up onCustomerClick for customer overlay panel (component not yet built) */}
+                            <button
+                              type="button"
+                              className="text-left"
+                            >
+                              <span className="font-medium leading-none block">{sub.customer.name}</span>
+                              <span className="text-xs text-muted-foreground">{sub.customer.phone}</span>
+                            </button>
+                          </td>
+                          <td className="px-4 py-2 capitalize text-muted-foreground">
+                            {sub.plan} · {sub.goal} · {sub.mealsPerDay}×/day
+                          </td>
+                          <td className="px-4 py-2 text-muted-foreground whitespace-nowrap">
+                            {formatDate(sub.startDate)} – {formatDate(sub.renewalDate)}
+                          </td>
+                          <td className="px-4 py-2">{sub._count.mealSkips > 0 ? sub._count.mealSkips : "—"}</td>
+                          <td className="px-4 py-2">
+                            <PriceCell subscriptionPrice={sub.subscriptionPrice} shippingPrice={sub.shippingPrice} />
+                          </td>
+                          <td className="px-4 py-2">
+                            <Badge variant={derivedStatus === "upcoming" ? "secondary" : "outline"}>
+                              {derivedStatus}
+                            </Badge>
+                          </td>
+                          <td className="px-2 py-2">
+                            <EditSubscriptionRow
+                              sub={{ ...sub, startDate: String(sub.startDate), renewalDate: String(sub.renewalDate) }}
+                              pricing={pricingEntries}
+                              extras={extrasFor(sub.id)}
+                            />
+                          </td>
+                        </tr>
                       );
                     })}
                   </tbody>

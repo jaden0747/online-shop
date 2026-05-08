@@ -11,4 +11,6 @@ export async function upsertKitchenNoteAction(
 ) {
   upsertNote({ weekLabel, customerId, day, note });
   revalidatePath("/menu");
+  revalidatePath("/customers");
+  revalidatePath("/subscriptions");
 }

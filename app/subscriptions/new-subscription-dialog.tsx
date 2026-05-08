@@ -40,7 +40,9 @@ export function NewSubscriptionDialog({
   const [goal, setGoal] = useState("maintenance");
   const [mealsPerDay, setMealsPerDay] = useState("1");
   const [startDate, setStartDate] = useState("");
-  const [packagePrice, setPackagePrice] = useState(0);
+  const [subscriptionPrice, setSubscriptionPrice] = useState(0);
+  const [shippingPrice, setShippingPrice] = useState(0);
+  const [trialDays, setTrialDays] = useState(3);
   const [search, setSearch] = useState("");
 
   const filteredCustomers = search.trim()
@@ -53,11 +55,12 @@ export function NewSubscriptionDialog({
   const selectedCustomer = customers.find((c) => c.id === customerId);
 
   useEffect(() => {
+    if (plan === "trial") return;
     const match = pricing.find(
       (p) => p.plan === plan && p.goal === goal && p.mealsPerDay === parseInt(mealsPerDay, 10)
     );
-    if (match) setPackagePrice(match.totalPrice);
-    else setPackagePrice(0);
+    if (match) setSubscriptionPrice(match.totalPrice);
+    else setSubscriptionPrice(0);
   }, [plan, goal, mealsPerDay, pricing]);
 
   useEffect(() => {
@@ -68,6 +71,8 @@ export function NewSubscriptionDialog({
       setGoal("maintenance");
       setMealsPerDay("1");
       setStartDate(new Date().toISOString().split("T")[0]);
+      setShippingPrice(0);
+      setTrialDays(3);
     }
   }, [open, customers]);
 
@@ -77,7 +82,9 @@ export function NewSubscriptionDialog({
       formData.set("plan", plan);
       formData.set("goal", goal);
       formData.set("mealsPerDay", mealsPerDay);
-      formData.set("packagePrice", String(packagePrice));
+      formData.set("subscriptionPrice", String(subscriptionPrice));
+      formData.set("shippingPrice", String(shippingPrice));
+      if (plan === "trial") formData.set("trialDays", String(trialDays));
       formData.set("startDate", startDate);
       await createSubscriptionAction(formData);
       setOpen(false);
@@ -89,7 +96,8 @@ export function NewSubscriptionDialog({
 
   const mpd = parseInt(mealsPerDay, 10);
   const totalMeals = planTotalMeals(plan) * mpd;
-  const pricePerMeal = totalMeals > 0 ? packagePrice / totalMeals : 0;
+  const total = subscriptionPrice + shippingPrice;
+  const pricePerMealCalc = totalMeals > 0 && subscriptionPrice > 0 ? subscriptionPrice / totalMeals : 0;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -100,7 +108,6 @@ export function NewSubscriptionDialog({
         </DialogHeader>
         <form action={action} className="space-y-5">
 
-          {/* Customer picker */}
           <div className="space-y-1.5">
             <Label>Customer</Label>
             <Input
@@ -143,7 +150,6 @@ export function NewSubscriptionDialog({
             )}
           </div>
 
-          {/* Start date */}
           <div className="space-y-1.5">
             <Label htmlFor="newSubStartDate">Start Date</Label>
             <Input
@@ -155,16 +161,15 @@ export function NewSubscriptionDialog({
             />
           </div>
 
-          {/* Plan + meals/day */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Plan</Label>
               <Select value={plan} onValueChange={(v) => v && setPlan(v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="trial">Trial (3 days)</SelectItem>
-                  <SelectItem value="weekly">Weekly (5 days)</SelectItem>
-                  <SelectItem value="monthly">Monthly (20 days)</SelectItem>
+                  <SelectItem value="trial">Trial</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -180,7 +185,6 @@ export function NewSubscriptionDialog({
             </div>
           </div>
 
-          {/* Goal */}
           <div className="space-y-1.5">
             <Label>Goal</Label>
             <Select value={goal} onValueChange={(v) => v && setGoal(v)}>
@@ -193,32 +197,67 @@ export function NewSubscriptionDialog({
             </Select>
           </div>
 
-          {/* Package price */}
-          <div className="space-y-1.5">
-            <Label htmlFor="newPackagePrice">Package price (₫)</Label>
-            <Input
-              id="newPackagePrice"
-              type="number"
-              step="1000"
-              value={packagePrice || ""}
-              onChange={(e) => setPackagePrice(Number(e.target.value))}
-              required
-            />
+          {plan === "trial" && (
+            <div className="space-y-1.5">
+              <Label htmlFor="newTrialDays">Trial days</Label>
+              <Input
+                id="newTrialDays"
+                type="number"
+                min={1}
+                max={10}
+                value={trialDays}
+                onChange={(e) => setTrialDays(Math.min(10, Math.max(1, parseInt(e.target.value, 10) || 1)))}
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="newSubPrice">Subscription (₫)</Label>
+              <Input
+                id="newSubPrice"
+                type="number"
+                step="1000"
+                value={subscriptionPrice || ""}
+                onChange={(e) => setSubscriptionPrice(Number(e.target.value))}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="newShipPrice">Shipping (₫)</Label>
+              <Input
+                id="newShipPrice"
+                type="number"
+                step="1000"
+                value={shippingPrice || ""}
+                onChange={(e) => setShippingPrice(Number(e.target.value))}
+              />
+            </div>
           </div>
 
-          {packagePrice > 0 && (
+          {(subscriptionPrice > 0 || shippingPrice > 0) && (
             <div className="rounded-lg bg-muted/60 p-3 text-sm space-y-1">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Total meals</span>
-                <span>{totalMeals}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Price/meal</span>
-                <span>₫{Math.round(pricePerMeal).toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between font-semibold">
+              {subscriptionPrice > 0 && (
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Subscription</span>
+                  <span>₫{subscriptionPrice.toLocaleString()}</span>
+                </div>
+              )}
+              {pricePerMealCalc > 0 && (
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Price/meal ({totalMeals} meals)</span>
+                  <span>₫{Math.round(pricePerMealCalc).toLocaleString()}</span>
+                </div>
+              )}
+              {shippingPrice > 0 && (
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Shipping</span>
+                  <span>₫{shippingPrice.toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-semibold border-t pt-1 mt-1">
                 <span>Total</span>
-                <span>₫{packagePrice.toLocaleString()}</span>
+                <span>₫{total.toLocaleString()}</span>
               </div>
             </div>
           )}
@@ -226,7 +265,7 @@ export function NewSubscriptionDialog({
           <Button
             type="submit"
             className="w-full"
-            disabled={pending || !customerId || packagePrice <= 0}
+            disabled={pending || !customerId || subscriptionPrice <= 0}
           >
             {pending ? "Saving…" : "Create Subscription"}
           </Button>

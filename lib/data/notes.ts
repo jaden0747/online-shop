@@ -24,6 +24,10 @@ export function getNotesByWeek(weekLabel: string): KitchenNote[] {
   return getAllNotes().filter((n) => n.weekLabel === weekLabel);
 }
 
+export function getNotesByCustomer(customerId: string): KitchenNote[] {
+  return getAllNotes().filter((n) => n.customerId === customerId);
+}
+
 export function saveNotes(notes: KitchenNote[]): void {
   writeRows(FILE, SHEET, notes);
 }

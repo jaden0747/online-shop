@@ -114,6 +114,10 @@ export function setOrderMeals(
   saveOrderItems([...existingItems, ...newItems]);
 }
 
+export function updateOrderAddress(id: string, addressId: string | null): void {
+  saveOrders(getAllOrders().map((o) => (o.id === id ? { ...o, addressId } : o)));
+}
+
 export function deleteOrdersBySubscription(subscriptionId: string): void {
   const orders = getAllOrders();
   const toDelete = new Set(

@@ -36,16 +36,16 @@ export function mealsRemaining(endDate: Date | string, mealsPerDay: number): num
   return Math.max(0, countWorkingDays(new Date(), new Date(endDate)) * mealsPerDay);
 }
 
-/** A subscription is live when today falls within [startDate, endDate] and it is not cancelled or paused. */
-export function isSubscriptionLive(status: string, startDate: Date | string, endDate: Date | string): boolean {
+/** A subscription is live when `asOf` (defaults to today) falls within [startDate, endDate] and it is not cancelled or paused. */
+export function isSubscriptionLive(status: string, startDate: Date | string, endDate: Date | string, asOf?: Date): boolean {
   if (status === "cancelled" || status === "paused") return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const ref = asOf ? new Date(asOf) : new Date();
+  ref.setHours(0, 0, 0, 0);
   const start = new Date(startDate);
   start.setHours(0, 0, 0, 0);
   const end = new Date(endDate);
   end.setHours(0, 0, 0, 0);
-  return today >= start && today <= end;
+  return ref >= start && ref <= end;
 }
 
 /** Returns a derived display status based on dates, overriding with manual cancel/pause. */
@@ -141,14 +141,16 @@ export function isTodayWeekday(): boolean {
   return d >= 1 && d <= 5;
 }
 
-/** Returns the date after `n` working days (Mon–Fri) from `from` (inclusive of from if it's a working day). */
+/** Returns the date after `n` working days (Mon–Fri) from `from`. Negative `n` moves backward. */
 export function addWorkingDays(from: Date, n: number): Date {
   const d = new Date(from);
   d.setHours(0, 0, 0, 0);
-  let added = 0;
-  while (added < n) {
-    d.setDate(d.getDate() + 1);
-    if (d.getDay() >= 1 && d.getDay() <= 5) added++;
+  if (n === 0) return d;
+  const step = n > 0 ? 1 : -1;
+  let remaining = Math.abs(n);
+  while (remaining > 0) {
+    d.setDate(d.getDate() + step);
+    if (d.getDay() >= 1 && d.getDay() <= 5) remaining--;
   }
   return d;
 }

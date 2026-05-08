@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { isSubscriptionLive } from "@/lib/utils/subscription";
 import type { Pin, CoverageLeafletMap as CoverageLeafletMapType } from "./coverage-leaflet-map";
+import type { Subscription } from "@/lib/data/types";
 
 const ZONE_COLORS: Record<string, string> = {
   Q1: "#ef4444",
@@ -22,10 +24,15 @@ const ZONE_COLORS: Record<string, string> = {
   "Bình Tân": "#0ea5e9",
 };
 
-export function CoverageMap({ pins }: { pins: Pin[] }) {
+type PinWithSubs = Pin & { subscriptions: Subscription[] };
+
+export function CoverageMap({ pins }: { pins: PinWithSubs[] }) {
   const [MapComponent, setMapComponent] = useState<typeof CoverageLeafletMapType | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeZones, setActiveZones] = useState<Set<string>>(new Set());
+  const [showActiveOnly, setShowActiveOnly] = useState(true);
+
+  const zoomToFitRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     import("./coverage-leaflet-map").then((mod) =>
@@ -33,23 +40,37 @@ export function CoverageMap({ pins }: { pins: Pin[] }) {
     );
   }, []);
 
+  const today = useMemo(() => new Date(), []);
+
+  const activePins = useMemo(
+    () =>
+      pins.filter((p) =>
+        p.subscriptions.some((s) =>
+          isSubscriptionLive(s.status, s.startDate, s.renewalDate, today)
+        )
+      ),
+    [pins, today]
+  );
+
+  const basePins = showActiveOnly ? activePins : pins;
+
   const zones = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const p of pins) {
+    for (const p of basePins) {
       const z = p.zone || "Unknown";
       counts.set(z, (counts.get(z) ?? 0) + 1);
     }
     return Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([zone, count]) => ({ zone, count, color: ZONE_COLORS[zone] ?? "#888" }));
-  }, [pins]);
+  }, [basePins]);
 
   const visiblePins = useMemo(
     () =>
       activeZones.size === 0
-        ? pins
-        : pins.filter((p) => activeZones.has(p.zone || "Unknown")),
-    [pins, activeZones]
+        ? basePins
+        : basePins.filter((p) => activeZones.has(p.zone || "Unknown")),
+    [basePins, activeZones]
   );
 
   function toggleZone(zone: string) {
@@ -69,6 +90,42 @@ export function CoverageMap({ pins }: { pins: Pin[] }) {
 
   return (
     <div className="space-y-3">
+      {/* Active/All toggle + Zoom to Fit */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex rounded-md border overflow-hidden text-xs">
+          <button
+            type="button"
+            onClick={() => { setShowActiveOnly(true); setSelectedId(null); }}
+            className={`px-3 py-1.5 transition-colors ${
+              showActiveOnly ? "bg-primary text-primary-foreground" : "bg-background hover:bg-accent"
+            }`}
+          >
+            Active only
+          </button>
+          <button
+            type="button"
+            onClick={() => { setShowActiveOnly(false); setSelectedId(null); }}
+            className={`px-3 py-1.5 border-l transition-colors ${
+              !showActiveOnly ? "bg-primary text-primary-foreground" : "bg-background hover:bg-accent"
+            }`}
+          >
+            All
+          </button>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {visiblePins.length} shown
+          {showActiveOnly ? ` · ${activePins.length} active / ${pins.length} total` : ""}
+        </span>
+        <button
+          type="button"
+          onClick={() => zoomToFitRef.current?.()}
+          className="ml-auto h-7 px-3 text-xs rounded border bg-background hover:bg-accent"
+          title="Fit map to all visible markers"
+        >
+          Zoom to Fit
+        </button>
+      </div>
+
       {/* Zone filter chips */}
       <div className="flex flex-wrap gap-1.5 items-center">
         <span className="text-xs text-muted-foreground mr-1">Filter by zone:</span>
@@ -109,13 +166,14 @@ export function CoverageMap({ pins }: { pins: Pin[] }) {
       <div className="grid gap-3 lg:grid-cols-[1fr_220px]">
         {/* Map */}
         <Card className="overflow-hidden">
-          <CardContent className="p-0 h-[calc(100vh-230px)] min-h-[500px]">
+          <CardContent className="p-0 h-[calc(100vh-280px)] min-h-[500px]">
             {MapComponent ? (
               <MapComponent
                 pins={visiblePins}
                 zoneColors={ZONE_COLORS}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
+                zoomToFitRef={zoomToFitRef}
               />
             ) : (
               <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -132,7 +190,7 @@ export function CoverageMap({ pins }: { pins: Pin[] }) {
               {visiblePins.length} customer{visiblePins.length !== 1 ? "s" : ""}
               {activeZones.size > 0 ? ` in ${activeZones.size} zone${activeZones.size > 1 ? "s" : ""}` : ""}
             </p>
-            <div className="overflow-y-auto max-h-[calc(100vh-280px)] divide-y">
+            <div className="overflow-y-auto max-h-[calc(100vh-340px)] divide-y">
               {visiblePins.map((pin) => {
                 const color = ZONE_COLORS[pin.zone] ?? "#888";
                 const isSelected = selectedId === pin.id;

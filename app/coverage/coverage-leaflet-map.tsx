@@ -64,16 +64,37 @@ function FocusPin({
   return null;
 }
 
+function ZoomToFitRegistrar({
+  zoomToFitRef,
+  pins,
+}: {
+  zoomToFitRef: React.MutableRefObject<(() => void) | null>;
+  pins: Pin[];
+}) {
+  const map = useMap();
+  useEffect(() => {
+    zoomToFitRef.current = () => {
+      if (pins.length === 0) return;
+      const bounds = L.latLngBounds(pins.map((p) => [p.lat, p.lng]));
+      map.fitBounds(bounds, { padding: [20, 20] });
+    };
+    return () => { zoomToFitRef.current = null; };
+  }, [map, zoomToFitRef, pins]);
+  return null;
+}
+
 export function CoverageLeafletMap({
   pins,
   zoneColors,
   selectedId,
   onSelect,
+  zoomToFitRef,
 }: {
   pins: Pin[];
   zoneColors: Record<string, string>;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  zoomToFitRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const markerRefs = useRef<Map<string, L.Marker>>(new Map());
 
@@ -89,9 +110,11 @@ export function CoverageLeafletMap({
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        detectRetina={true}
       />
       <FitBounds pins={pins} />
       <FocusPin selectedId={selectedId} markerRefs={markerRefs} />
+      {zoomToFitRef && <ZoomToFitRegistrar zoomToFitRef={zoomToFitRef} pins={pins} />}
       {pins.map((pin) => {
         const color = zoneColors[pin.zone] ?? "#888";
         const selected = selectedId === pin.id;

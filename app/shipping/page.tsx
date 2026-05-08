@@ -4,9 +4,11 @@ import { isSubscriptionLive } from "@/lib/utils/subscription";
 import { getMenuItemsByWeek } from "@/lib/data/menu";
 import { getSelectionsByWeek } from "@/lib/data/selections";
 import { getNotesByWeek } from "@/lib/data/notes";
+import { getSettings } from "@/lib/data/settings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { currentWeekLabel } from "@/lib/utils/week";
+import { weekLabelForDate, weekLabelToDateRange } from "@/lib/utils/week";
+import { DayPicker } from "@/components/day-picker";
 import { ShippingTable } from "./shipping-table";
 
 export const dynamic = "force-dynamic";
@@ -15,22 +17,34 @@ function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function todayDayNumber(): number {
-  const d = new Date().getDay();
-  return d === 0 ? 7 : d;
+function todayStr(): string {
+  return localDateStr(new Date());
 }
 
-export default async function ShippingPage() {
+export default async function ShippingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const params = await searchParams;
+  const dateParam = typeof params.date === "string" ? params.date : null;
+  const selectedDateStr = dateParam ?? todayStr();
+  // Parse as local midnight to avoid UTC shift on the server
+  const selectedDate = new Date(selectedDateStr + "T00:00:00");
+
+  const dayNum = selectedDate.getDay() === 0 ? 7 : selectedDate.getDay();
+  const weekLabel = weekLabelForDate(selectedDate);
+  const weekDateRange = weekLabelToDateRange(weekLabel);
+
+  const settings = getSettings();
+
   const customers = getAllCustomers();
   const allAddresses = getAllAddresses();
   const subscriptions = getAllSubscriptions();
   const skips = getAllSkips();
-  const weekLabel = currentWeekLabel();
   const menuItems = getMenuItemsByWeek(weekLabel);
   const selections = getSelectionsByWeek(weekLabel);
-  const today = localDateStr(new Date());
-  const dayNum = todayDayNumber();
-  const todayNotes = getNotesByWeek(weekLabel).filter((n) => n.day === dayNum);
+  const dayNotes = getNotesByWeek(weekLabel).filter((n) => n.day === dayNum);
 
   // Group addresses by customerId
   const addressesByCustomer = new Map<string, typeof allAddresses>();
@@ -40,7 +54,6 @@ export default async function ShippingPage() {
     addressesByCustomer.set(a.customerId, list);
   }
 
-  // Lookup helper: meal name for (day, slot)
   const menuName = (day: number, slot: number): string | null => {
     const m = menuItems.find((it) => it.day === day && it.slot === slot);
     return m?.name ?? null;
@@ -48,7 +61,7 @@ export default async function ShippingPage() {
 
   const seenCustomers = new Set<string>();
   const activeDeliveries = subscriptions
-    .filter((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate))
+    .filter((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate, selectedDate))
     .map((sub) => {
       const customer = customers.find((c) => c.phone === sub.customerId);
       if (!customer) return null;
@@ -56,18 +69,17 @@ export default async function ShippingPage() {
       seenCustomers.add(customer.id);
 
       const isSkipped = skips.some((skip) => {
-        return skip.subscriptionId === sub.id && localDateStr(new Date(skip.originalDay)) === today;
+        return skip.subscriptionId === sub.id && localDateStr(new Date(skip.originalDay + (skip.originalDay.length === 10 ? "T00:00:00" : ""))) === selectedDateStr;
       });
       const isReplacement = skips.some((skip) => {
         return (
           skip.subscriptionId === sub.id &&
           skip.replacementDay !== null &&
-          localDateStr(new Date(skip.replacementDay)) === today
+          localDateStr(new Date(skip.replacementDay + (skip.replacementDay.length === 10 ? "T00:00:00" : ""))) === selectedDateStr
         );
       });
       if (isSkipped && !isReplacement) return null;
 
-      // Today's meals: read selections for this customer + today's day-of-week
       const customerSelections = selections
         .filter((sel) => sel.customerId === customer.id && sel.day === dayNum)
         .sort((a, b) => a.mealNum - b.mealNum);
@@ -112,28 +124,41 @@ export default async function ShippingPage() {
     })
     .filter((d): d is NonNullable<typeof d> => d !== null);
 
+  const isToday = selectedDateStr === todayStr();
+
+  const permanentNotes = customers
+    .map((c) => ({ customerId: c.phone, note: c.notes }))
+    .filter((n): n is { customerId: string; note: string } => n.note !== null && n.note !== "");
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Shipping</h1>
           <p className="text-sm text-muted-foreground">
-            Deliveries for today ({today}) · Week {weekLabel} · Day {dayNum}
+            {weekDateRange} · Day {dayNum}
+            {isToday && " · Today"}
           </p>
         </div>
-        <Badge variant="outline" className="text-sm">
-          {activeDeliveries.length} deliveries
-        </Badge>
+        <div className="flex items-center gap-3">
+          <DayPicker date={selectedDateStr} />
+          <Badge variant="outline" className="text-sm">
+            {activeDeliveries.length} deliveries
+          </Badge>
+        </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Today&apos;s Deliveries</CardTitle>
+          <CardTitle className="text-base">Deliveries for {selectedDateStr}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <ShippingTable
             deliveries={activeDeliveries}
-            notes={todayNotes.map((n) => ({ customerId: n.customerId, note: n.note }))}
+            date={selectedDateStr}
+            notes={dayNotes.map((n) => ({ customerId: n.customerId, note: n.note }))}
+            permanentNotes={permanentNotes}
+            defaultHub={{ lat: settings.hubLat, lng: settings.hubLng }}
           />
         </CardContent>
       </Card>

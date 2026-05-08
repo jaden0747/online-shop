@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { upsertSelectionAction } from "../actions/selections";
+import { upsertSelectionAction, deleteSelectionAction } from "../actions/selections";
 import { skipDayFromMenuAction, deleteMealSkipAction } from "../actions/skips";
 import { upsertKitchenNoteAction } from "../actions/notes";
 
@@ -15,6 +15,7 @@ type CustomerData = {
   endDate: string;
   subscriptionId: string;
   skips: { dayNum: number; skipId: string }[];
+  notes: string | null;
 };
 
 type Props = {
@@ -24,6 +25,7 @@ type Props = {
   menuItems: { day: number; slot: number; name: string; goals: string }[];
   selections: { customerId: string; day: number; mealNum: number; menuSlot: number }[];
   notes?: { customerId: string; day: number; note: string }[];
+  onCustomerClick?: (customerId: string) => void;
 };
 
 const DAYS = [
@@ -34,7 +36,7 @@ const DAYS = [
   { num: 5, label: "Fri" },
 ];
 
-export function MealSelectionGrid({ weekLabel, weekMonday, activeCustomers, menuItems, selections, notes = [] }: Props) {
+export function MealSelectionGrid({ weekLabel, weekMonday, activeCustomers, menuItems, selections, notes = [], onCustomerClick }: Props) {
   const router = useRouter();
   const [showNames, setShowNames] = useState(true);
   const [pending, setPending] = useState<string | null>(null);
@@ -61,7 +63,7 @@ export function MealSelectionGrid({ weekLabel, weekMonday, activeCustomers, menu
   }
 
   function getMenuName(day: number, slot: number) {
-    return menuItems.find((m) => m.day === day && m.slot === slot)?.name ?? `Option ${slot === 1 ? "A" : "B"}`;
+    return menuItems.find((m) => m.day === day && m.slot === slot)?.name ?? (slot === 1 ? "Cơm" : "Bún");
   }
 
   function getSelection(customerId: string, day: number, mealNum: number) {
@@ -71,13 +73,19 @@ export function MealSelectionGrid({ weekLabel, weekMonday, activeCustomers, menu
   async function handleSelect(customerId: string, day: number, mealNum: number, menuSlot: number) {
     const key = `${customerId}-${day}-${mealNum}-sel`;
     setPending(key);
-    const fd = new FormData();
-    fd.set("weekLabel", weekLabel);
-    fd.set("customerId", customerId);
-    fd.set("day", String(day));
-    fd.set("mealNum", String(mealNum));
-    fd.set("menuSlot", String(menuSlot));
-    await upsertSelectionAction(fd);
+    const existing = getSelection(customerId, day, mealNum);
+    if (existing?.menuSlot === menuSlot) {
+      const selId = `${weekLabel}-${customerId}-${day}-${mealNum}`;
+      await deleteSelectionAction(selId);
+    } else {
+      const fd = new FormData();
+      fd.set("weekLabel", weekLabel);
+      fd.set("customerId", customerId);
+      fd.set("day", String(day));
+      fd.set("mealNum", String(mealNum));
+      fd.set("menuSlot", String(menuSlot));
+      await upsertSelectionAction(fd);
+    }
     setPending(null);
     router.refresh();
   }
@@ -147,8 +155,17 @@ export function MealSelectionGrid({ weekLabel, weekMonday, activeCustomers, menu
             {activeCustomers.map((cust) => (
               <tr key={cust.id} className="hover:bg-accent/30">
                 <td className="px-3 py-2 sticky left-0 bg-background">
-                  <div className="font-medium text-sm">{cust.name}</div>
-                  <div className="text-muted-foreground">{cust.mealsPerDay}×/day · {cust.goal}</div>
+                  <button
+                    type="button"
+                    onClick={() => onCustomerClick?.(cust.id)}
+                    className="font-medium text-sm text-left hover:underline focus:outline-none"
+                  >
+                    {cust.name}
+                  </button>
+                  {cust.notes && (
+                    <span className="block text-xs text-muted-foreground truncate max-w-[8rem]">{cust.notes}</span>
+                  )}
+                  <div className="text-muted-foreground text-xs">{cust.mealsPerDay}×/day · {cust.goal}</div>
                 </td>
                 {DAYS.map(({ num }) => {
                   const inRange = isDayInRange(cust, num);

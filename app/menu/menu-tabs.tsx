@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { MenuSlot } from "./menu-slot";
 import { MealSelectionGrid } from "./meal-selection-grid";
 import type { MenuItem } from "@/lib/data/types";
+import { weekLabelToDateRange } from "@/lib/utils/week";
+import { CustomerOverlay } from "@/components/customer-overlay";
 
 const DAYS = [
   { num: 1, label: "Mon" },
@@ -24,6 +26,7 @@ type ActiveCustomer = {
   endDate: string;
   subscriptionId: string;
   skips: { dayNum: number; skipId: string }[];
+  notes: string | null;
 };
 
 export type WeekData = {
@@ -40,6 +43,7 @@ export type WeekData = {
 
 export function MenuTabs({ thisWeek, nextWeek }: { thisWeek: WeekData; nextWeek: WeekData }) {
   const [tab, setTab] = useState<"this" | "next">("this");
+  const [overlayCustomerId, setOverlayCustomerId] = useState<string | null>(null);
   const data = tab === "this" ? thisWeek : nextWeek;
   const todayDow = new Date().getDay();
 
@@ -56,7 +60,8 @@ export function MenuTabs({ thisWeek, nextWeek }: { thisWeek: WeekData; nextWeek:
       <div className="flex gap-1 border-b">
         {(["this", "next"] as const).map((t) => {
           const label = t === "this" ? "This Week" : "Next Week";
-          const sublabel = t === "this" ? thisWeek.formattedLabel : nextWeek.formattedLabel;
+          const weekData = t === "this" ? thisWeek : nextWeek;
+          const sublabel = weekLabelToDateRange(weekData.weekLabel);
           const active = tab === t;
           return (
             <button
@@ -154,7 +159,16 @@ export function MenuTabs({ thisWeek, nextWeek }: { thisWeek: WeekData; nextWeek:
           <CardTitle className="text-base">Customer Meal Selections</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
+          {overlayCustomerId && (
+            <CustomerOverlay
+              customerId={overlayCustomerId}
+              open={!!overlayCustomerId}
+              onOpenChange={(o) => { if (!o) setOverlayCustomerId(null); }}
+            />
+          )}
           <MealSelectionGrid
+            key={data.weekLabel}
+            onCustomerClick={setOverlayCustomerId}
             weekLabel={data.weekLabel}
             weekMonday={data.weekMondayISO}
             activeCustomers={data.activeCustomers}

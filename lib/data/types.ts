@@ -27,12 +27,26 @@ export interface Subscription {
   goal: string; // cutting | maintenance | bulking
   mealsPerDay: number;
   status: string; // active | paused | cancelled
-  packagePrice: number;
-  pricePerMeal: number;
+  shippingPrice: number;
+  subscriptionPrice: number;
+  trialDays: number | null; // only when plan = "trial"
   startDate: string; // ISO string
   renewalDate: string; // ISO string
   cancelReason: string | null;
   createdAt: string; // ISO string
+}
+
+export interface SubscriptionExtra {
+  id: string;
+  subscriptionId: string;
+  amount: number;
+  note: string | null;
+  createdAt: string; // ISO string
+}
+
+export interface Settings {
+  hubLat: number;
+  hubLng: number;
 }
 
 export interface MealSkip {
@@ -98,4 +112,13 @@ export interface KitchenNote {
   customerId: string; // customer phone
   day: number; // 1-5
   note: string;
+}
+
+export interface OrderDayAddress {
+  id: string; // `${subscriptionId}-${weekLabel}-${day}`
+  subscriptionId: string;
+  weekLabel: string;
+  day: number;
+  addressId: string;
+  createdAt: string;
 }

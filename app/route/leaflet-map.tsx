@@ -17,6 +17,7 @@ type Delivery = {
 type ClusterData = {
   ordered: Delivery[];
   color: string;
+  slotIdx?: number;
 };
 
 function createNumberedIcon(num: number, color: string, selected: boolean) {
@@ -91,6 +92,115 @@ function FocusOnSelected({
   return null;
 }
 
+/** Registers map instance so external "Zoom to Fit" can call fitBounds. */
+function ZoomToFitRegistrar({
+  zoomToFitRef,
+  allPoints,
+}: {
+  zoomToFitRef: React.MutableRefObject<(() => void) | null>;
+  allPoints: [number, number][];
+}) {
+  const map = useMap();
+  useEffect(() => {
+    zoomToFitRef.current = () => {
+      if (allPoints.length === 0) return;
+      const bounds = L.latLngBounds(allPoints);
+      map.fitBounds(bounds, { padding: [20, 20] });
+    };
+    return () => { zoomToFitRef.current = null; };
+  }, [map, zoomToFitRef, allPoints]);
+  return null;
+}
+
+/**
+ * Shifts a lat/lng point perpendicular to `bearingDeg` by `distDeg` degrees.
+ * Positive distDeg offsets to the right of the bearing direction.
+ */
+function offsetLatLng(
+  lat: number,
+  lng: number,
+  bearingDeg: number,
+  distDeg: number,
+): [number, number] {
+  const perpBearing = (bearingDeg + 90) % 360;
+  const rad = (perpBearing * Math.PI) / 180;
+  return [
+    lat + distDeg * Math.cos(rad),
+    lng + distDeg * Math.sin(rad),
+  ];
+}
+
+/** Returns bearing in degrees from point A to point B. */
+function bearingDeg(
+  aLat: number,
+  aLng: number,
+  bLat: number,
+  bLng: number,
+): number {
+  const dLng = bLng - aLng;
+  const dLat = bLat - aLat;
+  return (Math.atan2(dLng, dLat) * 180) / Math.PI;
+}
+
+/** Canonical edge key (undirected) so A→B and B→A are the same edge. */
+function edgeKey(
+  aLat: number,
+  aLng: number,
+  bLat: number,
+  bLng: number,
+): string {
+  const a = `${aLat.toFixed(6)},${aLng.toFixed(6)}`;
+  const b = `${bLat.toFixed(6)},${bLng.toFixed(6)}`;
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+const OFFSET_DEG = 0.00005;
+
+/**
+ * Builds offset polyline segments for a cluster route.
+ * For each consecutive pair in `pts`, checks if the edge is shared with other shippers.
+ * If shared, applies a perpendicular offset based on the shipper's index among all users of that edge.
+ * Returns an array of polyline position arrays (one per contiguous run of same-offset segments).
+ */
+function buildOffsetSegments(
+  pts: [number, number][],
+  ci: number,
+  edgeShippers: Map<string, number[]>,
+): [number, number][][] {
+  if (pts.length < 2) return pts.length > 0 ? [pts] : [];
+
+  const result: [number, number][][] = [];
+  let current: [number, number][] = [pts[0]];
+
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [aLat, aLng] = pts[i];
+    const [bLat, bLng] = pts[i + 1];
+    const key = edgeKey(aLat, aLng, bLat, bLng);
+    const shippers = edgeShippers.get(key);
+
+    if (!shippers || shippers.length < 2) {
+      current.push([bLat, bLng]);
+    } else {
+      const rank = shippers.indexOf(ci);
+      const total = shippers.length;
+      const offsetMultiplier = rank - (total - 1) / 2;
+      const dist = offsetMultiplier * OFFSET_DEG;
+      const bearing = bearingDeg(aLat, aLng, bLat, bLng);
+      const [oaLat, oaLng] = offsetLatLng(aLat, aLng, bearing, dist);
+      const [obLat, obLng] = offsetLatLng(bLat, bLng, bearing, dist);
+
+      if (current.length > 1) {
+        result.push(current);
+      }
+      result.push([[oaLat, oaLng], [obLat, obLng]]);
+      current = [[bLat, bLng]];
+    }
+  }
+
+  if (current.length > 1) result.push(current);
+  return result;
+}
+
 export function LeafletMap({
   clusterData,
   routeGeometries,
@@ -99,6 +209,7 @@ export function LeafletMap({
   onSelect,
   onReassign,
   isCalculating,
+  zoomToFitRef,
 }: {
   clusterData: ClusterData[];
   routeGeometries: ([number, number][] | null)[];
@@ -107,18 +218,21 @@ export function LeafletMap({
   onSelect: (id: string | null) => void;
   onReassign: (deliveryId: string, targetClusterIdx: number) => void;
   isCalculating?: boolean;
+  zoomToFitRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const markerRefs = useRef<Map<string, L.Marker>>(new Map());
 
   if (clusterData.length === 0) return null;
 
-  const allPoints = clusterData.flatMap((c) => c.ordered);
-  const lats = allPoints.map((d) => d.lat);
-  const lngs = allPoints.map((d) => d.lng);
+  const allDeliveryPoints = clusterData.flatMap((c) => c.ordered).filter((d) => d.id !== "__hub__");
+  const lats = allDeliveryPoints.map((d) => d.lat);
+  const lngs = allDeliveryPoints.map((d) => d.lng);
   const bounds: [[number, number], [number, number]] = [
-    [Math.min(...lats) - 0.005, Math.min(...lngs) - 0.005],
-    [Math.max(...lats) + 0.005, Math.max(...lngs) + 0.005],
+    [Math.min(...lats) - 0.002, Math.min(...lngs) - 0.002],
+    [Math.max(...lats) + 0.002, Math.max(...lngs) + 0.002],
   ];
+
+  const allPointsForZoom: [number, number][] = allDeliveryPoints.map((d) => [d.lat, d.lng]);
 
   const positions = new Map<string, [number, number]>();
   clusterData.forEach((c) =>
@@ -134,20 +248,39 @@ export function LeafletMap({
     return -1;
   };
 
+  // Build edge → [shipperIndices] map for overlap detection
+  const edgeShippers = new Map<string, number[]>();
+  if (!isCalculating) {
+    clusterData.forEach((cluster, ci) => {
+      const geom = routeGeometries[ci];
+      const pts: [number, number][] = geom ?? cluster.ordered.map((d) => [d.lat, d.lng]);
+      for (let i = 0; i < pts.length - 1; i++) {
+        const key = edgeKey(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]);
+        const existing = edgeShippers.get(key);
+        if (existing) {
+          if (!existing.includes(ci)) existing.push(ci);
+        } else {
+          edgeShippers.set(key, [ci]);
+        }
+      }
+    });
+  }
+
   return (
     <MapContainer bounds={bounds} className="h-full w-full" scrollWheelZoom={true}>
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        detectRetina={true}
       />
       {!isCalculating && clusterData.map((cluster, ci) => {
         const geom = routeGeometries[ci];
-        // Fall back to straight lines if OSRM geometry is unavailable
-        const positions: [number, number][] = geom ?? cluster.ordered.map((d) => [d.lat, d.lng]);
-        return (
+        const pts: [number, number][] = geom ?? cluster.ordered.map((d) => [d.lat, d.lng]);
+        const segments = buildOffsetSegments(pts, ci, edgeShippers);
+        return segments.map((seg, si) => (
           <Polyline
-            key={`route-${clusterData.length}-${ci}-${cluster.color}`}
-            positions={positions}
+            key={`route-${clusterData.length}-${ci}-${cluster.color}-${si}`}
+            positions={seg}
             pathOptions={{
               color: cluster.color,
               weight: 6,
@@ -155,7 +288,7 @@ export function LeafletMap({
               dashArray: geom ? undefined : "8 5",
             }}
           />
-        );
+        ));
       })}
 
       <Marker position={[hub.lat, hub.lng]} icon={createHubIcon()}>
@@ -205,12 +338,13 @@ export function LeafletMap({
                           {clusterData.map((other, oi) => {
                             const current = findCurrentCluster(d.id);
                             const isCurrent = oi === current;
+                            const targetSlot = other.slotIdx ?? oi;
                             return (
                               <button
                                 key={oi}
                                 type="button"
                                 disabled={isCurrent}
-                                onClick={() => onReassign(d.id, oi)}
+                                onClick={() => onReassign(d.id, targetSlot)}
                                 style={{
                                   background: isCurrent ? "#fff" : other.color,
                                   color: isCurrent ? other.color : "#fff",
@@ -243,6 +377,9 @@ export function LeafletMap({
         markerRefs={markerRefs}
         positions={positions}
       />
+      {zoomToFitRef && (
+        <ZoomToFitRegistrar zoomToFitRef={zoomToFitRef} allPoints={allPointsForZoom} />
+      )}
     </MapContainer>
   );
 }

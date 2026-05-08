@@ -1,4 +1,5 @@
 import { getAllCustomers, getAllAddresses } from "@/lib/data/customers";
+import { getAllSubscriptions } from "@/lib/data/subscriptions";
 import { CoverageMap } from "./coverage-map";
 
 export const dynamic = "force-dynamic";
@@ -6,6 +7,7 @@ export const dynamic = "force-dynamic";
 export default function CoveragePage() {
   const customers = getAllCustomers();
   const addresses = getAllAddresses();
+  const subscriptions = getAllSubscriptions();
 
   const defaultAddrMap = new Map(
     addresses
@@ -17,6 +19,7 @@ export default function CoveragePage() {
     .map((c) => {
       const addr = defaultAddrMap.get(c.id);
       if (!addr) return null;
+      const customerSubs = subscriptions.filter((s) => s.customerId === c.phone || s.customerId === c.id);
       return {
         id: c.id,
         name: c.name,
@@ -25,6 +28,7 @@ export default function CoveragePage() {
         zone: addr.zone,
         lat: addr.latitude as number,
         lng: addr.longitude as number,
+        subscriptions: customerSubs,
       };
     })
     .filter((p): p is NonNullable<typeof p> => p !== null);

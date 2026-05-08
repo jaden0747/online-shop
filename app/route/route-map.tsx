@@ -17,6 +17,16 @@ import {
   type ClusterResult,
 } from "./clustering";
 
+function getWeekLabel(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  const jan4 = new Date(d.getFullYear(), 0, 4);
+  const startOfWeek1 = new Date(jan4);
+  startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+  const diffMs = d.getTime() - startOfWeek1.getTime();
+  const week = Math.floor(diffMs / (7 * 24 * 3600 * 1000)) + 1;
+  return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
 type Delivery = {
   id: string;
   name: string;
@@ -28,16 +38,58 @@ type Delivery = {
 
 type RouteMapProps = {
   deliveries: Delivery[];
+  date: string;
+  hubLat: number;
+  hubLng: number;
 };
 
-async function fetchRoadGeometry(waypoints: { lat: number; lng: number }[]): Promise<[number, number][] | null> {
+function truncateText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let s = text;
+  while (s.length > 0 && ctx.measureText(s + "…").width > maxWidth) s = s.slice(0, -1);
+  return s + "…";
+}
+
+// Web Mercator helpers for tile compositing
+function mercY(latDeg: number): number {
+  const r = (latDeg * Math.PI) / 180;
+  return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2;
+}
+
+function latLngToWorldPx(lat: number, lng: number, z: number): [number, number] {
+  const n = Math.pow(2, z) * 256;
+  return [((lng + 180) / 360) * n, mercY(lat) * n];
+}
+
+function chooseTileZoom(
+  minLat: number, maxLat: number, minLng: number, maxLng: number,
+  mapPxW: number, mapPxH: number
+): number {
+  const lngSpan = Math.max(maxLng - minLng, 0.001);
+  const zW = Math.log2((mapPxW / 256) * (360 / lngSpan));
+  const mercSpan = Math.max(mercY(minLat) - mercY(maxLat), 0.00001);
+  const zH = Math.log2(mapPxH / 256 / mercSpan);
+  return Math.max(1, Math.min(16, Math.floor(Math.min(zW, zH) - 0.3)));
+}
+
+function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`tile load failed: ${url}`));
+    img.src = url;
+  });
+}
+
+async function fetchRoadGeometry(waypoints: { lat: number; lng: number }[], abortSignal?: AbortSignal): Promise<[number, number][] | null> {
   if (waypoints.length < 2) return null;
   try {
     const res = await fetch("/api/route-geometry", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ waypoints }),
-      signal: AbortSignal.timeout(15000),
+      signal: abortSignal ?? AbortSignal.timeout(15000),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -52,10 +104,9 @@ async function fetchRoadGeometry(waypoints: { lat: number; lng: number }[]): Pro
   }
 }
 
-const DEFAULT_HUB = { lat: 10.7769, lng: 106.7009, address: "Hub" };
 const DEFAULT_PRICE_PER_KM = 5000;
 
-export function RouteMap({ deliveries }: RouteMapProps) {
+export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
   // Wrapped in an object so React doesn't treat the component fn as a state updater
   const [mapModule, setMapModule] = useState<{ Component: React.ComponentType<any> } | null>(null);
   const MapComponent = mapModule?.Component ?? null;
@@ -63,16 +114,41 @@ export function RouteMap({ deliveries }: RouteMapProps) {
   const [isCalculating, setIsCalculating] = useState(false);
   const [geometryFailed, setGeometryFailed] = useState(false);
 
-  const [hubInput, setHubInput] = useState(`${DEFAULT_HUB.lat}, ${DEFAULT_HUB.lng}`);
-  const [hubAddress, setHubAddress] = useState(DEFAULT_HUB.address);
+  const [hubInput, setHubInput] = useState(`${hubLat}, ${hubLng}`);
+  const [hubAddress, setHubAddress] = useState("Hub");
   const [constraints, setConstraints] = useState<Constraints>(DEFAULT_CONSTRAINTS);
   const [pricePerKm, setPricePerKm] = useState<number>(DEFAULT_PRICE_PER_KM);
   const [hydrated, setHydrated] = useState(false);
 
+  const [manualK, setManualK] = useState<number | null>(null);
+  const [manualAssign, setManualAssign] = useState<Map<string, number>>(new Map());
+  const [manualOrder, setManualOrder] = useState<Map<number, string[]>>(new Map());
+
+  const weekLabel = useMemo(() => getWeekLabel(date), [date]);
+
+  const zoomToFitRef = useRef<(() => void) | null>(null);
+  // Tracks the hub+k state recorded after the first post-hydration render so we
+  // can distinguish "loaded from localStorage" from "user explicitly changed".
+  const hydratedHubRef = useRef<{ lat: number; lng: number; k: number | null } | null>(null);
+
   // Load persisted settings after mount to avoid SSR/CSR hydration mismatch
   useEffect(() => {
+    // Always prefer the server-side hub from Settings (hubLat/hubLng props).
+    // The localStorage "route_hub" is only used when the user manually types
+    // a custom hub on the route page — treat it as an override only if it
+    // matches the server value (i.e. came from a previous save of the same hub).
+    // If they differ, the Settings hub wins (user updated it).
+    const serverHub = `${hubLat}, ${hubLng}`;
     const savedHub = localStorage.getItem("route_hub");
-    if (savedHub) setHubInput(savedHub);
+    if (savedHub && savedHub !== serverHub) {
+      // User had a custom hub typed on this page; keep it only if it doesn't
+      // look like an old server hub (heuristic: just always trust server value
+      // so Settings changes are reflected immediately).
+      setHubInput(serverHub);
+      localStorage.setItem("route_hub", serverHub);
+    } else if (savedHub) {
+      setHubInput(savedHub);
+    }
     const savedAddr = localStorage.getItem("route_hub_address");
     if (savedAddr) setHubAddress(savedAddr);
     const savedConstraints = localStorage.getItem("route_constraints");
@@ -81,19 +157,29 @@ export function RouteMap({ deliveries }: RouteMapProps) {
     }
     const savedPrice = localStorage.getItem("route_price_per_km");
     if (savedPrice) setPricePerKm(parseFloat(savedPrice) || DEFAULT_PRICE_PER_KM);
+
+    // Restore manual overrides for this week
+    try {
+      const savedOverrides = localStorage.getItem(`route-overrides-${date}`);
+      if (savedOverrides) {
+        const overrides = JSON.parse(savedOverrides) as Record<string, number>;
+        setManualAssign(new Map(Object.entries(overrides)));
+      }
+      const savedOrder = localStorage.getItem(`route_order_${date}`);
+      if (savedOrder) setManualOrder(new Map(JSON.parse(savedOrder) as [number, string[]][]));
+    } catch { /* ignore */ }
+
     setHydrated(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const [manualK, setManualK] = useState<number | null>(null);
-  const [manualAssign, setManualAssign] = useState<Map<string, number>>(new Map());
-  const [manualOrder, setManualOrder] = useState<Map<number, string[]>>(new Map());
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const hub = useMemo(() => {
     const m = hubInput.trim().match(/^(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)$/);
-    if (!m) return { ...DEFAULT_HUB, address: hubAddress };
+    if (!m) return { lat: hubLat, lng: hubLng, address: hubAddress };
     return { lat: parseFloat(m[1]), lng: parseFloat(m[2]), address: hubAddress };
-  }, [hubInput, hubAddress]);
+  }, [hubInput, hubAddress, hubLat, hubLng]);
 
   const saveHub = useCallback(() => {
     localStorage.setItem("route_hub", hubInput);
@@ -119,10 +205,25 @@ export function RouteMap({ deliveries }: RouteMapProps) {
 
   const recommendedK = autoResult.k;
 
-  // Reset manual overrides when delivery set, hub, or shipper count changes
+  // Reset manual overrides only when the user explicitly changes the hub or
+  // shipper count AFTER the initial load. We skip the first post-hydration run
+  // (which fires because hubInput and hub coords settle from localStorage) to
+  // avoid clearing the overrides that were just restored.
   useEffect(() => {
+    if (!hydrated) return;
+    const snapshot = { lat: hub.lat, lng: hub.lng, k: manualK };
+    if (hydratedHubRef.current === null) {
+      // First run after hydration — record the loaded state as the baseline.
+      hydratedHubRef.current = snapshot;
+      return;
+    }
+    const prev = hydratedHubRef.current;
+    if (prev.lat === snapshot.lat && prev.lng === snapshot.lng && prev.k === snapshot.k) return;
+    hydratedHubRef.current = snapshot;
     setManualAssign(new Map());
-  }, [deliveries.length, hub.lat, hub.lng, manualK]);
+    setManualOrder(new Map());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hub.lat, hub.lng, manualK, hydrated]);
 
   // Final clusters (auto / fixed-k / with manual overrides)
   const clusterResult: ClusterResult = useMemo(() => {
@@ -147,61 +248,88 @@ export function RouteMap({ deliveries }: RouteMapProps) {
     return clustersFromAssignments(points, hub, base);
   }, [deliveries, hub, autoResult, manualK, manualAssign, recommendedK]);
 
-  // Reset manual ordering when cluster composition changes
+  // Persist manual overrides for this date
   useEffect(() => {
-    setManualOrder(new Map());
-  }, [clusterResult]);
+    if (!hydrated) return;
+    if (manualAssign.size > 0) {
+      const obj: Record<string, number> = {};
+      manualAssign.forEach((v, k) => { obj[k] = v; });
+      localStorage.setItem(`route-overrides-${date}`, JSON.stringify(obj));
+    } else {
+      localStorage.removeItem(`route-overrides-${date}`);
+    }
+  }, [manualAssign, date, hydrated]);
 
-  // Per-cluster ordered deliveries with hub prepended; applies manual ordering overrides
+  useEffect(() => {
+    if (!hydrated) return;
+    if (manualOrder.size > 0) {
+      localStorage.setItem(`route_order_${date}`, JSON.stringify([...manualOrder.entries()]));
+    } else {
+      localStorage.removeItem(`route_order_${date}`);
+    }
+  }, [manualOrder, date, hydrated]);
+
+  // Per-cluster ordered deliveries with hub prepended; applies manual ordering overrides.
+  // Skips empty slots (can occur when manualAssign leaves a cluster empty after stable-ID preservation).
   const clusterData = useMemo(() => {
     const hubDelivery: Delivery = { id: "__hub__", name: "Hub", phone: "", address: hub.address, lat: hub.lat, lng: hub.lng };
-    return clusterResult.routes.map((routeIndices, ci) => {
-      const algorithmStops = routeIndices.map((i) => deliveries[i]);
-      const customOrder = manualOrder.get(ci);
+    return clusterResult.routes
+      .map((routeIndices, ci) => {
+        if (routeIndices.length === 0) return null;
+        const algorithmStops = routeIndices.map((i) => deliveries[i]);
+        const customOrder = manualOrder.get(ci);
 
-      let stops: Delivery[];
-      if (customOrder) {
-        const stopMap = new Map(algorithmStops.map((d) => [d.id, d]));
-        stops = customOrder.map((id) => stopMap.get(id)).filter((d): d is Delivery => d !== undefined);
-        for (const d of algorithmStops) {
-          if (!customOrder.includes(d.id)) stops.push(d);
-        }
-      } else {
-        stops = algorithmStops;
-      }
-
-      const ordered = [hubDelivery, ...stops];
-      const stats: { distKm: number; cumDist: number }[] = [];
-      let cumDist = 0;
-      for (let i = 0; i < ordered.length; i++) {
-        if (i === 0) {
-          stats.push({ distKm: 0, cumDist: 0 });
+        let stops: Delivery[];
+        if (customOrder) {
+          const stopMap = new Map(algorithmStops.map((d) => [d.id, d]));
+          stops = customOrder.map((id) => stopMap.get(id)).filter((d): d is Delivery => d !== undefined);
+          for (const d of algorithmStops) {
+            if (!customOrder.includes(d.id)) stops.push(d);
+          }
         } else {
-          const d = haversineDistance(ordered[i - 1], ordered[i]);
-          cumDist += d;
-          stats.push({ distKm: d, cumDist });
+          stops = algorithmStops;
         }
-      }
-      const totalDist = cumDist;
-      const totalTime = routeTimeMin(totalDist, stops.length, constraints);
-      const totalPrice = totalDist * pricePerKm;
-      return { ordered, stats, totalDist, totalTime, totalPrice, color: CLUSTER_COLORS[ci % CLUSTER_COLORS.length] };
-    });
+
+        const ordered = [hubDelivery, ...stops];
+        const stats: { distKm: number; cumDist: number }[] = [];
+        let cumDist = 0;
+        for (let i = 0; i < ordered.length; i++) {
+          if (i === 0) {
+            stats.push({ distKm: 0, cumDist: 0 });
+          } else {
+            const d = haversineDistance(ordered[i - 1], ordered[i]);
+            cumDist += d;
+            stats.push({ distKm: d, cumDist });
+          }
+        }
+        const totalDist = cumDist;
+        const totalTime = routeTimeMin(totalDist, stops.length, constraints);
+        const totalPrice = totalDist * pricePerKm;
+        return { ordered, stats, totalDist, totalTime, totalPrice, color: CLUSTER_COLORS[ci % CLUSTER_COLORS.length], slotIdx: ci };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null);
   }, [clusterResult, deliveries, hub, constraints, pricePerKm, manualOrder]);
 
-  // Fetch road geometries
+  // Fetch road geometries — AbortController cancels stale in-flight requests when clusterData changes
   const [retryCount, setRetryCount] = useState(0);
   useEffect(() => {
     if (clusterData.length === 0) { setRouteGeometries([]); return; }
+    const controller = new AbortController();
     setIsCalculating(true);
     setGeometryFailed(false);
     Promise.all(
-      clusterData.map((c) => (c.ordered.length >= 2 ? fetchRoadGeometry(c.ordered) : Promise.resolve(null)))
+      clusterData.map((c) =>
+        c.ordered.length >= 2
+          ? fetchRoadGeometry(c.ordered, controller.signal)
+          : Promise.resolve(null)
+      )
     ).then((geoms) => {
+      if (controller.signal.aborted) return;
       setRouteGeometries(geoms);
       setIsCalculating(false);
       setGeometryFailed(geoms.every((g) => g === null));
     });
+    return () => controller.abort();
   }, [clusterData, retryCount]);
 
   // Dynamic Leaflet load
@@ -213,24 +341,53 @@ export function RouteMap({ deliveries }: RouteMapProps) {
   const totalPrice = totalDistance * pricePerKm;
   const totalStops = deliveries.length;
   const maxTime = Math.max(0, ...clusterData.map((c) => c.totalTime));
-  const avgTime = clusterData.reduce((s, c) => s + c.totalTime, 0) / Math.max(1, clusterResult.k);
+  const avgTime = clusterData.reduce((s, c) => s + c.totalTime, 0) / Math.max(1, clusterData.length);
 
   const handleDragStart = (id: string) => setDraggingId(id);
   const handleDragEnd = () => setDraggingId(null);
   const handleDropOnCluster = (targetIdx: number) => {
     if (!draggingId) return;
+    // Find the source cluster so we can re-optimise only the two affected shippers.
+    let sourceIdx: number | null = null;
+    for (const cluster of clusterData) {
+      if (cluster.ordered.slice(1).some((d) => d.id === draggingId)) {
+        sourceIdx = cluster.slotIdx;
+        break;
+      }
+    }
     setManualAssign((prev) => {
       const next = new Map(prev);
       next.set(draggingId, targetIdx);
+      return next;
+    });
+    // Clear manual order only for source + target so they pick up the freshly
+    // TSP-optimised routes from clusterResult; other shippers keep their orders.
+    setManualOrder((prev) => {
+      const next = new Map(prev);
+      next.delete(targetIdx);
+      if (sourceIdx !== null) next.delete(sourceIdx);
       return next;
     });
     setDraggingId(null);
   };
 
   const handleReassign = (deliveryId: string, targetIdx: number) => {
+    let sourceIdx: number | null = null;
+    for (const cluster of clusterData) {
+      if (cluster.ordered.slice(1).some((d) => d.id === deliveryId)) {
+        sourceIdx = cluster.slotIdx;
+        break;
+      }
+    }
     setManualAssign((prev) => {
       const next = new Map(prev);
       next.set(deliveryId, targetIdx);
+      return next;
+    });
+    setManualOrder((prev) => {
+      const next = new Map(prev);
+      next.delete(targetIdx);
+      if (sourceIdx !== null) next.delete(sourceIdx);
       return next;
     });
   };
@@ -241,6 +398,273 @@ export function RouteMap({ deliveries }: RouteMapProps) {
       next.set(clusterIdx, newOrderIds);
       return next;
     });
+  };
+
+  const buildRouteCanvas = async (): Promise<HTMLCanvasElement> => {
+    const CANVAS_W = 1600;
+    const MAP_W = 900;
+    const DETAIL_X = MAP_W;
+    const DETAIL_W = CANVAS_W - MAP_W;
+    const HEADER_H = 56;
+    const PAD = 20;
+    const STOP_H = 56;
+    const SHIP_H = 40;
+
+    const totalDetailH =
+      clusterData.reduce((h, c) => {
+        const n = c.ordered.filter((d) => d.id !== "__hub__").length;
+        return h + SHIP_H + n * STOP_H + 10;
+      }, 0) +
+      HEADER_H +
+      PAD * 3;
+    const CANVAS_H = Math.max(900, Math.min(2600, totalDetailH));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = CANVAS_W;
+    canvas.height = CANVAS_H;
+    const ctx = canvas.getContext("2d")!;
+
+    // ── Header bar ──
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(0, 0, CANVAS_W, HEADER_H);
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = "bold 20px system-ui,sans-serif";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    ctx.fillText(`Delivery Route — ${date}`, PAD, HEADER_H / 2);
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "13px system-ui,sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(
+      `${deliveries.length} stop${deliveries.length !== 1 ? "s" : ""} · ${totalDistance.toFixed(1)} km · ${clusterData.length} shipper${clusterData.length !== 1 ? "s" : ""}`,
+      CANVAS_W - PAD,
+      HEADER_H / 2
+    );
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+
+    // ── Map area — fallback background ──
+    ctx.fillStyle = "#dde6f0";
+    ctx.fillRect(0, HEADER_H, MAP_W, CANVAS_H - HEADER_H);
+
+    // Collect all points for coordinate bounds
+    const allPts: { lat: number; lng: number }[] = [hub];
+    clusterData.forEach((c) => c.ordered.forEach((d) => { if (d.id !== "__hub__") allPts.push(d); }));
+    routeGeometries.forEach((g) => { if (g) g.forEach(([lat, lng]) => allPts.push({ lat, lng })); });
+
+    const lats = allPts.map((p) => p.lat);
+    const lngs = allPts.map((p) => p.lng);
+    const rawMinLat = Math.min(...lats), rawMaxLat = Math.max(...lats);
+    const rawMinLng = Math.min(...lngs), rawMaxLng = Math.max(...lngs);
+    const latPad = Math.max(rawMaxLat - rawMinLat, 0.006) * 0.20;
+    const lngPad = Math.max(rawMaxLng - rawMinLng, 0.006) * 0.20;
+    const minLat = rawMinLat - latPad, maxLat = rawMaxLat + latPad;
+    const minLng = rawMinLng - lngPad, maxLng = rawMaxLng + lngPad;
+
+    // Use the full map area (no inner padding — tiles fill edge to edge)
+    const mapTop = HEADER_H;
+    const mapH = CANVAS_H - HEADER_H;
+    const mapLeft = 0;
+    const mapW = MAP_W;
+
+    // Mercator-based coordinate transform
+    const z = chooseTileZoom(minLat, maxLat, minLng, maxLng, mapW, mapH);
+    const centerLat = (minLat + maxLat) / 2;
+    const centerLng = (minLng + maxLng) / 2;
+    const [cwx, cwy] = latLngToWorldPx(centerLat, centerLng, z);
+    const scx = mapLeft + mapW / 2;
+    const scy = mapTop + mapH / 2;
+
+    const toXY = (lat: number, lng: number): [number, number] => {
+      const [wx, wy] = latLngToWorldPx(lat, lng, z);
+      return [scx + (wx - cwx), scy + (wy - cwy)];
+    };
+
+    // ── Fetch & draw OSM tiles ──
+    const txMin = Math.floor((cwx - mapW / 2) / 256);
+    const tyMin = Math.floor((cwy - mapH / 2) / 256);
+    const txMax = Math.floor((cwx + mapW / 2) / 256);
+    const tyMax = Math.floor((cwy + mapH / 2) / 256);
+    const maxTileIdx = Math.pow(2, z) - 1;
+
+    const tilePromises: Promise<{ tx: number; ty: number; img: HTMLImageElement } | null>[] = [];
+    for (let tx = txMin; tx <= txMax; tx++) {
+      for (let ty = tyMin; ty <= tyMax; ty++) {
+        if (tx < 0 || ty < 0 || tx > maxTileIdx || ty > maxTileIdx) continue;
+        const url = `https://tile.openstreetmap.org/${z}/${tx}/${ty}.png`;
+        tilePromises.push(
+          loadImage(url).then((img) => ({ tx, ty, img })).catch(() => null)
+        );
+      }
+    }
+    const tiles = await Promise.all(tilePromises);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(mapLeft, mapTop, mapW, mapH);
+    ctx.clip();
+
+    tiles.forEach((t) => {
+      if (!t) return;
+      const sx = scx + (t.tx * 256 - cwx);
+      const sy = scy + (t.ty * 256 - cwy);
+      ctx.drawImage(t.img, sx, sy, 256, 256);
+    });
+
+    ctx.restore();
+
+    // ── Overlay (routes + markers) clipped to map area ──
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(mapLeft, mapTop, mapW, mapH);
+    ctx.clip();
+
+    // Draw routes
+    clusterData.forEach((cluster, ci) => {
+      const geom = routeGeometries[ci];
+      ctx.strokeStyle = cluster.color;
+      ctx.lineWidth = 3;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.setLineDash(geom ? [] : [8, 5]);
+      ctx.beginPath();
+      let started = false;
+      const pts: [number, number][] = geom
+        ? geom.map(([lat, lng]) => toXY(lat, lng))
+        : cluster.ordered.map((d) => toXY(d.lat, d.lng));
+      pts.forEach(([x, y]) => {
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    });
+    ctx.setLineDash([]);
+
+    // Hub marker
+    const [hx, hy] = toXY(hub.lat, hub.lng);
+    ctx.fillStyle = "#0f172a";
+    ctx.beginPath(); ctx.arc(hx, hy, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(hx, hy, 14, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 11px system-ui,sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("H", hx, hy);
+
+    // Stop markers
+    clusterData.forEach((cluster) => {
+      cluster.ordered.filter((d) => d.id !== "__hub__").forEach((d, idx) => {
+        const [x, y] = toXY(d.lat, d.lng);
+        ctx.fillStyle = cluster.color;
+        ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = "#ffffff";
+        ctx.font = `bold ${idx + 1 > 9 ? "9" : "10"}px system-ui,sans-serif`;
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(String(idx + 1), x, y);
+      });
+    });
+
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.restore(); // end map clip
+
+    // ── Divider ──
+    ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 1; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(MAP_W, HEADER_H); ctx.lineTo(MAP_W, CANVAS_H); ctx.stroke();
+
+    // ── Details panel ──
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(DETAIL_X, HEADER_H, DETAIL_W, CANVAS_H - HEADER_H);
+
+    let dy = HEADER_H + PAD;
+
+    clusterData.forEach((cluster, ci) => {
+      const stops = cluster.ordered.filter((d) => d.id !== "__hub__");
+      if (stops.length === 0) return;
+
+      // Shipper heading
+      ctx.fillStyle = cluster.color;
+      ctx.fillRect(DETAIL_X + PAD - 2, dy, 4, 22);
+      ctx.fillStyle = "#0f172a";
+      ctx.font = "bold 14px system-ui,sans-serif";
+      ctx.fillText(`Shipper ${ci + 1}`, DETAIL_X + PAD + 10, dy + 15);
+      ctx.fillStyle = "#64748b";
+      ctx.font = "12px system-ui,sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText(
+        `${cluster.totalDist.toFixed(1)} km · ${Math.ceil(cluster.totalTime)} min`,
+        DETAIL_X + DETAIL_W - PAD, dy + 15
+      );
+      ctx.textAlign = "left";
+      dy += SHIP_H;
+
+      stops.forEach((d, idx) => {
+        if (dy + STOP_H > CANVAS_H - PAD) return;
+
+        // Numbered circle
+        ctx.fillStyle = cluster.color;
+        ctx.beginPath(); ctx.arc(DETAIL_X + PAD + 9, dy + 11, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 9px system-ui,sans-serif";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(String(idx + 1), DETAIL_X + PAD + 9, dy + 11);
+        ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+
+        const tx = DETAIL_X + PAD + 26;
+        const maxTW = DETAIL_W - PAD * 2 - 26;
+
+        ctx.fillStyle = "#0f172a";
+        ctx.font = "bold 13px system-ui,sans-serif";
+        ctx.fillText(truncateText(ctx, d.name, maxTW), tx, dy + 14);
+
+        ctx.fillStyle = "#64748b";
+        ctx.font = "11px system-ui,sans-serif";
+        ctx.fillText(d.phone, tx, dy + 28);
+
+        ctx.fillStyle = "#475569";
+        ctx.font = "11px system-ui,sans-serif";
+        ctx.fillText(truncateText(ctx, d.address, maxTW), tx, dy + 42);
+
+        dy += STOP_H;
+      });
+
+      dy += 10;
+    });
+
+    return canvas;
+  };
+
+  const handleExportPNG = async () => {
+    const canvas = await buildRouteCanvas();
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `route-${date}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  };
+
+  const [copying, setCopying] = useState(false);
+  const handleCopyPNG = async () => {
+    setCopying(true);
+    try {
+      const blobPromise = buildRouteCanvas().then(
+        (canvas) =>
+          new Promise<Blob>((resolve, reject) => {
+            canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("canvas toBlob failed"))));
+          })
+      );
+      // Pass the Promise directly so ClipboardItem is created within the user gesture,
+      // preventing the browser from blocking the write due to activation timeout.
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blobPromise })]);
+    } catch (e) {
+      console.error("Copy to clipboard failed:", e);
+    } finally {
+      setCopying(false);
+    }
   };
 
   const toolbar = (
@@ -304,13 +728,44 @@ export function RouteMap({ deliveries }: RouteMapProps) {
           {manualAssign.size > 0 && (
             <button
               type="button"
-              onClick={() => setManualAssign(new Map())}
+              onClick={() => {
+                setManualAssign(new Map());
+                setManualOrder(new Map());
+                localStorage.removeItem(`route-overrides-${date}`);
+              }}
               className="h-8 px-3 text-xs rounded border bg-background hover:bg-accent"
               title="Clear manual reassignments"
             >
               Reset moves ({manualAssign.size})
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => zoomToFitRef.current?.()}
+            className="h-8 px-3 text-xs rounded border bg-background hover:bg-accent"
+            title="Fit map to all delivery addresses"
+          >
+            Zoom to Fit
+          </button>
+          <div className="flex gap-1 ml-auto">
+            <button
+              type="button"
+              onClick={handleExportPNG}
+              className="h-8 px-3 text-xs rounded border bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              title="Download route as PNG"
+            >
+              Export PNG
+            </button>
+            <button
+              type="button"
+              onClick={handleCopyPNG}
+              disabled={copying}
+              className="h-8 px-3 text-xs rounded border bg-background hover:bg-accent transition-colors disabled:opacity-50"
+              title="Copy PNG to clipboard"
+            >
+              {copying ? "Copying…" : "Copy PNG"}
+            </button>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -345,6 +800,7 @@ export function RouteMap({ deliveries }: RouteMapProps) {
                 onSelect={setSelectedId}
                 onReassign={handleReassign}
                 isCalculating={isCalculating}
+                zoomToFitRef={zoomToFitRef}
               />
             ) : (
               <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -359,7 +815,7 @@ export function RouteMap({ deliveries }: RouteMapProps) {
             <div className="font-semibold text-base mb-1">Summary</div>
             <Row
               label="Shippers"
-              value={`${clusterResult.k}${manualK !== null && manualK !== recommendedK ? ` (rec ${recommendedK})` : ""}`}
+              value={`${clusterData.length}${manualK !== null && manualK !== recommendedK ? ` (rec ${recommendedK})` : ""}`}
             />
             <Row label="Stops" value={String(totalStops)} />
             <Row label="Total dist" value={`${totalDistance.toFixed(1)} km`} />
@@ -398,10 +854,10 @@ export function RouteMap({ deliveries }: RouteMapProps) {
       </div>
 
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
-        {clusterData.map((cluster, ci) => (
+        {clusterData.map((cluster) => (
           <ShipperCard
-            key={ci}
-            clusterIdx={ci}
+            key={cluster.slotIdx}
+            clusterIdx={cluster.slotIdx}
             cluster={cluster}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
@@ -410,8 +866,8 @@ export function RouteMap({ deliveries }: RouteMapProps) {
             draggingId={draggingId}
             isOverridden={(id) => manualAssign.has(id)}
             isReordered={(id) => {
-              const order = manualOrder.get(ci);
-              return order !== undefined && order.indexOf(id) !== clusterData[ci].ordered.slice(1).findIndex((d) => d.id === id);
+              const order = manualOrder.get(cluster.slotIdx);
+              return order !== undefined && order.indexOf(id) !== cluster.ordered.slice(1).findIndex((d) => d.id === id);
             }}
             selectedId={selectedId}
             onSelect={setSelectedId}

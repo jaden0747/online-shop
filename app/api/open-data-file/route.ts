@@ -11,7 +11,20 @@ const ALLOWED_FILES = new Set([
   "menu.xlsx",
   "pricing.xlsx",
   "orders.xlsx",
+  "addresses.xlsx",
+  "settings.xlsx",
 ]);
+
+function openFolder(folderPath: string) {
+  const platform = process.platform;
+  if (platform === "win32") {
+    exec(`explorer "${folderPath}"`);
+  } else if (platform === "linux") {
+    exec(`xdg-open "${folderPath}"`);
+  } else {
+    exec(`open "${folderPath}"`);
+  }
+}
 
 export async function POST(req: NextRequest) {
   const { file } = await req.json().catch(() => ({}));
@@ -20,24 +33,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid file" }, { status: 400 });
   }
 
-  // Strict path validation — ensure resolved path stays within DATA_DIR
   const filePath = path.resolve(DATA_DIR, file);
   if (!filePath.startsWith(DATA_DIR + path.sep) && filePath !== DATA_DIR) {
     return NextResponse.json({ error: "Invalid file path" }, { status: 400 });
   }
 
-  // Ensure the data directory exists (create empty file if needed so Finder can open the folder)
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
 
-  if (!fs.existsSync(filePath)) {
-    // File doesn't exist yet — reveal the parent folder instead
-    exec(`open "${DATA_DIR}"`);
-  } else {
-    // Reveal the specific file in Finder
-    exec(`open -R "${filePath}"`);
-  }
+  openFolder(DATA_DIR);
 
   return NextResponse.json({ ok: true });
 }

@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { updateCustomerAction } from "../actions/customers";
-import { isSubscriptionLive } from "@/lib/utils/subscription";
+import { isSubscriptionLive, daysRemaining } from "@/lib/utils/subscription";
 import { Badge } from "@/components/ui/badge";
-import Link from "next/link";
+import { Pencil } from "lucide-react";
+import { CustomerOverlay } from "@/components/customer-overlay";
 
 type Customer = {
   id: string;
@@ -17,6 +17,7 @@ type Customer = {
 };
 
 type Sub = {
+  id: string;
   customerId: string;
   plan: string;
   goal: string;
@@ -29,93 +30,61 @@ type Sub = {
 type Props = {
   customers: Customer[];
   subscriptions: Sub[];
+  onCustomerClick?: (customerId: string) => void;
 };
 
-function EditableCell({
-  value,
-  customerId,
-  field,
-  className,
-  onSave,
-}: {
-  value: string;
-  customerId: string;
-  field: string;
-  className?: string;
-  onSave: (customerId: string, field: string, value: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState(value);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  function startEdit() {
-    setEditValue(value);
-    setEditing(true);
-    setTimeout(() => inputRef.current?.focus(), 0);
+function RenewalCell({ sub }: { sub: Sub | null }) {
+  if (!sub) {
+    return <span className="text-muted-foreground">—</span>;
   }
 
-  function save() {
-    setEditing(false);
-    if (editValue !== value) {
-      onSave(customerId, field, editValue);
-    }
-  }
+  const isLive = isSubscriptionLive(sub.status, sub.startDate, sub.renewalDate);
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter") save();
-    if (e.key === "Escape") { setEditValue(value); setEditing(false); }
-  }
-
-  if (editing) {
+  if (!isLive) {
+    // paused or cancelled
     return (
-      <input
-        ref={inputRef}
-        type="text"
-        value={editValue}
-        onChange={(e) => setEditValue(e.target.value)}
-        onBlur={save}
-        onKeyDown={handleKeyDown}
-        className={`w-full bg-transparent border-b border-primary outline-none text-sm px-0 py-0 ${className ?? ""}`}
-      />
+      <Badge variant="outline" className="capitalize text-xs">
+        {sub.status}
+      </Badge>
     );
   }
 
+  const days = daysRemaining(sub.renewalDate);
+  let colorClass = "text-green-600";
+  if (days <= 6) colorClass = "text-red-600";
+  else if (days <= 13) colorClass = "text-yellow-600";
+
   return (
-    <span
-      onClick={startEdit}
-      className={`cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 ${className ?? ""}`}
-      title="Click to edit"
-    >
-      {value || <span className="text-muted-foreground">—</span>}
+    <span className={`font-medium text-sm ${colorClass}`}>
+      {days} days
     </span>
   );
 }
 
-export function InlineCustomerTable({ customers, subscriptions }: Props) {
+export function InlineCustomerTable({ customers, subscriptions, onCustomerClick }: Props) {
   const router = useRouter();
   const [search, setSearch] = useState("");
+  const [overlayId, setOverlayId] = useState<string | null>(null);
+
+  function openOverlay(id: string) {
+    setOverlayId(id);
+    onCustomerClick?.(id);
+  }
 
   const filtered = search.trim()
     ? customers.filter((c) => c.name.toLowerCase().includes(search.trim().toLowerCase()))
     : customers;
 
-  async function handleSave(customerId: string, field: string, value: string) {
-    const customer = customers.find((c) => c.id === customerId);
-    if (!customer) return;
-
-    const fd = new FormData();
-    fd.set("name", field === "name" ? value : customer.name);
-    fd.set("phone", field === "phone" ? value : customer.phone);
-    fd.set("address", field === "address" ? value : customer.address);
-    fd.set("zone", field === "zone" ? value : customer.zone);
-    fd.set("notes", field === "notes" ? value : (customer.notes ?? ""));
-
-    await updateCustomerAction(customerId, fd);
-    router.refresh();
-  }
-
   return (
     <div>
+      {overlayId && (
+        <CustomerOverlay
+          customerId={overlayId}
+          open={!!overlayId}
+          onOpenChange={(o) => { if (!o) { setOverlayId(null); router.refresh(); } }}
+        />
+      )}
       <div className="px-4 py-2 border-b">
         <input
           type="text"
@@ -125,66 +94,90 @@ export function InlineCustomerTable({ customers, subscriptions }: Props) {
           className="w-full max-w-xs text-sm bg-transparent outline-none placeholder:text-muted-foreground"
         />
       </div>
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b bg-muted/50">
-            <th className="text-left px-4 py-2 font-medium">Phone</th>
-            <th className="text-left px-4 py-2 font-medium">Name</th>
-            <th className="text-left px-4 py-2 font-medium">Address</th>
-            <th className="text-left px-4 py-2 font-medium">Zone</th>
-            <th className="text-left px-4 py-2 font-medium">Subscription</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {filtered.length === 0 && (
-            <tr>
-              <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
-                {search.trim() ? `No customers matching "${search}"` : "No customers yet. Add your first one."}
-              </td>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/50">
+              <th className="text-left px-4 py-2 font-medium">Name</th>
+              <th className="text-left px-4 py-2 font-medium">Phone</th>
+              <th className="text-left px-4 py-2 font-medium">Zone</th>
+              <th className="text-left px-4 py-2 font-medium">Plan</th>
+              <th className="text-left px-4 py-2 font-medium w-8">Note</th>
+              <th className="text-left px-4 py-2 font-medium">Renewal</th>
+              <th className="w-10" />
             </tr>
-          )}
-          {filtered.map((c) => {
-            const sub = subscriptions.find(
-              (s) => s.customerId === c.phone && isSubscriptionLive(s.status, s.startDate, s.renewalDate)
-            ) ?? null;
-
-            return (
-              <tr key={c.id} className="hover:bg-accent/50 transition-colors">
-                <td className="px-4 py-2">
-                  <Link
-                    href={`/customers/${encodeURIComponent(c.phone)}`}
-                    className="text-primary hover:underline font-medium"
-                  >
-                    {c.phone}
-                  </Link>
-                </td>
-                <td className="px-4 py-2">
-                  <EditableCell value={c.name} customerId={c.id} field="name" onSave={handleSave} className="font-medium" />
-                </td>
-                <td className="px-4 py-2">
-                  <EditableCell value={c.address} customerId={c.id} field="address" onSave={handleSave} />
-                </td>
-                <td className="px-4 py-2">
-                  <EditableCell value={c.zone} customerId={c.id} field="zone" onSave={handleSave} />
-                </td>
-                <td className="px-4 py-2">
-                  {sub ? (
-                    <div className="flex items-center gap-1">
-                      <Badge variant="default" className="capitalize">{sub.plan}</Badge>
-                      <Badge variant="outline" className="capitalize text-xs">{sub.goal}</Badge>
-                      <Badge variant="outline" className="text-xs">{sub.mealsPerDay}×/day</Badge>
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
+          </thead>
+          <tbody className="divide-y">
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">
+                  {search.trim() ? `No customers matching "${search}"` : "No customers yet. Add your first one."}
                 </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+            )}
+            {filtered.map((c) => {
+              const activeSub =
+                subscriptions.find(
+                  (s) => s.customerId === c.id && isSubscriptionLive(s.status, s.startDate, s.renewalDate)
+                ) ?? null;
+              const anySub =
+                activeSub ??
+                subscriptions.find((s) => s.customerId === c.id) ??
+                null;
+
+              return (
+                <tr key={c.id} className="hover:bg-accent/50 transition-colors">
+                  <td className="px-4 py-2">
+                    <button
+                      type="button"
+                      onClick={() => openOverlay(c.id)}
+                      className="font-medium hover:underline text-left"
+                    >
+                      {c.name || <span className="text-muted-foreground">—</span>}
+                    </button>
+                  </td>
+                  <td className="px-4 py-2 text-muted-foreground tabular-nums">
+                    {c.phone}
+                  </td>
+                  <td className="px-4 py-2 text-muted-foreground">
+                    {c.zone || <span className="opacity-40">—</span>}
+                  </td>
+                  <td className="px-4 py-2">
+                    {anySub ? (
+                      <span className="text-xs text-muted-foreground capitalize">
+                        {anySub.plan} · {anySub.goal} · {anySub.mealsPerDay}×
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground opacity-40">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2">
+                    {c.notes ? (
+                      <span
+                        className="inline-block w-2 h-2 rounded-full bg-blue-400"
+                        title={c.notes}
+                      />
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-2">
+                    <RenewalCell sub={anySub} />
+                  </td>
+                  <td className="px-2 py-2">
+                    <button
+                      type="button"
+                      onClick={() => openOverlay(c.id)}
+                      className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                      title="Modify customer"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

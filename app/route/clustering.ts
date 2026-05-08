@@ -32,27 +32,13 @@ export function haversineDistance(a: Point, b: Point): number {
 
 // ─── Nearest-neighbor TSP + 2-opt ────────────────────────────────────────────
 
-export function computeRoute(points: Point[], depot: Point): { order: number[]; distance: number } {
-  if (points.length === 0) return { order: [], distance: 0 };
-  if (points.length === 1) {
-    return { order: [0], distance: 2 * haversineDistance(depot, points[0]) };
-  }
-
+function nnFrom(startIdx: number, points: Point[]): number[] {
   const n = points.length;
   const visited = new Array(n).fill(false);
   const route: number[] = [];
-
-  // Start from nearest to depot
-  let bestFirst = 0;
-  let bestDist = Infinity;
-  for (let i = 0; i < n; i++) {
-    const d = haversineDistance(depot, points[i]);
-    if (d < bestDist) { bestDist = d; bestFirst = i; }
-  }
-  visited[bestFirst] = true;
-  route.push(bestFirst);
-
-  let current = bestFirst;
+  visited[startIdx] = true;
+  route.push(startIdx);
+  let current = startIdx;
   for (let step = 1; step < n; step++) {
     let bestNext = -1;
     let bestD = Infinity;
@@ -66,8 +52,11 @@ export function computeRoute(points: Point[], depot: Point): { order: number[]; 
     route.push(bestNext);
     current = bestNext;
   }
+  return route;
+}
 
-  // 2-opt
+function twoOpt(route: number[], points: Point[], depot: Point): number[] {
+  const n = route.length;
   let improved = true;
   while (improved) {
     improved = false;
@@ -76,25 +65,58 @@ export function computeRoute(points: Point[], depot: Point): { order: number[]; 
         const pA = i === 0 ? depot : points[route[i - 1]];
         const pB = points[route[i]];
         const pC = points[route[j]];
-        const pD = j === n - 1 ? depot : points[route[j + 1]];
-        const curr = haversineDistance(pA, pB) + haversineDistance(pC, pD);
-        const swap = haversineDistance(pA, pC) + haversineDistance(pB, pD);
-        if (swap < curr - 1e-10) {
-          route.splice(i, j - i + 1, ...route.slice(i, j + 1).reverse());
-          improved = true;
+        if (j === n - 1) {
+          // Open path — no return to depot. Reversing a tail segment only
+          // changes the single leading edge pA→pB vs pA→pC.
+          if (haversineDistance(pA, pC) < haversineDistance(pA, pB) - 1e-10) {
+            route.splice(i, j - i + 1, ...route.slice(i, j + 1).reverse());
+            improved = true;
+          }
+        } else {
+          const pD = points[route[j + 1]];
+          const curr = haversineDistance(pA, pB) + haversineDistance(pC, pD);
+          const swap = haversineDistance(pA, pC) + haversineDistance(pB, pD);
+          if (swap < curr - 1e-10) {
+            route.splice(i, j - i + 1, ...route.slice(i, j + 1).reverse());
+            improved = true;
+          }
         }
       }
     }
   }
+  return route;
+}
 
-  // Total distance: depot -> route -> depot
-  let distance = haversineDistance(depot, points[route[0]]);
-  for (let i = 0; i < n - 1; i++) {
-    distance += haversineDistance(points[route[i]], points[route[i + 1]]);
+// Hub is the start point only — no return leg.
+function totalDist(route: number[], points: Point[], depot: Point): number {
+  let d = haversineDistance(depot, points[route[0]]);
+  for (let i = 0; i < route.length - 1; i++) d += haversineDistance(points[route[i]], points[route[i + 1]]);
+  return d;
+}
+
+// Tries every delivery as the nearest-neighbor starting point, applies 2-opt to
+// each candidate, and returns the globally best result. For typical cluster sizes
+// (≤15 stops) this is negligible overhead but avoids local minima from a single
+// greedy start.
+export function computeRoute(points: Point[], depot: Point): { order: number[]; distance: number } {
+  if (points.length === 0) return { order: [], distance: 0 };
+  if (points.length === 1) {
+    return { order: [0], distance: haversineDistance(depot, points[0]) };
   }
-  distance += haversineDistance(points[route[n - 1]], depot);
 
-  return { order: route, distance };
+  let bestOrder: number[] = [];
+  let bestDistance = Infinity;
+
+  for (let start = 0; start < points.length; start++) {
+    const route = twoOpt(nnFrom(start, points), points, depot);
+    const dist = totalDist(route, points, depot);
+    if (dist < bestDistance) {
+      bestDistance = dist;
+      bestOrder = route.slice();
+    }
+  }
+
+  return { order: bestOrder, distance: bestDistance };
 }
 
 function estimateRouteDistance(points: Point[], depot: Point): number {
@@ -202,7 +224,7 @@ export function depotAwareClusters(points: Point[], depot: Point, constraints: C
   const n = points.length;
   if (n === 0) return { assignments: [], routes: [], distances: [], k: 0 };
   if (n === 1) {
-    const d = 2 * haversineDistance(depot, points[0]);
+    const d = haversineDistance(depot, points[0]);
     return { assignments: [0], routes: [[0]], distances: [d], k: 1 };
   }
 
@@ -327,7 +349,7 @@ export function fixedKClusters(points: Point[], depot: Point, k: number): Cluste
 
 /**
  * Build a ClusterResult from explicit assignments (used after manual drag/drop).
- * Recomputes routes per cluster.
+ * Recomputes routes per cluster. Does NOT remap IDs so shipper slot indices stay stable.
  */
 export function clustersFromAssignments(
   points: Point[],
@@ -335,18 +357,22 @@ export function clustersFromAssignments(
   assignments: number[],
 ): ClusterResult {
   if (points.length === 0) return { assignments: [], routes: [], distances: [], k: 0 };
-  const remapped = remapIds(assignments);
-  const k = Math.max(...remapped) + 1;
+  const maxSlot = Math.max(...assignments);
   const routes: number[][] = [];
   const distances: number[] = [];
-  for (let ci = 0; ci < k; ci++) {
-    const idxs = getClusterIndices(remapped, ci);
+  for (let ci = 0; ci <= maxSlot; ci++) {
+    const idxs = getClusterIndices(assignments, ci);
+    if (idxs.length === 0) {
+      routes.push([]);
+      distances.push(0);
+      continue;
+    }
     const pts = idxs.map((i) => points[i]);
     const { order, distance } = computeRoute(pts, depot);
     routes.push(order.map((oi) => idxs[oi]));
     distances.push(distance);
   }
-  return { assignments: remapped, routes, distances, k };
+  return { assignments, routes, distances, k: maxSlot + 1 };
 }
 
 // ─── Colors ──────────────────────────────────────────────────────────────────

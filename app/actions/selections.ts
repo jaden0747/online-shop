@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { upsertSelection } from "@/lib/data/selections";
+import { upsertSelection, deleteSelection } from "@/lib/data/selections";
 
 export async function upsertSelectionAction(formData: FormData) {
   upsertSelection({
@@ -12,4 +12,27 @@ export async function upsertSelectionAction(formData: FormData) {
     menuSlot: parseInt(formData.get("menuSlot") as string, 10),
   });
   revalidatePath("/menu");
+}
+
+export async function deleteSelectionAction(id: string) {
+  deleteSelection(id);
+  revalidatePath("/menu");
+}
+
+export async function upsertSelectionDirectAction(data: {
+  weekLabel: string;
+  customerId: string;
+  day: number;
+  mealNum: number;
+  menuSlot: number;
+}): Promise<void> {
+  upsertSelection(data);
+  revalidatePath("/menu");
+  revalidatePath("/customers");
+}
+
+export async function deleteSelectionDirectAction(id: string): Promise<void> {
+  deleteSelection(id);
+  revalidatePath("/menu");
+  revalidatePath("/customers");
 }

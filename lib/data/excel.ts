@@ -2,17 +2,28 @@ import * as XLSX from "xlsx";
 import path from "path";
 import fs from "fs";
 
-export const DATA_DIR = path.join(process.cwd(), "data");
+export const BASE_DATA_DIR = path.join(process.cwd(), "data");
+export const TESTING_FLAG = path.join(BASE_DATA_DIR, ".testing-mode");
+
+// Keep DATA_DIR as an alias for BASE_DATA_DIR for legacy imports
+export const DATA_DIR = BASE_DATA_DIR;
+
+export function getDataDir(): string {
+  return fs.existsSync(TESTING_FLAG)
+    ? path.join(BASE_DATA_DIR, "test")
+    : BASE_DATA_DIR;
+}
 
 function ensure() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  const dir = getDataDir();
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
 // --- mtime-based cache ---
 const cache = new Map<string, { mtimeMs: number; data: Map<string, unknown[]> }>();
 
 function getCachedSheets(file: string): Map<string, unknown[]> | null {
-  const fp = path.join(DATA_DIR, file);
+  const fp = path.join(getDataDir(), file);
   if (!fs.existsSync(fp)) return null;
   const stat = fs.statSync(fp);
   const entry = cache.get(file);
@@ -21,7 +32,7 @@ function getCachedSheets(file: string): Map<string, unknown[]> | null {
 }
 
 function setCachedSheet(file: string, sheet: string, rows: unknown[]) {
-  const fp = path.join(DATA_DIR, file);
+  const fp = path.join(getDataDir(), file);
   if (!fs.existsSync(fp)) return;
   const stat = fs.statSync(fp);
   let entry = cache.get(file);
@@ -39,11 +50,12 @@ function invalidateCache(file: string) {
 /** Get modification times for all data files. */
 export function getFileMtimes(): Record<string, number> {
   ensure();
+  const dir = getDataDir();
   const result: Record<string, number> = {};
-  if (!fs.existsSync(DATA_DIR)) return result;
-  for (const f of fs.readdirSync(DATA_DIR)) {
+  if (!fs.existsSync(dir)) return result;
+  for (const f of fs.readdirSync(dir)) {
     if (f.endsWith(".xlsx")) {
-      const stat = fs.statSync(path.join(DATA_DIR, f));
+      const stat = fs.statSync(path.join(dir, f));
       result[f] = stat.mtimeMs;
     }
   }
@@ -87,7 +99,7 @@ export function toStrOrNull(val: unknown): string | null {
 /** Read all rows from a named sheet. Returns [] if file/sheet missing. */
 export function readRows<T extends object>(file: string, sheet: string): T[] {
   ensure();
-  const fp = path.join(DATA_DIR, file);
+  const fp = path.join(getDataDir(), file);
   if (!fs.existsSync(fp)) return [];
 
   // Check cache
@@ -113,7 +125,7 @@ export function writeRows<T extends object>(
   rows: T[]
 ): void {
   ensure();
-  const fp = path.join(DATA_DIR, file);
+  const fp = path.join(getDataDir(), file);
   let wb: XLSX.WorkBook;
   try {
     wb = fs.existsSync(fp)
@@ -137,5 +149,5 @@ export function writeRows<T extends object>(
 
 export function dataFilePath(file: string): string {
   ensure();
-  return path.join(DATA_DIR, file);
+  return path.join(getDataDir(), file);
 }

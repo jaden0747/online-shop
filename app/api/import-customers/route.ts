@@ -141,14 +141,15 @@ export async function POST(req: NextRequest) {
           const duration    = planDurationDays(plan);
           const renewalDate = addWorkingDays(startDate, duration + skipDays);
 
-          const pricing      = pricingEntries.find((p: { plan: string; goal: string; mealsPerDay: number; totalPrice: number }) => p.plan === plan && p.goal === goal && p.mealsPerDay === mealsPerDay);
-          const packagePrice = pricing?.totalPrice ?? 0;
-          const totalMeals   = duration * mealsPerDay;
-          const pricePerMeal = totalMeals > 0 ? packagePrice / totalMeals : 0;
+          const pricing           = pricingEntries.find((p: { plan: string; goal: string; mealsPerDay: number; totalPrice: number }) => p.plan === plan && p.goal === goal && p.mealsPerDay === mealsPerDay);
+          const subscriptionPrice = pricing?.totalPrice ?? 0;
 
           createSubscription({
             customerId: phone,
-            plan, goal, mealsPerDay, packagePrice, pricePerMeal,
+            plan, goal, mealsPerDay,
+            subscriptionPrice,
+            shippingPrice: 0,
+            trialDays: plan === "trial" ? duration : null,
             status: "active",
             startDate: startDate.toISOString(),
             renewalDate: renewalDate.toISOString(),

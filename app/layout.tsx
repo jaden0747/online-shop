@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { DM_Sans, Fraunces } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/sidebar";
 import { DataFileWatcher } from "@/components/data-file-watcher";
+import { TestingBanner } from "@/components/testing-banner";
+import { ThemeProvider } from "@/components/theme-provider";
 
-const geist = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+export const dynamic = "force-dynamic";
+
+const dmSans = DM_Sans({ variable: "--font-sans", subsets: ["latin"] });
+const fraunces = Fraunces({ variable: "--font-heading", subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
   title: "Oli Healthy — Operations",
@@ -13,11 +18,16 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geist.variable} h-full antialiased`}>
-      <body className="flex h-full">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto p-6 bg-background">{children}</main>
-        <DataFileWatcher />
+    <html lang="en" className={`${dmSans.variable} ${fraunces.variable} h-full antialiased`} suppressHydrationWarning>
+      <body className="flex flex-col h-full">
+        <ThemeProvider>
+          <TestingBanner />
+          <div className="flex flex-1 min-h-0">
+            <Sidebar />
+            <main className="flex-1 overflow-y-auto p-6 bg-background">{children}</main>
+          </div>
+          <DataFileWatcher />
+        </ThemeProvider>
       </body>
     </html>
   );

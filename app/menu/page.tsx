@@ -68,6 +68,7 @@ function buildWeekData(
         endDate: sub.renewalDate,
         subscriptionId: sub.id,
         skips,
+        notes: cust.notes,
       };
     })
     .filter(Boolean) as WeekData["activeCustomers"];

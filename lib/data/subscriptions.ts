@@ -1,11 +1,16 @@
-import { readRows, writeRows, toStr, toStrOrNull, toNum, parseExcelDate } from "./excel";
-import type { Subscription, MealSkip } from "./types";
+import { readRows, writeRows, toStr, toStrOrNull, toNum, toStrOrNull as toNullStr, parseExcelDate } from "./excel";
+import type { Subscription, MealSkip, SubscriptionExtra } from "./types";
 
 const FILE = "subscriptions.xlsx";
 const SHEET_S = "Subscriptions";
 const SHEET_SK = "Skips";
+const SHEET_EX = "Extras";
 
 function parseSub(raw: Record<string, unknown>): Subscription {
+  // Backward compat: old rows have packagePrice but not subscriptionPrice
+  const subscriptionPrice = raw.subscriptionPrice !== undefined && raw.subscriptionPrice !== null && raw.subscriptionPrice !== ""
+    ? toNum(raw.subscriptionPrice)
+    : toNum(raw.packagePrice);
   return {
     id: toStr(raw.id),
     customerId: toStr(raw.customerId),
@@ -13,11 +18,22 @@ function parseSub(raw: Record<string, unknown>): Subscription {
     goal: toStr(raw.goal),
     mealsPerDay: toNum(raw.mealsPerDay) || 1,
     status: toStr(raw.status) || "active",
-    packagePrice: toNum(raw.packagePrice),
-    pricePerMeal: toNum(raw.pricePerMeal),
+    shippingPrice: toNum(raw.shippingPrice),
+    subscriptionPrice,
+    trialDays: raw.trialDays !== undefined && raw.trialDays !== null && raw.trialDays !== "" ? toNum(raw.trialDays) : null,
     startDate: parseExcelDate(raw.startDate as string | number) ?? new Date().toISOString(),
     renewalDate: parseExcelDate(raw.renewalDate as string | number) ?? new Date().toISOString(),
     cancelReason: toStrOrNull(raw.cancelReason),
+    createdAt: toStr(raw.createdAt) || new Date().toISOString(),
+  };
+}
+
+function parseExtra(raw: Record<string, unknown>): SubscriptionExtra {
+  return {
+    id: toStr(raw.id),
+    subscriptionId: toStr(raw.subscriptionId),
+    amount: toNum(raw.amount),
+    note: toNullStr(raw.note),
     createdAt: toStr(raw.createdAt) || new Date().toISOString(),
   };
 }
@@ -45,6 +61,16 @@ export function getAllSkips(): MealSkip[] {
     .filter((s) => s.id && s.subscriptionId);
 }
 
+export function getAllExtras(): SubscriptionExtra[] {
+  return readRows<Record<string, unknown>>(FILE, SHEET_EX)
+    .map(parseExtra)
+    .filter((e) => e.id && e.subscriptionId);
+}
+
+export function getExtrasBySubscription(subscriptionId: string): SubscriptionExtra[] {
+  return getAllExtras().filter((e) => e.subscriptionId === subscriptionId);
+}
+
 export function getSubscriptionById(id: string): Subscription | null {
   return getAllSubscriptions().find((s) => s.id === id) ?? null;
 }
@@ -57,6 +83,33 @@ export function saveSkips(skips: MealSkip[]): void {
   writeRows(FILE, SHEET_SK, skips);
 }
 
+export function saveExtras(extras: SubscriptionExtra[]): void {
+  writeRows(FILE, SHEET_EX, extras);
+}
+
+export function createExtra(data: { subscriptionId: string; amount: number; note?: string | null }): SubscriptionExtra {
+  const extras = getAllExtras();
+  const extra: SubscriptionExtra = {
+    id: crypto.randomUUID(),
+    subscriptionId: data.subscriptionId,
+    amount: data.amount,
+    note: data.note ?? null,
+    createdAt: new Date().toISOString(),
+  };
+  extras.push(extra);
+  saveExtras(extras);
+  return extra;
+}
+
+export function updateExtra(id: string, data: Partial<Pick<SubscriptionExtra, "amount" | "note">>): void {
+  const extras = getAllExtras().map((e) => e.id === id ? { ...e, ...data } : e);
+  saveExtras(extras);
+}
+
+export function deleteExtra(id: string): void {
+  saveExtras(getAllExtras().filter((e) => e.id !== id));
+}
+
 export function createSubscription(data: Omit<Subscription, "id" | "createdAt">): Subscription {
   const subs = getAllSubscriptions();
   const sub: Subscription = {
@@ -67,6 +120,10 @@ export function createSubscription(data: Omit<Subscription, "id" | "createdAt">)
   subs.unshift(sub);
   saveSubscriptions(subs);
   return sub;
+}
+
+export function deleteExtrasBySubscription(subscriptionId: string): void {
+  saveExtras(getAllExtras().filter((e) => e.subscriptionId !== subscriptionId));
 }
 
 export function updateSubscription(id: string, data: Partial<Subscription>): void {
