@@ -73,7 +73,7 @@ function chooseTileZoom(
   const zW = Math.log2((mapPxW / 256) * (360 / lngSpan));
   const mercSpan = Math.max(mercY(minLat) - mercY(maxLat), 0.00001);
   const zH = Math.log2(mapPxH / 256 / mercSpan);
-  return Math.max(1, Math.min(16, Math.floor(Math.min(zW, zH) - 0.3)));
+  return Math.max(1, Math.min(16, Math.floor(Math.min(zW, zH))));
 }
 
 function loadImage(url: string): Promise<HTMLImageElement> {
@@ -437,15 +437,60 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
     canvas.height = CANVAS_H;
     const ctx = canvas.getContext("2d")!;
 
+    // Theme palette
+    const T = dark
+      ? {
+          headerBg: "#0f172a",
+          headerText: "#f1f5f9",
+          headerMuted: "#94a3b8",
+          sectionMapBg: "#1e293b",
+          sectionDetailBg: "#1e293b",
+          divider: "#334155",
+          bannerSep: "#334155",
+          stopSep: "#2d3f52",
+          shipperText: "#f1f5f9",
+          shipperMuted: "#64748b",
+          stopName: "#f1f5f9",
+          stopPhone: "#64748b",
+          stopAddress: "#94a3b8",
+          stopMeal: "#fbbf24",
+          stopPermNote: "#93c5fd",
+          stopDateNote: "#6ee7b7",
+          markerBorder: "#1e293b",
+          hubBg: "#f1f5f9",
+          hubText: "#0f172a",
+        }
+      : {
+          headerBg: "#0f172a",
+          headerText: "#f8fafc",
+          headerMuted: "#94a3b8",
+          sectionMapBg: "#dde6f0",
+          sectionDetailBg: "#ffffff",
+          divider: "#cbd5e1",
+          bannerSep: "#e2e8f0",
+          stopSep: "#f1f5f9",
+          shipperText: "#0f172a",
+          shipperMuted: "#64748b",
+          stopName: "#0f172a",
+          stopPhone: "#64748b",
+          stopAddress: "#475569",
+          stopMeal: "#b45309",
+          stopPermNote: "#1d4ed8",
+          stopDateNote: "#0f766e",
+          markerBorder: "#ffffff",
+          hubBg: "#0f172a",
+          hubText: "#ffffff",
+        };
+
     // ── Overall header ──
-    ctx.fillStyle = "#0f172a";
+    ctx.fillStyle = T.headerBg;
     ctx.fillRect(0, 0, CANVAS_W, HEADER_H);
-    ctx.fillStyle = "#f8fafc";
+    ctx.fillStyle = T.headerText;
     ctx.font = "bold 20px system-ui,sans-serif";
     ctx.textBaseline = "middle";
     ctx.textAlign = "left";
     ctx.fillText(`Delivery Route — ${date}`, PAD, HEADER_H / 2);
-    ctx.fillStyle = "#94a3b8";
+    ctx.fillStyle = T.headerMuted;
     ctx.font = "13px system-ui,sans-serif";
     ctx.textAlign = "right";
     ctx.fillText(
@@ -464,9 +509,9 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
       const stops = cluster.ordered.filter((d) => d.id !== "__hub__");
 
       // Section backgrounds
-      ctx.fillStyle = "#dde6f0";
+      ctx.fillStyle = T.sectionMapBg;
       ctx.fillRect(0, sectionY, MAP_W, secH);
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = T.sectionDetailBg;
       ctx.fillRect(DETAIL_X, sectionY, DETAIL_W, secH);
 
       // ── Per-shipper map ──
@@ -481,8 +526,8 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
       const rawMinLng = Math.min(...lngs), rawMaxLng = Math.max(...lngs);
       const latSpan = Math.max(rawMaxLat - rawMinLat, 0.006);
       const lngSpan = Math.max(rawMaxLng - rawMinLng, 0.006);
-      const minLat = rawMinLat - latSpan * 0.25, maxLat = rawMaxLat + latSpan * 0.25;
-      const minLng = rawMinLng - lngSpan * 0.25, maxLng = rawMaxLng + lngSpan * 0.25;
+      const minLat = rawMinLat - latSpan * 0.01, maxLat = rawMaxLat + latSpan * 0.01;
+      const minLng = rawMinLng - lngSpan * 0.01, maxLng = rawMaxLng + lngSpan * 0.01;
 
       const mapH = secH;
       const z = chooseTileZoom(minLat, maxLat, minLng, maxLng, MAP_W, mapH);
@@ -546,11 +591,11 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
 
       // Hub marker
       const [hx, hy] = toXY(hub.lat, hub.lng);
-      ctx.fillStyle = "#0f172a";
+      ctx.fillStyle = T.hubBg;
       ctx.beginPath(); ctx.arc(hx, hy, 12, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2.5;
+      ctx.strokeStyle = T.markerBorder; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(hx, hy, 12, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = T.hubText;
       ctx.font = "bold 10px system-ui,sans-serif";
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText("H", hx, hy);
@@ -560,9 +605,9 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
         const [x, y] = toXY(d.lat, d.lng);
         ctx.fillStyle = cluster.color;
         ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
+        ctx.strokeStyle = T.markerBorder; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.stroke();
-        ctx.fillStyle = "#ffffff";
+        ctx.fillStyle = T.hubText;
         ctx.font = `bold ${idx + 1 > 9 ? "9" : "10"}px system-ui,sans-serif`;
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(String(idx + 1), x, y);
@@ -572,7 +617,7 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
       ctx.restore();
 
       // Vertical divider (map | detail)
-      ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 1; ctx.setLineDash([]);
+      ctx.strokeStyle = T.divider; ctx.lineWidth = 1; ctx.setLineDash([]);
       ctx.beginPath(); ctx.moveTo(MAP_W, sectionY); ctx.lineTo(MAP_W, sectionY + secH); ctx.stroke();
 
       // ── Detail panel ──
@@ -581,11 +626,11 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
       // Shipper banner
       ctx.fillStyle = cluster.color;
       ctx.fillRect(DETAIL_X + PAD - 2, dy, 4, 24);
-      ctx.fillStyle = "#0f172a";
+      ctx.fillStyle = T.shipperText;
       ctx.font = "bold 15px system-ui,sans-serif";
       ctx.textBaseline = "middle";
       ctx.fillText(`Shipper ${ci + 1}`, DETAIL_X + PAD + 10, dy + 12);
-      ctx.fillStyle = "#64748b";
+      ctx.fillStyle = T.shipperMuted;
       ctx.font = "12px system-ui,sans-serif";
       ctx.textAlign = "right";
       ctx.fillText(
@@ -597,7 +642,7 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
       dy += SHIP_BANNER_H;
 
       // Banner separator
-      ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1;
+      ctx.strokeStyle = T.bannerSep; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(DETAIL_X + PAD, dy - 8); ctx.lineTo(DETAIL_X + DETAIL_W - PAD, dy - 8); ctx.stroke();
 
       // Stops
@@ -613,37 +658,37 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
         const tx = DETAIL_X + PAD + 24;
         const maxTW = DETAIL_W - PAD * 2 - 24;
 
-        ctx.fillStyle = "#0f172a";
+        ctx.fillStyle = T.stopName;
         ctx.font = "bold 13px system-ui,sans-serif";
         ctx.fillText(truncateText(ctx, d.name, maxTW - 140), tx, dy + 14);
-        ctx.fillStyle = "#64748b";
+        ctx.fillStyle = T.stopPhone;
         ctx.font = "11px system-ui,sans-serif";
         ctx.textAlign = "right";
         ctx.fillText(d.phone, DETAIL_X + DETAIL_W - PAD, dy + 14);
         ctx.textAlign = "left";
 
-        ctx.fillStyle = "#475569";
+        ctx.fillStyle = T.stopAddress;
         ctx.font = "11px system-ui,sans-serif";
         ctx.fillText(truncateText(ctx, d.address, maxTW), tx, dy + 29);
 
         let rowY = dy + 44;
 
         if (d.meals && d.meals.length > 0) {
-          ctx.fillStyle = "#b45309";
+          ctx.fillStyle = T.stopMeal;
           ctx.font = "11px system-ui,sans-serif";
           ctx.fillText(truncateText(ctx, `Meal: ${d.meals.join(", ")}`, maxTW), tx, rowY);
           rowY += 14;
         }
 
         if (d.permanentNote) {
-          ctx.fillStyle = "#1d4ed8";
+          ctx.fillStyle = T.stopPermNote;
           ctx.font = "italic 10px system-ui,sans-serif";
           ctx.fillText(truncateText(ctx, `Note: ${d.permanentNote}`, maxTW), tx, rowY);
           rowY += 14;
         }
 
         if (d.dateNote) {
-          ctx.fillStyle = "#0f766e";
+          ctx.fillStyle = T.stopDateNote;
           ctx.font = "italic 10px system-ui,sans-serif";
           ctx.fillText(truncateText(ctx, `Today: ${d.dateNote}`, maxTW), tx, rowY);
           rowY += 14;
@@ -652,13 +697,13 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
         dy += calcStopH(d);
 
         if (idx < stops.length - 1) {
-          ctx.strokeStyle = "#f1f5f9"; ctx.lineWidth = 1;
+          ctx.strokeStyle = T.stopSep; ctx.lineWidth = 1;
           ctx.beginPath(); ctx.moveTo(DETAIL_X + PAD + 24, dy - 4); ctx.lineTo(DETAIL_X + DETAIL_W - PAD, dy - 4); ctx.stroke();
         }
       });
 
       // Section divider
-      ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 2; ctx.setLineDash([]);
+      ctx.strokeStyle = T.divider; ctx.lineWidth = 2; ctx.setLineDash([]);
       ctx.beginPath(); ctx.moveTo(0, sectionY + secH); ctx.lineTo(CANVAS_W, sectionY + secH); ctx.stroke();
 
       sectionY += secH;

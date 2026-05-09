@@ -15,8 +15,15 @@ function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function todayStr(): string {
-  return localDateStr(new Date());
+function defaultDateStr(): string {
+  const now = new Date();
+  const day = now.getDay(); // 0 = Sun, 6 = Sat
+  if (day === 6) {
+    now.setDate(now.getDate() + 2); // Sat → Mon
+  } else if (day === 0) {
+    now.setDate(now.getDate() + 1); // Sun → Mon
+  }
+  return localDateStr(now);
 }
 
 export default async function RoutePage({
@@ -26,7 +33,7 @@ export default async function RoutePage({
 }) {
   const params = await searchParams;
   const dateParam = typeof params.date === "string" ? params.date : null;
-  const selectedDateStr = dateParam ?? todayStr();
+  const selectedDateStr = dateParam ?? defaultDateStr();
   const selectedDate = new Date(selectedDateStr + "T00:00:00");
 
   const customers = getAllCustomers();
@@ -100,7 +107,7 @@ export default async function RoutePage({
     })
     .filter(Boolean) as { id: string; name: string; phone: string; address: string; lat: number; lng: number; meals: string[]; permanentNote: string | null; dateNote: string | null }[];
 
-  const isToday = selectedDateStr === todayStr();
+  const isToday = selectedDateStr === localDateStr(new Date());
 
   return (
     <div className="space-y-6">

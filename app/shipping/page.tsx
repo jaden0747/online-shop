@@ -17,8 +17,15 @@ function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function todayStr(): string {
-  return localDateStr(new Date());
+function defaultDateStr(): string {
+  const now = new Date();
+  const day = now.getDay(); // 0 = Sun, 6 = Sat
+  if (day === 6) {
+    now.setDate(now.getDate() + 2); // Sat → Mon
+  } else if (day === 0) {
+    now.setDate(now.getDate() + 1); // Sun → Mon
+  }
+  return localDateStr(now);
 }
 
 export default async function ShippingPage({
@@ -28,7 +35,7 @@ export default async function ShippingPage({
 }) {
   const params = await searchParams;
   const dateParam = typeof params.date === "string" ? params.date : null;
-  const selectedDateStr = dateParam ?? todayStr();
+  const selectedDateStr = dateParam ?? defaultDateStr();
   // Parse as local midnight to avoid UTC shift on the server
   const selectedDate = new Date(selectedDateStr + "T00:00:00");
 
@@ -124,7 +131,7 @@ export default async function ShippingPage({
     })
     .filter((d): d is NonNullable<typeof d> => d !== null);
 
-  const isToday = selectedDateStr === todayStr();
+  const isToday = selectedDateStr === localDateStr(new Date());
 
   const permanentNotes = customers
     .map((c) => ({ customerId: c.phone, note: c.notes }))

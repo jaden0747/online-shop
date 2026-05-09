@@ -106,7 +106,7 @@ function ZoomToFitRegistrar({
     zoomToFitRef.current = () => {
       if (allPoints.length === 0) return;
       const bounds = L.latLngBounds(allPoints);
-      map.fitBounds(bounds, { padding: [20, 20] });
+      map.fitBounds(bounds, { padding: [0, 0] });
     };
     return () => { zoomToFitRef.current = null; };
   }, [map, zoomToFitRef, allPoints]);
