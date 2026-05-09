@@ -26,9 +26,10 @@ export interface Subscription {
   plan: string; // trial | weekly | monthly
   goal: string; // cutting | maintenance | bulking
   mealsPerDay: number;
-  status: string; // active | paused | cancelled
+  status: string; // active | cancelled
   shippingPrice: number;
   subscriptionPrice: number;
+  discount: number;
   trialDays: number | null; // only when plan = "trial"
   startDate: string; // ISO string
   renewalDate: string; // ISO string

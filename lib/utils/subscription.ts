@@ -36,9 +36,9 @@ export function mealsRemaining(endDate: Date | string, mealsPerDay: number): num
   return Math.max(0, countWorkingDays(new Date(), new Date(endDate)) * mealsPerDay);
 }
 
-/** A subscription is live when `asOf` (defaults to today) falls within [startDate, endDate] and it is not cancelled or paused. */
+/** A subscription is live when `asOf` (defaults to today) falls within [startDate, endDate] and it is not cancelled. */
 export function isSubscriptionLive(status: string, startDate: Date | string, endDate: Date | string, asOf?: Date): boolean {
-  if (status === "cancelled" || status === "paused") return false;
+  if (status === "cancelled") return false;
   const ref = asOf ? new Date(asOf) : new Date();
   ref.setHours(0, 0, 0, 0);
   const start = new Date(startDate);
@@ -48,10 +48,9 @@ export function isSubscriptionLive(status: string, startDate: Date | string, end
   return ref >= start && ref <= end;
 }
 
-/** Returns a derived display status based on dates, overriding with manual cancel/pause. */
+/** Returns a derived display status based on dates, overriding with manual cancel. */
 export function subscriptionStatus(status: string, startDate: Date | string, endDate: Date | string): string {
   if (status === "cancelled") return "cancelled";
-  if (status === "paused") return "paused";
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const start = new Date(startDate);

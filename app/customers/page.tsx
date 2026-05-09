@@ -44,27 +44,21 @@ export default async function CustomersPage() {
     _count: { mealSkips: skipCountMap.get(s.id) ?? 0 },
   }));
 
-  // Build active/paused maps per customer for sorting
+  // Build active map per customer for sorting
   const activeSubMap = new Map<string, (typeof subscriptions)[number]>();
-  const pausedSubMap = new Map<string, (typeof subscriptions)[number]>();
   for (const s of subscriptions) {
     if (isSubscriptionLive(s.status, s.startDate, s.renewalDate)) {
       const existing = activeSubMap.get(s.customer.id);
       if (!existing || new Date(s.renewalDate).getTime() < new Date(existing.renewalDate).getTime()) {
         activeSubMap.set(s.customer.id, s);
       }
-    } else if (s.status === "paused") {
-      if (!pausedSubMap.has(s.customer.id)) pausedSubMap.set(s.customer.id, s);
     }
   }
 
   const sortedCustomers = [...customers].sort((a, b) => {
     const aActive = activeSubMap.has(a.id), bActive = activeSubMap.has(b.id);
-    const aPaused = pausedSubMap.has(a.id), bPaused = pausedSubMap.has(b.id);
     if (aActive && bActive) return new Date(activeSubMap.get(a.id)!.renewalDate).getTime() - new Date(activeSubMap.get(b.id)!.renewalDate).getTime();
     if (aActive) return -1; if (bActive) return 1;
-    if (aPaused && bPaused) return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    if (aPaused) return -1; if (bPaused) return 1;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 

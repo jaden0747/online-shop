@@ -314,6 +314,7 @@ function makeSub(
     status: "active",
     shippingPrice: 50000,
     subscriptionPrice: 1000000,
+    discount: 0,
     trialDays: null,
     startDate: daysFromNow(-20),
     renewalDate: daysFromNow(10),
@@ -367,7 +368,7 @@ function seedScenario(id: ScenarioId) {
       });
     });
 
-    // 20 inactive: 8 cancelled, 6 paused, 6 no subscription
+    // 20 inactive: 14 cancelled, 6 no subscription
     const inactiveSubs: Subscription[] = [
       makeSub("0901000031", { status: "cancelled", cancelReason: "Đi du lịch dài ngày", renewalDate: daysFromNow(-3) }),
       makeSub("0901000032", { status: "cancelled", cancelReason: "Tài chính", renewalDate: daysFromNow(-10) }),
@@ -377,12 +378,12 @@ function seedScenario(id: ScenarioId) {
       makeSub("0901000036", { status: "cancelled", cancelReason: "Mang thai", renewalDate: daysFromNow(-8) }),
       makeSub("0901000037", { status: "cancelled", cancelReason: "Đổi chế độ ăn", renewalDate: daysFromNow(-15) }),
       makeSub("0901000038", { status: "cancelled", cancelReason: "Công việc bận rộn", renewalDate: daysFromNow(-7) }),
-      makeSub("0901000039", { status: "paused", renewalDate: daysFromNow(10) }),
-      makeSub("0901000040", { status: "paused", renewalDate: daysFromNow(14) }),
-      makeSub("0901000041", { status: "paused", renewalDate: daysFromNow(20) }),
-      makeSub("0901000042", { status: "paused", renewalDate: daysFromNow(8) }),
-      makeSub("0901000043", { status: "paused", renewalDate: daysFromNow(5) }),
-      makeSub("0901000044", { status: "paused", renewalDate: daysFromNow(30) }),
+      makeSub("0901000039", { status: "cancelled", renewalDate: daysFromNow(-10) }),
+      makeSub("0901000040", { status: "cancelled", renewalDate: daysFromNow(-14) }),
+      makeSub("0901000041", { status: "cancelled", renewalDate: daysFromNow(-20) }),
+      makeSub("0901000042", { status: "cancelled", renewalDate: daysFromNow(-8) }),
+      makeSub("0901000043", { status: "cancelled", renewalDate: daysFromNow(-5) }),
+      makeSub("0901000044", { status: "cancelled", renewalDate: daysFromNow(-30) }),
       // 45–50: no subscription (no entry added)
     ];
 

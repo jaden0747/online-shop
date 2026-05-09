@@ -19,13 +19,19 @@ export async function createSubscriptionAction(formData: FormData) {
   const mealsPerDay = parseInt(formData.get("mealsPerDay") as string, 10);
   const subscriptionPrice = parseFloat(formData.get("subscriptionPrice") as string) || 0;
   const shippingPrice = parseFloat(formData.get("shippingPrice") as string) || 0;
+  const discount = parseFloat(formData.get("discount") as string) || 0;
   const trialDaysRaw = formData.get("trialDays");
   const trialDays = plan === "trial" && trialDaysRaw ? parseInt(trialDaysRaw as string, 10) : null;
 
   const startDateRaw = formData.get("startDate") as string;
   const startDate = startDateRaw ? new Date(startDateRaw) : new Date();
+
+  // Use manual renewal date if provided, otherwise auto-compute
+  const renewalDateRaw = formData.get("renewalDate") as string;
   let renewalDate: Date;
-  if (plan === "weekly") renewalDate = addWorkingDays(startDate, 5);
+  if (renewalDateRaw) {
+    renewalDate = new Date(renewalDateRaw);
+  } else if (plan === "weekly") renewalDate = addWorkingDays(startDate, 5);
   else if (plan === "monthly") renewalDate = addWorkingDays(startDate, 20);
   else renewalDate = addWorkingDays(startDate, trialDays ?? 3);
 
@@ -36,6 +42,7 @@ export async function createSubscriptionAction(formData: FormData) {
     mealsPerDay,
     subscriptionPrice,
     shippingPrice,
+    discount,
     trialDays,
     status: "active",
     startDate: startDate.toISOString(),
@@ -64,6 +71,7 @@ export async function updateSubscriptionAction(
     mealsPerDay: number;
     subscriptionPrice: number;
     shippingPrice: number;
+    discount: number;
     trialDays: number | null;
     startDate: Date;
     renewalDate: Date;

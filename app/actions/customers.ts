@@ -18,6 +18,7 @@ import { getAllMenuItems } from "@/lib/data/menu";
 import { getAllPricing } from "@/lib/data/pricing";
 import { getNotesByCustomer } from "@/lib/data/notes";
 import { getAllOrderDayAddresses } from "@/lib/data/order-day-addresses";
+import { getSettings } from "@/lib/data/settings";
 import type { Customer, CustomerAddress, Subscription, Pricing, MealSkip, MealSelection, MenuItem, KitchenNote, OrderDayAddress } from "@/lib/data/types";
 
 export async function createCustomerAction(formData: FormData) {
@@ -61,6 +62,7 @@ export async function getCustomerDetailsAction(customerId: string): Promise<{
   allMenuItems: MenuItem[];
   kitchenNotes: KitchenNote[];
   dayAddresses: OrderDayAddress[];
+  hub: { lat: number; lng: number };
 }> {
   const customer = getCustomerById(customerId);
   const addresses = getAllAddresses().filter((a) => a.customerId === customerId);
@@ -82,7 +84,9 @@ export async function getCustomerDetailsAction(customerId: string): Promise<{
   const kitchenNotes = getNotesByCustomer(customerId);
   const dayAddresses = getAllOrderDayAddresses().filter((r) => subIds.has(r.subscriptionId));
 
-  return { customer, addresses, subscriptions, skipCounts, totalSpend, pricing, skips, allSelections, allMenuItems, kitchenNotes, dayAddresses };
+  const settings = getSettings();
+
+  return { customer, addresses, subscriptions, skipCounts, totalSpend, pricing, skips, allSelections, allMenuItems, kitchenNotes, dayAddresses, hub: { lat: settings.hubLat, lng: settings.hubLng } };
 }
 
 export async function updateCustomerNoteAction(id: string, notes: string | null) {

@@ -9,7 +9,7 @@ const SCENARIOS = [
   {
     id: "default" as const,
     name: "Mixed states",
-    description: "3 active, 1 expiring in 2 days, 1 paused, 1 cancelled, 2 with no subscription",
+    description: "3 active, 1 expiring in 2 days, 1 cancelled, 2 with no subscription",
   },
   {
     id: "empty" as const,

@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
 
       if (VALID_PLANS.includes(plan) && VALID_GOALS.includes(goal)) {
         const activeSub = existingSubscriptions.find(
-          (s) => s.customerId === phone && s.status !== "cancelled" && s.status !== "paused"
+          (s) => s.customerId === phone && s.status !== "cancelled"
         );
         if (!activeSub) {
           const startDate   = parseDate(get(row, "start date", "start_date")) ?? new Date();
@@ -149,6 +149,7 @@ export async function POST(req: NextRequest) {
             plan, goal, mealsPerDay,
             subscriptionPrice,
             shippingPrice: 0,
+            discount: 0,
             trialDays: plan === "trial" ? duration : null,
             status: "active",
             startDate: startDate.toISOString(),

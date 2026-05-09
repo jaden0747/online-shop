@@ -30,6 +30,7 @@ type Sub = {
   mealsPerDay: number;
   subscriptionPrice: number;
   shippingPrice: number;
+  discount: number;
   trialDays: number | null;
   startDate: string;
   renewalDate: string;
@@ -65,6 +66,7 @@ export function EditSubscriptionRow({
   const [mealsPerDay, setMealsPerDay] = useState(String(sub.mealsPerDay));
   const [subscriptionPrice, setSubscriptionPrice] = useState(sub.subscriptionPrice);
   const [shippingPrice, setShippingPrice] = useState(sub.shippingPrice);
+  const [discount, setDiscount] = useState(sub.discount ?? 0);
   const [trialDays, setTrialDays] = useState(sub.trialDays ?? 3);
   const [startDateStr, setStartDateStr] = useState(
     new Date(sub.startDate).toISOString().split("T")[0]
@@ -98,6 +100,7 @@ export function EditSubscriptionRow({
       setMealsPerDay(String(sub.mealsPerDay));
       setSubscriptionPrice(sub.subscriptionPrice);
       setShippingPrice(sub.shippingPrice);
+      setDiscount(sub.discount ?? 0);
       setTrialDays(sub.trialDays ?? 3);
       setStartDateStr(new Date(sub.startDate).toISOString().split("T")[0]);
       setRenewalDateStr(new Date(sub.renewalDate).toISOString().split("T")[0]);
@@ -126,6 +129,7 @@ export function EditSubscriptionRow({
         mealsPerDay: mpd,
         subscriptionPrice,
         shippingPrice,
+        discount,
         trialDays: plan === "trial" ? trialDays : null,
         startDate,
         renewalDate,

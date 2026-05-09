@@ -19,14 +19,15 @@ import {
 import { updateAddressCoordsStringAction } from "@/app/actions/addresses";
 import {
   updateSubscriptionStatusAction,
-  extendSubscriptionRenewalAction,
   createSubscriptionAction,
   updateSubscriptionAction,
+  deleteSubscriptionAction,
 } from "@/app/actions/subscriptions";
 import { skipDayAndExtendAction, unskipDayAndShortenAction } from "@/app/actions/skips";
 import { upsertSelectionDirectAction, deleteSelectionDirectAction } from "@/app/actions/selections";
 import { upsertKitchenNoteAction } from "@/app/actions/notes";
 import { upsertDayAddressAction, deleteDayAddressAction } from "@/app/actions/order-day-addresses";
+import { CustomerMinimap } from "./customer-minimap";
 import type { Customer, CustomerAddress, Subscription, Pricing, MealSkip, MealSelection, MenuItem, KitchenNote, OrderDayAddress } from "@/lib/data/types";
 import { subscriptionStatus, daysRemaining, planTotalMeals, addWorkingDays, isSubscriptionLive } from "@/lib/utils/subscription";
 import { weekLabelForDate } from "@/lib/utils/week";
@@ -44,6 +45,7 @@ type Details = {
   allMenuItems: MenuItem[];
   kitchenNotes: KitchenNote[];
   dayAddresses: OrderDayAddress[];
+  hub: { lat: number; lng: number };
 };
 
 // ── CoordsEditor ────────────────────────────────────────────────────────────
@@ -153,6 +155,7 @@ function SubForm({
   );
   const [subPrice, setSubPrice] = useState(initial ? String(initial.subscriptionPrice) : "");
   const [shipPrice, setShipPrice] = useState(initial ? String(initial.shippingPrice) : "");
+  const [discount, setDiscount] = useState(initial ? String(initial.discount ?? 0) : "0");
   const [autoRenewal, setAutoRenewal] = useState(mode === "create");
   const [saving, startSave] = useTransition();
 
@@ -184,7 +187,9 @@ function SubForm({
       fd.set("mealsPerDay", String(meals));
       fd.set("subscriptionPrice", subPrice);
       fd.set("shippingPrice", shipPrice || "0");
+      fd.set("discount", discount || "0");
       fd.set("startDate", startDate);
+      if (!autoRenewal && renewalDate) fd.set("renewalDate", renewalDate);
       if (plan === "trial") fd.set("trialDays", String(trialDays));
       startSave(async () => { await createSubscriptionAction(fd); onSaved(); });
     } else {
@@ -194,6 +199,7 @@ function SubForm({
           plan, goal, mealsPerDay: meals,
           subscriptionPrice: parseFloat(subPrice) || 0,
           shippingPrice: parseFloat(shipPrice) || 0,
+          discount: parseFloat(discount) || 0,
           trialDays: plan === "trial" ? trialDays : null,
           startDate: new Date(startDate),
           renewalDate: new Date(renewalDate),
@@ -203,76 +209,83 @@ function SubForm({
     }
   }
 
-  const totalMeals = planTotalMeals(plan) * meals;
-  const sel = "w-full border rounded px-1.5 py-1 text-xs bg-background outline-none focus:ring-1 focus:ring-ring";
-  const inp = "w-full border rounded px-1.5 py-1 text-xs bg-background outline-none focus:ring-1 focus:ring-ring";
+const totalMeals = planTotalMeals(plan) * meals;
+const totalPrice = (parseFloat(subPrice) || 0) + (parseFloat(shipPrice) || 0) - (parseFloat(discount) || 0);
+const sel = "w-full border rounded px-1 py-0.5 text-xs bg-background outline-none focus:ring-1 focus:ring-ring";
+const inp = "w-full border rounded px-1 py-0.5 text-xs bg-background outline-none focus:ring-1 focus:ring-ring";
 
   return (
-    <div className="border rounded-lg p-2.5 space-y-2 bg-muted/20">
-      <div className="grid grid-cols-3 gap-1.5">
-        <div className="space-y-0.5">
-          <label className="text-[10px] text-muted-foreground">Plan</label>
+    <div className="border rounded-lg p-2 space-y-1 bg-muted/20 text-xs">
+      <div className="grid grid-cols-3 gap-x-2 gap-y-0.5">
+        <label className="flex items-center gap-1">
+          <span className="text-[10px] text-muted-foreground shrink-0">Plan</span>
           <select className={sel} value={plan} onChange={(e) => setPlan(e.target.value)}>
             {PLANS.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
-        </div>
-        <div className="space-y-0.5">
-          <label className="text-[10px] text-muted-foreground">Goal</label>
+        </label>
+        <label className="flex items-center gap-1">
+          <span className="text-[10px] text-muted-foreground shrink-0">Goal</span>
           <select className={sel} value={goal} onChange={(e) => setGoal(e.target.value)}>
             {GOALS.map((g) => <option key={g} value={g}>{g}</option>)}
           </select>
-        </div>
-        <div className="space-y-0.5">
-          <label className="text-[10px] text-muted-foreground">Meals/day</label>
+        </label>
+        <label className="flex items-center gap-1">
+          <span className="text-[10px] text-muted-foreground shrink-0">Meals</span>
           <select className={sel} value={meals} onChange={(e) => setMeals(Number(e.target.value))}>
             {[1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
-        </div>
+        </label>
       </div>
       {plan === "trial" && (
-        <div className="space-y-0.5">
-          <label className="text-[10px] text-muted-foreground">Trial days</label>
+        <label className="flex items-center gap-1">
+          <span className="text-[10px] text-muted-foreground shrink-0">Trial days</span>
           <input className={inp} type="number" min={1} value={trialDays} onChange={(e) => setTrialDays(Number(e.target.value))} />
-        </div>
+        </label>
       )}
-      <div className="grid grid-cols-2 gap-1.5">
-        <div className="space-y-0.5">
-          <label className="text-[10px] text-muted-foreground">Start</label>
-          <input className={inp} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-        </div>
-        <div className="space-y-0.5">
-          <label className="text-[10px] text-muted-foreground flex items-center gap-1">
-            Renewal
-            <button type="button" onClick={() => setAutoRenewal((v) => !v)}
-              className={"text-[9px] px-1 rounded " + (autoRenewal ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground")}>
-              {autoRenewal ? "auto" : "manual"}
-            </button>
-          </label>
-          <input className={inp} type="date" value={renewalDate}
-            readOnly={autoRenewal}
-            onChange={(e) => { setAutoRenewal(false); setRenewalDate(e.target.value); }} />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-1.5">
-        <div className="space-y-0.5">
-          <label className="text-[10px] text-muted-foreground">Sub price</label>
+      <div className="grid grid-cols-3 gap-x-2 gap-y-0.5">
+        <label className="flex items-center gap-1">
+          <span className="text-[10px] text-muted-foreground shrink-0">Sub</span>
           <input className={inp} type="number" placeholder="0" value={subPrice} onChange={(e) => setSubPrice(e.target.value)} />
-        </div>
-        <div className="space-y-0.5">
-          <label className="text-[10px] text-muted-foreground">Ship price</label>
+        </label>
+        <label className="flex items-center gap-1">
+          <span className="text-[10px] text-muted-foreground shrink-0">Ship</span>
           <input className={inp} type="number" placeholder="0" value={shipPrice} onChange={(e) => setShipPrice(e.target.value)} />
-        </div>
+        </label>
+        <label className="flex items-center gap-1">
+          <span className="text-[10px] text-muted-foreground shrink-0">Disc</span>
+          <input className={inp} type="number" placeholder="0" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+        </label>
       </div>
-      <p className="text-[10px] text-muted-foreground">{totalMeals} meals total</p>
-      <div className="flex gap-1.5">
-        <button type="button" onClick={submit} disabled={saving || !subPrice}
-          className="flex items-center gap-1 px-2.5 py-0.5 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-          <Check size={11} /> {mode === "create" ? "Create" : "Save"}
-        </button>
-        <button type="button" onClick={onCancel}
-          className="flex items-center gap-1 px-2.5 py-0.5 text-xs rounded border hover:bg-accent">
-          <X size={11} /> Cancel
-        </button>
+      <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+        <label className="flex items-center gap-1">
+          <span className="text-[10px] text-muted-foreground shrink-0">Start</span>
+          <input className={inp} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        </label>
+        <label className="flex items-center gap-1">
+          <span className="text-[10px] text-muted-foreground shrink-0">End</span>
+          <input className={inp} type="date" value={renewalDate} onChange={(e) => { setRenewalDate(e.target.value); setAutoRenewal(false); }} />
+        </label>
+      </div>
+      <div className="flex items-center gap-2">
+        <label className="flex items-center gap-1 cursor-pointer">
+          <input type="checkbox" checked={autoRenewal} onChange={(e) => setAutoRenewal(e.target.checked)} className="h-3 w-3" />
+          <span className="text-[10px] text-muted-foreground">Auto end date</span>
+        </label>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-muted-foreground">
+          {totalMeals} meals · ₫{totalPrice.toLocaleString()}
+        </span>
+        <div className="flex gap-1">
+          <button type="button" onClick={submit} disabled={saving || !subPrice}
+            className="flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            <Check size={10} /> {mode === "create" ? "Create" : "Save"}
+          </button>
+          <button type="button" onClick={onCancel}
+            className="flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] rounded border hover:bg-accent">
+            <X size={10} /> Cancel
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -281,6 +294,25 @@ function SubForm({
 // ── Shared helpers ───────────────────────────────────────────────────────────
 function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function getRouteInfo(
+  routes: Map<string, { positions: [number, number][]; distance: number; duration: number }>,
+  loadingRoutes: boolean,
+  addrId: string
+): React.ReactNode {
+  const route = routes.get(addrId);
+  if (route) {
+    return (
+      <span className="text-[10px] text-emerald-600">
+        {(route.distance / 1000).toFixed(1)} km · {Math.round(route.duration / 60)} min
+      </span>
+    );
+  }
+  if (loadingRoutes) {
+    return <span className="text-[10px] text-muted-foreground/40">Loading route...</span>;
+  }
+  return null;
 }
 
 function fmt(iso: string) {
@@ -305,6 +337,7 @@ function SchedulePanel({
   dayAddresses,
   customerId,
   onReload,
+  minimap,
 }: {
   subscriptions: Subscription[];
   addresses: CustomerAddress[];
@@ -315,6 +348,7 @@ function SchedulePanel({
   dayAddresses: OrderDayAddress[];
   customerId: string;
   onReload: () => void;
+  minimap?: React.ReactNode;
 }) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -443,193 +477,195 @@ function SchedulePanel({
   return (
     <div className="space-y-2 border-t pt-3 mt-1">
       <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Schedule</p>
-      <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-4 items-start">
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* ── Left Column: Calendar + Detail Panel ── */}
+          <div className="space-y-3 max-h-[350px] overflow-y-auto">
+          {/* Calendar */}
+          <div className="space-y-0.5">
+            <div className="flex items-center justify-between">
+              <button type="button" onClick={prevMonth} className="h-5 w-5 flex items-center justify-center rounded hover:bg-accent">
+                <ChevronLeft size={10} />
+              </button>
+              <span className="text-xs font-medium">{MONTH_NAMES[month]} {year}</span>
+              <button type="button" onClick={nextMonth} className="h-5 w-5 flex items-center justify-center rounded hover:bg-accent">
+                <ChevronRight size={10} />
+              </button>
+            </div>
 
-        {/* ── Calendar ── */}
-        <div className="space-y-1 w-[224px]">
-          <div className="flex items-center justify-between">
-            <button type="button" onClick={prevMonth} className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent">
-              <ChevronLeft size={12} />
-            </button>
-            <span className="text-xs font-medium">{MONTH_NAMES[month]} {year}</span>
-            <button type="button" onClick={nextMonth} className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent">
-              <ChevronRight size={12} />
-            </button>
+            <div className="flex gap-2 items-start">
+              <div className="space-y-0.5 flex-1">
+                <div className="grid grid-cols-7">
+                  {DAY_HDR.map((h, i) => (
+                    <div key={i} className={`text-center text-[9px] font-medium py-0.5 ${i >= 5 ? "text-muted-foreground/40" : "text-muted-foreground/70"}`}>{h}</div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-px">
+                  {calDays.map((dateStr, i) => {
+                    if (!dateStr) return <div key={`e${i}`} className="h-7" />;
+                    const d = new Date(dateStr + "T12:00:00");
+                    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                    const isActive = !isWeekend && isActiveOnDate(dateStr);
+                    const isSkipped = skippedSet.has(dateStr);
+                    const isReplacement = replacementSet.has(dateStr);
+                    const isToday = dateStr === todayStr;
+                    const isSelected = dateStr === selectedDateStr;
+                    const isClickable = !isWeekend && dateStr <= maxDateStr;
+
+                    // Priority: skipped > replacement > today > active-past(delivered) > active-future > inactive
+                    let bg = "";
+                    let tc = isWeekend ? "text-muted-foreground/40" : "text-muted-foreground/60";
+                    if (isSkipped) {
+                      bg = "bg-yellow-100 dark:bg-yellow-900/30"; tc = "text-yellow-800 dark:text-yellow-300";
+                    } else if (isReplacement) {
+                      bg = "bg-blue-100 dark:bg-blue-900/30"; tc = "text-blue-700 dark:text-blue-400";
+                    } else if (isToday) {
+                      bg = "bg-emerald-600"; tc = "text-white font-bold";
+                    } else if (isActive && dateStr < todayStr) {
+                      bg = "bg-muted/60"; tc = "text-muted-foreground/70";
+                    } else if (isActive) {
+                      bg = "bg-emerald-50 dark:bg-emerald-900/10"; tc = "text-emerald-700 dark:text-emerald-300";
+                    }
+
+                    // Border: today gets solid emerald, selected gets dashed primary
+                    const borderClass = isToday && isSelected
+                      ? "border-2 border-dashed border-emerald-400"
+                      : isToday
+                      ? "border-2 border-emerald-800"
+                      : isSelected
+                      ? "border-2 border-dashed border-primary"
+                      : "";
+
+                return (
+                  <button
+                    key={dateStr}
+                    type="button"
+                    onClick={isClickable ? () => { setSelectedDateStr(dateStr); } : undefined}
+                    className={[
+                      "h-7 w-full rounded text-[11px] flex items-center justify-center transition-colors",
+                      bg, tc, borderClass,
+                      isClickable ? "hover:brightness-90 cursor-pointer" : "opacity-40 cursor-not-allowed",
+                    ].filter(Boolean).join(" ")}
+                  >
+                    {isSkipped ? <s>{d.getDate()}</s> : d.getDate()}
+                  </button>
+                );
+                  })}
+                </div>
+              </div>
+
+              {/* Legend - right side */}
+              <div className="flex flex-col gap-0.5 pt-4">
+                {[
+                  ["bg-emerald-600", "Today"],
+                  ["bg-muted/60", "Delivered"],
+                  ["bg-emerald-50 border border-emerald-200", "Upcoming"],
+                  ["bg-yellow-100", "Skipped"],
+                  ["bg-blue-100", "Replacement"],
+                ].map(([c, l]) => (
+                  <span key={l} className="flex items-center gap-1 text-[9px] text-muted-foreground whitespace-nowrap">
+                    <span className={`w-2.5 h-2.5 rounded-sm ${c}`} />{l}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-7">
-            {DAY_HDR.map((h, i) => (
-              <div key={i} className={`text-center text-[9px] font-medium py-0.5 ${i >= 5 ? "text-muted-foreground/40" : "text-muted-foreground/70"}`}>{h}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-px">
-            {calDays.map((dateStr, i) => {
-              if (!dateStr) return <div key={`e${i}`} className="h-7" />;
-              const d = new Date(dateStr + "T12:00:00");
-              const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-              const isActive = !isWeekend && isActiveOnDate(dateStr);
-              const isSkipped = skippedSet.has(dateStr);
-              const isReplacement = replacementSet.has(dateStr);
-              const isToday = dateStr === todayStr;
-              const isSelected = dateStr === selectedDateStr;
-              const isClickable = !isWeekend && dateStr <= maxDateStr;
 
-              // Priority: skipped > replacement > today > active-past(delivered) > active-future > inactive
-              let bg = "";
-              let tc = isWeekend ? "text-muted-foreground/40" : "text-muted-foreground/60";
-              if (isSkipped) {
-                bg = "bg-yellow-100 dark:bg-yellow-900/30"; tc = "text-yellow-800 dark:text-yellow-300";
-              } else if (isReplacement) {
-                bg = "bg-blue-100 dark:bg-blue-900/30"; tc = "text-blue-700 dark:text-blue-400";
-              } else if (isToday) {
-                bg = "bg-emerald-600"; tc = "text-white font-bold";
-              } else if (isActive && dateStr < todayStr) {
-                bg = "bg-muted/60"; tc = "text-muted-foreground/70";
-              } else if (isActive) {
-                bg = "bg-emerald-50 dark:bg-emerald-900/10"; tc = "text-emerald-700 dark:text-emerald-300";
-              }
-
-              // Border: today gets solid emerald, selected gets dashed primary
-              const borderClass = isToday && isSelected
-                ? "border-2 border-dashed border-emerald-400"
-                : isToday
-                ? "border-2 border-emerald-800"
-                : isSelected
-                ? "border-2 border-dashed border-primary"
-                : "";
-
-              return (
-                <button
-                  key={dateStr}
-                  type="button"
-                  onClick={isClickable ? () => { setSelectedDateStr(dateStr); } : undefined}
-                  className={[
-                    "h-7 w-full rounded text-[11px] flex items-center justify-center transition-colors",
-                    bg, tc, borderClass,
-                    isClickable ? "hover:brightness-90 cursor-pointer" : "opacity-40 cursor-not-allowed",
-                  ].filter(Boolean).join(" ")}
-                >
-                  {isSkipped ? <s>{d.getDate()}</s> : d.getDate()}
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex flex-wrap gap-2.5 pt-0.5">
-            {[
-              ["bg-emerald-600", "Today"],
-              ["bg-muted/60", "Delivered"],
-              ["bg-emerald-50 border border-emerald-200", "Upcoming"],
-              ["bg-yellow-100", "Skipped"],
-              ["bg-blue-100", "Replacement"],
-            ].map(([c, l]) => (
-              <span key={l} className="flex items-center gap-1 text-[9px] text-muted-foreground">
-                <span className={`w-2.5 h-2.5 rounded-sm ${c}`} />{l}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Detail panel ── */}
-        <div className="space-y-2.5 min-w-0 text-xs">
-          {!selectedDateStr ? (
-            <p className="text-muted-foreground/50 italic">Click a date to manage meals and skips.</p>
-          ) : (
-            <>
-              <p className="font-medium">
-                {new Date(selectedDateStr + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
-              </p>
-              {!selectedActiveSub ? (
-                <p className="text-muted-foreground">No active subscription on this date.</p>
-              ) : (
-                <>
-                  {/* Address (only if customer has multiple) */}
-                  {addresses.length > 1 && (
-                    <div className="space-y-0.5">
-                      <label className="text-[10px] text-muted-foreground">Delivery address for this day</label>
-                      <select
-                        className="w-full border rounded px-1.5 py-1 text-xs bg-background outline-none focus:ring-1 focus:ring-ring"
-                        value={selectedDayAddress?.addressId ?? ""}
-                        onChange={(e) => handleDayAddressChange(e.target.value)}
-                        disabled={isPending || isPast}
-                      >
-                        <option value="">Use customer default</option>
-                        {addresses.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.label ? `${a.label} — ` : ""}{a.address}
-                            {a.isDefault ? " (default)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {/* Meals */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-muted-foreground">Meals</label>
-                    {selectedMenuItems.length === 0 ? (
-                      <p className="text-muted-foreground/50">No menu items set for this week/day.</p>
-                    ) : (
-                      Array.from({ length: selectedActiveSub.mealsPerDay }, (_, i) => i + 1).map((mealNum) => {
-                        const cur = selectedSelections.find((s) => s.mealNum === mealNum);
-                        return (
-                          <div key={mealNum} className="flex items-center gap-2">
-                            <span className="text-[10px] text-muted-foreground w-10 shrink-0">Meal {mealNum}</span>
-                            <select
-                              className="flex-1 border rounded px-1.5 py-0.5 text-xs bg-background outline-none focus:ring-1 focus:ring-ring"
-                              value={cur?.menuSlot ?? ""}
-                              onChange={(e) => handleMealChange(mealNum, e.target.value ? Number(e.target.value) : null)}
-                              disabled={isPending || isPast}
-                            >
-                              <option value="">— not selected —</option>
-                              {selectedMenuItems.map((item) => (
-                                <option key={item.id} value={item.slot}>{item.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                        );
-                      })
+          {/* Detail Panel */}
+          <div className="space-y-1 min-w-0 text-xs">
+            {!selectedDateStr ? (
+              <p className="text-muted-foreground/50 italic text-[11px]">Click a date to manage meals and skips.</p>
+            ) : (
+              <>
+                <p className="font-medium text-sm">
+                  {new Date(selectedDateStr + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+                </p>
+                {!selectedActiveSub ? (
+                  <p className="text-muted-foreground text-[11px]">No active subscription on this date.</p>
+                ) : (
+                  <>
+                    {/* Address (only if customer has multiple) */}
+                    {addresses.length > 1 && (
+                      <div className="space-y-0.5">
+                        <select
+                          className="w-full border rounded px-1 py-0.5 text-xs bg-background outline-none focus:ring-1 focus:ring-ring"
+                          value={selectedDayAddress?.addressId ?? ""}
+                          onChange={(e) => handleDayAddressChange(e.target.value)}
+                          disabled={isPending || isPast}
+                        >
+                          <option value="">Default address</option>
+                          {addresses.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.label ? `${a.label}` : "Address"}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     )}
-                  </div>
 
-                  {/* Per-day note */}
-                  <div className="space-y-0.5">
-                    <label className="text-[10px] text-muted-foreground">Day note</label>
-                    <textarea
-                      className="w-full min-h-[48px] rounded border border-input bg-transparent px-2 py-1.5 text-xs resize-none outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 placeholder:text-muted-foreground disabled:opacity-50"
-                      placeholder="Allergies, preferences…"
-                      value={dayNoteValue}
-                      onChange={(e) => setDayNoteValue(e.target.value)}
-                      onBlur={handleDayNoteBlur}
-                      disabled={isPending || isPast}
-                    />
-                  </div>
+                    {/* Meals */}
+                    <div className="space-y-0.5">
+                      {selectedMenuItems.length === 0 ? (
+                        <p className="text-muted-foreground/50 text-[11px]">No menu items.</p>
+                      ) : (
+                        Array.from({ length: selectedActiveSub.mealsPerDay }, (_, i) => i + 1).map((mealNum) => {
+                          const cur = selectedSelections.find((s) => s.mealNum === mealNum);
+                          return (
+                            <div key={mealNum} className="flex items-center gap-1">
+                              <span className="text-[10px] text-muted-foreground w-8 shrink-0">M{mealNum}</span>
+                              <select
+                                className="flex-1 border rounded px-1 py-0.5 text-[11px] bg-background outline-none focus:ring-1 focus:ring-ring"
+                                value={cur?.menuSlot ?? ""}
+                                onChange={(e) => handleMealChange(mealNum, e.target.value ? Number(e.target.value) : null)}
+                                disabled={isPending || isPast}
+                              >
+                                <option value="">—</option>
+                                {selectedMenuItems.map((item) => (
+                                  <option key={item.id} value={item.slot}>{item.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
 
-                  {/* Skip */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-muted-foreground">Skip</label>
+                    {/* Per-day note */}
+                    <div className="space-y-0.5">
+                      <textarea
+                        className="w-full min-h-[36px] rounded border border-input bg-transparent px-2 py-1 text-xs resize-none outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30 placeholder:text-muted-foreground/50 disabled:opacity-50"
+                        placeholder="Note..."
+                        value={dayNoteValue}
+                        onChange={(e) => setDayNoteValue(e.target.value)}
+                        onBlur={handleDayNoteBlur}
+                        disabled={isPending || isPast}
+                      />
+                    </div>
+
+                    {/* Skip */}
                     {selectedSkip ? (
-                      <div className="border rounded-lg p-2 space-y-1 bg-yellow-50/60 dark:bg-yellow-900/10">
-                        <p className="text-yellow-700 dark:text-yellow-400 font-medium text-[11px]">⊘ This day is skipped</p>
-                        {selectedSkip.replacementDay && (
-                          <p className="text-muted-foreground text-[11px]">
-                            Replacement: {new Date(selectedSkip.replacementDay).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                          </p>
-                        )}
+                      <div className="border rounded p-1.5 space-y-0.5 bg-yellow-50/60 dark:bg-yellow-900/10">
+                        <p className="text-yellow-700 dark:text-yellow-400 font-medium text-[10px]">⊘ Skipped</p>
                         <button type="button" onClick={() => handleSkipRemove(selectedSkip.id)} disabled={isPending || isPast}
-                          className="px-2 py-0.5 rounded border hover:bg-accent disabled:opacity-50">
-                          Remove skip
+                          className="px-1.5 py-0.5 text-[10px] rounded border hover:bg-accent disabled:opacity-50">
+                          Remove
                         </button>
                       </div>
                     ) : (
                       <button type="button" onClick={handleSkip} disabled={isPending || isPast}
-                        className="px-2 py-0.5 rounded border hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed">
-                        Skip this day
+                        className="px-1.5 py-0.5 text-[10px] rounded border hover:bg-accent disabled:opacity-50">
+                        Skip day
                       </button>
                     )}
-                  </div>
-                </>
+                  </>
               )}
             </>
           )}
+        </div>
+        </div>
+
+        {/* ── Right Column: Minimap ── */}
+        <div>
+          {minimap}
         </div>
       </div>
     </div>
@@ -649,6 +685,8 @@ export function CustomerOverlay({
   const [currentId, setCurrentId] = useState(customerId);
   const [isPending, startTransition] = useTransition();
   const prevOpenRef = useRef(false);
+  const [routes, setRoutes] = useState<Map<string, { positions: [number, number][]; distance: number; duration: number }>>(new Map());
+  const [loadingRoutes, setLoadingRoutes] = useState(false);
 
   // Note
   const [noteValue, setNoteValue] = useState("");
@@ -702,7 +740,10 @@ export function CustomerOverlay({
   }, [open, onOpenChange, editingInfo, editingAddrId, showAddAddr, showAddSub, editingSubId, cancellingId]);
 
   function load(id: string, clearFirst = true) {
-    if (clearFirst) setDetails(null);
+    if (clearFirst) {
+      setDetails(null);
+      setRoutes(new Map());
+    }
     getCustomerDetailsAction(id).then((d) => {
       setDetails(d);
       setNoteValue(d.customer?.notes ?? "");
@@ -715,6 +756,56 @@ export function CustomerOverlay({
   function reload(id?: string) {
     load(id ?? currentId, false);
   }
+
+  // ── Fetch routes from hub to all customer addresses ─────────────
+  useEffect(() => {
+    if (!details || !details.hub) return;
+    const addressesWithCoords = details.addresses.filter(
+      (a) => a.latitude != null && a.longitude != null
+    );
+    if (addressesWithCoords.length === 0) return;
+
+    setLoadingRoutes(true);
+    const hub = details.hub;
+
+    const fetchRoute = async (addr: CustomerAddress) => {
+      try {
+        const res = await fetch("/api/route-geometry", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            waypoints: [
+              { lat: hub.lat, lng: hub.lng },
+              { lat: addr.latitude!, lng: addr.longitude! },
+            ],
+          }),
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data.positions) {
+          return { addrId: addr.id, data };
+        }
+      } catch {
+        // Ignore individual route fetch errors
+      }
+      return null;
+    };
+
+    Promise.all(addressesWithCoords.map(fetchRoute)).then((results) => {
+      const newRoutes = new Map(routes);
+      results.forEach((result) => {
+        if (result) {
+          newRoutes.set(result.addrId, {
+            positions: result.data.positions,
+            distance: result.data.distance ?? 0,
+            duration: result.data.duration ?? 0,
+          });
+        }
+      });
+      setRoutes(newRoutes);
+      setLoadingRoutes(false);
+    });
+  }, [details?.hub, details?.addresses]);
 
   // ── Note ────────────────────────────────────────────────────────────────
   function handleNoteBlur() {
@@ -788,27 +879,6 @@ export function CustomerOverlay({
   }
 
   // ── Subscriptions ────────────────────────────────────────────────────────
-  function handlePause(id: string) {
-    startTransition(async () => {
-      await updateSubscriptionStatusAction(id, "paused");
-      reload();
-    });
-  }
-
-  function handleResume(id: string) {
-    startTransition(async () => {
-      await updateSubscriptionStatusAction(id, "active");
-      reload();
-    });
-  }
-
-  function handleExtend(id: string) {
-    startTransition(async () => {
-      await extendSubscriptionRenewalAction(id);
-      reload();
-    });
-  }
-
   function handleRecover(id: string) {
     startTransition(async () => {
       await updateSubscriptionStatusAction(id, "active");
@@ -821,6 +891,14 @@ export function CustomerOverlay({
       await updateSubscriptionStatusAction(id, "cancelled", cancelReason.trim() || undefined);
       setCancellingId(null);
       setCancelReason("");
+      reload();
+    });
+  }
+
+  function handleDeleteSubscription(id: string) {
+    if (!window.confirm("Permanently delete this subscription? This action cannot be undone.")) return;
+    startTransition(async () => {
+      await deleteSubscriptionAction(id);
       reload();
     });
   }
@@ -944,13 +1022,14 @@ export function CustomerOverlay({
                             )
                           }
                           <div className="flex-1 min-w-0">
-                            {addr.label && (
-                              <span className={addr.isDefault ? "font-medium" : "text-muted-foreground"}>{addr.label} </span>
-                            )}
-                            <span className="text-muted-foreground break-words">{addr.address}</span>
-                            {addr.zone && <span className="text-muted-foreground/60"> · {addr.zone}</span>}
-                            <CoordsEditor addressId={addr.id} customerId={currentId} lat={addr.latitude} lng={addr.longitude} onSaved={reload} />
-                          </div>
+                             {addr.label && (
+                               <span className={addr.isDefault ? "font-medium" : "text-muted-foreground"}>{addr.label} </span>
+                             )}
+                             <span className="text-muted-foreground break-words">{addr.address}</span>
+                             {addr.zone && <span className="text-muted-foreground/60"> · {addr.zone}</span>}
+                             <CoordsEditor addressId={addr.id} customerId={currentId} lat={addr.latitude} lng={addr.longitude} onSaved={reload} />
+                             {addr.latitude != null && addr.longitude != null && getRouteInfo(routes, loadingRoutes, addr.id)}
+                           </div>
                           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0">
                             <button type="button" onClick={() => startEditAddr(addr)}
                               className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent">
@@ -997,7 +1076,7 @@ export function CustomerOverlay({
                     {isPending && <span className="font-normal normal-case opacity-60">saving…</span>}
                   </label>
                   <textarea
-                    className="w-full min-h-[56px] rounded border border-input bg-transparent px-2 py-1.5 text-sm resize-none outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 placeholder:text-muted-foreground"
+                    className="w-full min-h-[56px] rounded border border-input bg-transparent px-2 py-1.5 text-xs resize-none outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 placeholder:text-muted-foreground"
                     placeholder="No note"
                     value={noteValue}
                     onChange={(e) => setNoteValue(e.target.value)}
@@ -1024,89 +1103,85 @@ export function CustomerOverlay({
                       onSaved={() => { setShowAddSub(false); reload(); }}
                       onCancel={() => setShowAddSub(false)} />
                   )}
-                  {details.subscriptions.length === 0 && !showAddSub && (
+                  {!showAddSub && editingSubId && (() => {
+                    const editingSub = details.subscriptions.find(s => s.id === editingSubId);
+                    return editingSub ? (
+                      <SubForm mode="edit" subId={editingSub.id} customerId={currentId} pricing={details.pricing} initial={editingSub}
+                        onSaved={() => { setEditingSubId(null); reload(); }}
+                        onCancel={() => setEditingSubId(null)} />
+                    ) : null;
+                  })()}
+                  {details.subscriptions.length === 0 && !showAddSub && !editingSubId && (
                     <p className="text-xs text-muted-foreground/50">No subscriptions.</p>
                   )}
-                  <div className="max-h-[60vh] overflow-y-auto pr-1">
-                  <ul className="space-y-1.5">
+                  <div className="max-h-[180px] overflow-y-auto pr-1">
+                  <ul className="space-y-1">
                     {[...details.subscriptions].sort((a, b) => {
                       const today = new Date();
                       const liveRank = (s: Subscription) =>
-                        isSubscriptionLive(s.status, s.startDate, s.renewalDate, today) ? 0
-                          : s.status === "paused" ? 1 : 2;
+                        isSubscriptionLive(s.status, s.startDate, s.renewalDate, today) ? 0 : 1;
                       const r = liveRank(a) - liveRank(b);
                       return r !== 0 ? r : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
                     }).map((sub) => {
                       const status = subscriptionStatus(sub.status, sub.startDate, sub.renewalDate);
                       const days = daysRemaining(sub.renewalDate);
                       const skips = details.skipCounts[sub.id] ?? 0;
-                      const canAct = sub.status === "active" || sub.status === "paused";
-                      const extendLabel = sub.plan === "weekly" ? "1w" : sub.plan === "trial" ? `${sub.trialDays ?? 3}d` : "1mo";
+                      const canAct = sub.status === "active";
                       const isCancelling = cancellingId === sub.id;
-                      const isEditing = editingSubId === sub.id;
                       return (
-                        <li key={sub.id} className="border rounded-lg px-2.5 py-2 space-y-1 text-xs">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="font-medium capitalize text-sm">{sub.plan}</span>
-                            <div className="flex items-center gap-1">
-                              <span className={[
-                                "px-1.5 py-0.5 rounded-full text-[10px]",
-                                status === "active" ? "bg-green-100 text-green-800"
-                                  : status === "upcoming" ? "bg-blue-100 text-blue-800"
-                                  : "bg-muted text-muted-foreground",
-                              ].join(" ")}>{status}</span>
-                              {!isEditing && (
-                                <button type="button"
-                                  onClick={() => { setEditingSubId(sub.id); setShowAddSub(false); setCancellingId(null); }}
-                                  className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent">
-                                  <Pencil size={10} />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          {isEditing ? (
-                            <SubForm mode="edit" subId={sub.id} customerId={currentId} pricing={details.pricing} initial={sub}
-                              onSaved={() => { setEditingSubId(null); reload(); }}
-                              onCancel={() => setEditingSubId(null)} />
-                          ) : (
+                        <li key={sub.id} className="border rounded px-2 py-1 text-[11px]">
                             <>
-                              <p className="text-muted-foreground capitalize">{sub.goal} · {sub.mealsPerDay}×/day</p>
-                              {(sub.subscriptionPrice > 0 || sub.shippingPrice > 0) && (
-                                <p className="text-muted-foreground">
-                                  ₫{sub.subscriptionPrice.toLocaleString()}
-                                  {sub.shippingPrice > 0 && ` + ₫${sub.shippingPrice.toLocaleString()} ship`}
-                                  {" · "}₫{(sub.subscriptionPrice + sub.shippingPrice).toLocaleString()} total
-                                </p>
-                              )}
-                              <div className="flex items-center justify-between text-muted-foreground">
-                                <span>Renews {fmt(sub.renewalDate)}{status === "active" && ` · ${days}d`}</span>
-                                {skips > 0 && <span>{skips} skip{skips !== 1 ? "s" : ""}</span>}
-                              </div>
-                              {canAct && !isCancelling && (
-                                <div className="flex gap-1 pt-0.5 flex-wrap">
-                                  {sub.status === "active" && (
-                                    <button type="button" onClick={() => handlePause(sub.id)} disabled={isPending}
-                                      className="px-2 py-0.5 rounded border hover:bg-accent disabled:opacity-50">Pause</button>
-                                  )}
-                                  {sub.status === "paused" && (
-                                    <button type="button" onClick={() => handleResume(sub.id)} disabled={isPending}
-                                      className="px-2 py-0.5 rounded border hover:bg-accent disabled:opacity-50">Resume</button>
-                                  )}
-                                  <button type="button" onClick={() => handleExtend(sub.id)} disabled={isPending}
-                                    className="px-2 py-0.5 rounded border hover:bg-accent disabled:opacity-50"
-                                    title={`Extend by ${extendLabel}`}>+{extendLabel}</button>
+                              <div className="flex items-center justify-between gap-1">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="font-medium capitalize">{sub.plan}</span>
+                                  <span className={[
+                                    "px-1 py-0.5 rounded-full text-[9px] shrink-0",
+                                    status === "active" ? "bg-green-100 text-green-800"
+                                      : status === "upcoming" ? "bg-blue-100 text-blue-800"
+                                      : "bg-muted text-muted-foreground",
+                                  ].join(" ")}>{status}</span>
+                                  <span className="text-muted-foreground truncate">{sub.goal}·{sub.mealsPerDay}×/day</span>
+                                </div>
+                                <div className="flex items-center gap-0.5 shrink-0">
                                   <button type="button"
-                                    onClick={() => { setCancellingId(sub.id); setCancelReason(""); setEditingSubId(null); }}
+                                    onClick={() => { setEditingSubId(sub.id); setShowAddSub(false); setCancellingId(null); }}
+                                    className="h-4 w-4 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent"
+                                  >
+                                    <Pencil size={9} />
+                                  </button>
+                                  <button type="button"
+                                    onClick={() => handleDeleteSubscription(sub.id)}
                                     disabled={isPending}
-                                    className="px-2 py-0.5 rounded border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-50 ml-auto">
+                                    className="h-4 w-4 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                                  >
+                                    <Trash2 size={9} />
+                                  </button>
+                                </div>
+                              </div>
+                                {!isCancelling && (
+                                <div className="flex items-center justify-between text-muted-foreground mt-0.5">
+                                  <span className="truncate">
+                                    <span>₫{(sub.subscriptionPrice + sub.shippingPrice - sub.discount).toLocaleString()}{sub.discount > 0 && <span className="text-[9px]"> (-₫{sub.discount.toLocaleString()})</span>} · </span>
+                                    Renews {fmt(sub.renewalDate)}
+                                    {status === "active" && ` · ${days}d`}
+                                    {skips > 0 && ` · ${skips} skip${skips !== 1 ? "s" : ""}`}
+                                  </span>
+                                </div>
+                              )}
+                              {canAct && !isCancelling && (
+                                <div className="flex gap-1 mt-0.5">
+                                   <button type="button"
+                                     onClick={() => { setCancellingId(sub.id); setCancelReason(""); setEditingSubId(null); }}
+                                    disabled={isPending}
+                                    className="px-1.5 py-0.5 text-[10px] rounded border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-50 ml-auto">
                                     Cancel
                                   </button>
                                 </div>
                               )}
-                              {sub.status === "cancelled" && !isEditing && (
-                                <div className="flex gap-1 pt-0.5">
+                              {sub.status === "cancelled" && (
+                                <div className="flex gap-1 mt-0.5">
                                   <button type="button" onClick={() => handleRecover(sub.id)} disabled={isPending}
-                                    className="px-2 py-0.5 rounded border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-50">
+                                    className="px-1.5 py-0.5 text-[10px] rounded border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-50">
                                     Recover
                                   </button>
                                 </div>
@@ -1127,15 +1202,16 @@ export function CustomerOverlay({
                                   </div>
                                 </div>
                               )}
-                            </>
-                          )}
-                        </li>
+                             </>
+                         </li>
                       );
                     })}
                   </ul>
                   </div>
                 </div>
               </div>
+
+              {/* Minimap removed from here - now in SchedulePanel */}
             </div>
 
             {/* ── Schedule (only when at least one live subscription) ── */}
@@ -1152,6 +1228,16 @@ export function CustomerOverlay({
                 dayAddresses={details.dayAddresses}
                 customerId={currentId}
                 onReload={reload}
+                minimap={
+                  details.hub && details.addresses.some((a) => a.latitude != null && a.longitude != null)
+                    ? <CustomerMinimap
+                        addresses={details.addresses}
+                        hub={details.hub}
+                        routes={routes}
+                        loading={loadingRoutes}
+                      />
+                    : undefined
+                }
               />
             )}
           </>

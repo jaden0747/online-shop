@@ -31,13 +31,19 @@ export async function POST(req: NextRequest) {
         console.warn(`[route-geometry] ${base} -> code=${data.code}`, data.message);
         continue;
       }
-      const geom = data.routes?.[0]?.geometry;
+      const route = data.routes?.[0];
+      const geom = route?.geometry;
       if (!geom?.coordinates) {
         errors.push(`${base}: no geometry`);
         continue;
       }
       const positions = geom.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
-      return NextResponse.json({ positions, source: base });
+      return NextResponse.json({
+        positions,
+        distance: route.distance,
+        duration: route.duration,
+        source: base
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       errors.push(`${base}: ${msg}`);

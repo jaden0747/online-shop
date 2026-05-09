@@ -42,7 +42,7 @@ function RenewalCell({ sub }: { sub: Sub | null }) {
   const isLive = isSubscriptionLive(sub.status, sub.startDate, sub.renewalDate);
 
   if (!isLive) {
-    // paused or cancelled
+    // cancelled or expired
     return (
       <Badge variant="outline" className="capitalize text-xs">
         {sub.status}

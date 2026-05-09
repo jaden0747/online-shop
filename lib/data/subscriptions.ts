@@ -20,6 +20,7 @@ function parseSub(raw: Record<string, unknown>): Subscription {
     status: toStr(raw.status) || "active",
     shippingPrice: toNum(raw.shippingPrice),
     subscriptionPrice,
+    discount: toNum(raw.discount) || 0,
     trialDays: raw.trialDays !== undefined && raw.trialDays !== null && raw.trialDays !== "" ? toNum(raw.trialDays) : null,
     startDate: parseExcelDate(raw.startDate as string | number) ?? new Date().toISOString(),
     renewalDate: parseExcelDate(raw.renewalDate as string | number) ?? new Date().toISOString(),

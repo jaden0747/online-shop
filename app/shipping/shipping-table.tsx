@@ -207,12 +207,21 @@ export function ShippingTable({
 
   const captureTablePng = async (): Promise<Blob> => {
     if (!tableRef.current) throw new Error("table not mounted");
+
     const { toPng } = await import("html-to-image");
-    const bg = getComputedStyle(document.documentElement).getPropertyValue("--background").trim();
-    const backgroundColor = bg ? `hsl(${bg})` : (document.documentElement.classList.contains("dark") ? "#0f172a" : "#ffffff");
-    const dataUrl = await toPng(tableRef.current, { backgroundColor, pixelRatio: 2 });
-    const res = await fetch(dataUrl);
-    return res.blob();
+
+    // Use simple hex colors that work with canvas
+    // The oklch format in CSS variables isn't supported by canvas API
+    const isDark = document.documentElement.classList.contains("dark");
+    const bgColor = isDark ? "#1e293b" : "#ffffff";
+
+    const dataUrl = await toPng(tableRef.current, {
+      backgroundColor: bgColor,
+      pixelRatio: 2,
+    });
+
+    const response = await fetch(dataUrl);
+    return await response.blob();
   };
 
   const handleExportPNG = async () => {
