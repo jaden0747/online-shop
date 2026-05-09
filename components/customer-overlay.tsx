@@ -27,7 +27,7 @@ import { skipDayAndExtendAction, unskipDayAndShortenAction } from "@/app/actions
 import { upsertSelectionDirectAction, deleteSelectionDirectAction } from "@/app/actions/selections";
 import { upsertKitchenNoteAction } from "@/app/actions/notes";
 import { upsertDayAddressAction, deleteDayAddressAction } from "@/app/actions/order-day-addresses";
-import type { Customer, CustomerAddress, Subscription, Pricing, MealSkip, MealSelection, MenuItem, Order, KitchenNote, OrderDayAddress } from "@/lib/data/types";
+import type { Customer, CustomerAddress, Subscription, Pricing, MealSkip, MealSelection, MenuItem, KitchenNote, OrderDayAddress } from "@/lib/data/types";
 import { subscriptionStatus, daysRemaining, planTotalMeals, addWorkingDays, isSubscriptionLive } from "@/lib/utils/subscription";
 import { weekLabelForDate } from "@/lib/utils/week";
 import { Pencil, X, Plus, Star, Trash2, Check, MapPin, ChevronLeft, ChevronRight } from "lucide-react";
@@ -42,7 +42,6 @@ type Details = {
   skips: MealSkip[];
   allSelections: MealSelection[];
   allMenuItems: MenuItem[];
-  orders: Order[];
   kitchenNotes: KitchenNote[];
   dayAddresses: OrderDayAddress[];
 };
@@ -302,7 +301,6 @@ function SchedulePanel({
   skips,
   allSelections,
   allMenuItems,
-  orders,
   kitchenNotes,
   dayAddresses,
   customerId,
@@ -313,7 +311,6 @@ function SchedulePanel({
   skips: MealSkip[];
   allSelections: MealSelection[];
   allMenuItems: MenuItem[];
-  orders: Order[];
   kitchenNotes: KitchenNote[];
   dayAddresses: OrderDayAddress[];
   customerId: string;
@@ -375,11 +372,6 @@ function SchedulePanel({
     return allSelections.filter((s) => s.weekLabel === selectedWeekLabel && s.day === selectedDayNum);
   }, [allSelections, selectedWeekLabel, selectedDayNum]);
 
-  const selectedOrder = useMemo(() => {
-    if (!selectedWeekLabel || !selectedActiveSub) return null;
-    return orders.find((o) => o.subscriptionId === selectedActiveSub.id && o.weekLabel === selectedWeekLabel) ?? null;
-  }, [orders, selectedWeekLabel, selectedActiveSub]);
-
   // Per-day address override
   const selectedDayAddress = useMemo(() => {
     if (!selectedWeekLabel || !selectedDayNum || !selectedActiveSub) return null;
@@ -416,7 +408,7 @@ function SchedulePanel({
   function handleDayAddressChange(addressId: string) {
     if (!selectedWeekLabel || !selectedActiveSub || !selectedDayNum) return;
     startTransition(async () => {
-      if (addressId === "__week_default__") {
+      if (!addressId) {
         await deleteDayAddressAction(selectedActiveSub.id, selectedWeekLabel, selectedDayNum);
       } else {
         await upsertDayAddressAction(selectedActiveSub.id, selectedWeekLabel, selectedDayNum, addressId);
@@ -555,18 +547,15 @@ function SchedulePanel({
                       <label className="text-[10px] text-muted-foreground">Delivery address for this day</label>
                       <select
                         className="w-full border rounded px-1.5 py-1 text-xs bg-background outline-none focus:ring-1 focus:ring-ring"
-                        value={selectedDayAddress?.addressId ?? "__week_default__"}
+                        value={selectedDayAddress?.addressId ?? ""}
                         onChange={(e) => handleDayAddressChange(e.target.value)}
                         disabled={isPending || isPast}
                       >
-                        <option value="__week_default__">
-                          Use week default{selectedOrder?.addressId ? ` — ${addresses.find((a) => a.id === selectedOrder.addressId)?.label ?? addresses.find((a) => a.id === selectedOrder.addressId)?.address ?? ""}` : ""}
-                        </option>
+                        <option value="">Use customer default</option>
                         {addresses.map((a) => (
                           <option key={a.id} value={a.id}>
                             {a.label ? `${a.label} — ` : ""}{a.address}
-                            {a.isDefault ? " (customer default)" : ""}
-                            {selectedOrder?.addressId === a.id ? " (week default)" : ""}
+                            {a.isDefault ? " (default)" : ""}
                           </option>
                         ))}
                       </select>
@@ -1159,7 +1148,6 @@ export function CustomerOverlay({
                 skips={details.skips}
                 allSelections={details.allSelections}
                 allMenuItems={details.allMenuItems}
-                orders={details.orders}
                 kitchenNotes={details.kitchenNotes}
                 dayAddresses={details.dayAddresses}
                 customerId={currentId}

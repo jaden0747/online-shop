@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { saveCustomers, saveAddresses } from "@/lib/data/customers";
 import { saveSubscriptions, saveSkips } from "@/lib/data/subscriptions";
 import { saveMenuItems } from "@/lib/data/menu";
-import { saveOrders, saveOrderItems } from "@/lib/data/orders";
 import { revalidatePath } from "next/cache";
 
 export async function POST(req: NextRequest) {
@@ -17,9 +16,6 @@ export async function POST(req: NextRequest) {
   saveSubscriptions([]);
   saveSkips([]);
   saveMenuItems([]);
-  saveOrders([]);
-  saveOrderItems([]);
-
   for (const path of ["/customers", "/menu", "/subscriptions"]) {
     revalidatePath(path);
   }

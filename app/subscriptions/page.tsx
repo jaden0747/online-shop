@@ -10,7 +10,7 @@ import { DeletePricingButton } from "./delete-pricing-button";
 import { OpenInFinderButton } from "@/components/open-in-finder-button";
 import { NewSubscriptionDialog } from "./new-subscription-dialog";
 import { EditSubscriptionRow } from "./edit-subscription-row";
-import { CustomerOverlayTrigger } from "./customer-overlay-trigger";
+import { CustomerOverlayTrigger } from "@/components/customer-overlay-trigger";
 
 export const dynamic = "force-dynamic";
 
@@ -214,7 +214,6 @@ export default async function SubscriptionsPage() {
                       return (
                         <tr key={sub.id} className="hover:bg-accent/50 transition-colors">
                           <td className="px-4 py-2">
-                            {/* TODO: wire up onCustomerClick for customer overlay panel (component not yet built) */}
                             <button
                               type="button"
                               className="text-left"

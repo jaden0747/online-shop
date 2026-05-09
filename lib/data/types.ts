@@ -78,25 +78,6 @@ export interface Pricing {
   totalPrice: number;
 }
 
-export interface Order {
-  id: string;
-  subscriptionId: string;
-  weekLabel: string;
-  status: string; // pending | prepared | out_for_delivery | delivered
-  addressId: string | null;
-  createdAt: string; // ISO string
-}
-
-export interface OrderItem {
-  id: string;
-  orderId: string;
-  day: number;
-  mealSlot: number;
-  menuItemId: string | null;
-  quantity: number;
-  notes: string | null;
-}
-
 export interface MealSelection {
   id: string; // `${weekLabel}-${customerId}-${day}-${mealNum}`
   weekLabel: string;

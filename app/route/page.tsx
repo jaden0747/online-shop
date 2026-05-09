@@ -1,5 +1,6 @@
 import { getAllCustomers, getAllAddresses } from "@/lib/data/customers";
 import { getAllSubscriptions, getAllSkips } from "@/lib/data/subscriptions";
+import { getAllOrderDayAddresses } from "@/lib/data/order-day-addresses";
 import { getSettings } from "@/lib/data/settings";
 import { getMenuItemsByWeek } from "@/lib/data/menu";
 import { getSelectionsByWeek } from "@/lib/data/selections";
@@ -47,6 +48,15 @@ export default async function RoutePage({
   const menuItems = getMenuItemsByWeek(weekLabel);
   const selections = getSelectionsByWeek(weekLabel);
   const dayNotes = getNotesByWeek(weekLabel).filter((n) => n.day === dayNum);
+  const dayAddresses = getAllOrderDayAddresses();
+
+  // Per-day address override lookup: key = `${subscriptionId}-${day}`
+  const dayAddrMap = new Map<string, string>();
+  for (const da of dayAddresses) {
+    if (da.weekLabel === weekLabel) {
+      dayAddrMap.set(`${da.subscriptionId}-${da.day}`, da.addressId);
+    }
+  }
 
   const menuName = (day: number, slot: number): string | null => {
     const m = menuItems.find((it) => it.day === day && it.slot === slot);
@@ -63,7 +73,13 @@ export default async function RoutePage({
     .map((sub) => {
       const customer = customers.find((c) => c.phone === sub.customerId);
       const defaultAddr = customer ? defaultAddrMap.get(customer.id) : undefined;
-      if (!customer || !defaultAddr?.latitude || !defaultAddr?.longitude) return null;
+      if (!customer) return null;
+
+      // Per-day address override
+      const overrideAddrId = dayAddrMap.get(`${sub.id}-${dayNum}`);
+      const addrOverride = overrideAddrId ? allAddresses.find((a) => a.id === overrideAddrId) : null;
+      const effectiveAddr = addrOverride ?? defaultAddr;
+      if (!effectiveAddr?.latitude || !effectiveAddr?.longitude) return null;
       if (seenCustomers.has(customer.id)) return null;
       seenCustomers.add(customer.id);
 
@@ -97,9 +113,9 @@ export default async function RoutePage({
         id: customer.id,
         name: customer.name,
         phone: customer.phone,
-        address: defaultAddr.address,
-        lat: defaultAddr.latitude as number,
-        lng: defaultAddr.longitude as number,
+        address: effectiveAddr.address,
+        lat: effectiveAddr.latitude as number,
+        lng: effectiveAddr.longitude as number,
         meals,
         permanentNote: customer.notes ?? null,
         dateNote: dayNotes.find((n) => n.customerId === customer.phone)?.note ?? null,

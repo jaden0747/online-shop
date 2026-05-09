@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
-import { ShippingCustomerCell } from "./customer-overlay-trigger";
+import { CustomerOverlayTrigger } from "@/components/customer-overlay-trigger";
+import { upsertDayAddressAction, deleteDayAddressAction } from "@/app/actions/order-day-addresses";
 import {
   depotAwareClusters,
   fixedKClusters,
@@ -47,6 +48,10 @@ type Delivery = {
   lng: number | null;
   addresses: AddressOption[];
   defaultAddressId: string | null;
+  effectiveAddressId: string | null;
+  subscriptionId: string;
+  weekLabel: string;
+  day: number;
 };
 
 const DEFAULT_HUB = { lat: 10.7769, lng: 106.7009 };
@@ -72,8 +77,6 @@ export function ShippingTable({
   notes = [],
   permanentNotes = [],
   defaultHub,
-  // TODO: wire up CustomerOverlay when implemented
-  onCustomerClick,
 }: {
   deliveries: Delivery[];
   date: string;
@@ -92,7 +95,7 @@ export function ShippingTable({
   const [selectedAddressIds, setSelectedAddressIds] = useState<Map<string, string>>(() => {
     const m = new Map<string, string>();
     for (const d of deliveries) {
-      if (d.defaultAddressId) m.set(d.customerId, d.defaultAddressId);
+      if (d.effectiveAddressId) m.set(d.customerId, d.effectiveAddressId);
     }
     return m;
   });
@@ -329,7 +332,7 @@ export function ShippingTable({
                     )}
                   </td>
                   <td className="px-2 py-1.5">
-                    <ShippingCustomerCell
+                    <CustomerOverlayTrigger
                       customerId={d.customerId}
                       name={d.name}
                       phone={d.phone}
@@ -395,7 +398,7 @@ export function ShippingTable({
                     <span className="text-[10px] text-amber-700" title="No coordinates set">no coord</span>
                   </td>
                   <td className="px-2 py-1.5">
-                    <ShippingCustomerCell
+                    <CustomerOverlayTrigger
                       customerId={d.customerId}
                       name={d.name}
                       phone={d.phone}
@@ -451,6 +454,7 @@ function AddressCell({
   onChange: (id: string) => void;
 }) {
   const { addresses } = delivery;
+  const [persisting, startPersist] = useTransition();
 
   if (addresses.length <= 1) {
     return <span className="text-xs">{delivery.address}</span>;
@@ -458,13 +462,26 @@ function AddressCell({
 
   const selected = addresses.find((a) => a.id === selectedId) ?? addresses.find((a) => a.isDefault) ?? addresses[0];
 
+  function handleChange(id: string) {
+    onChange(id);
+    startPersist(async () => {
+      if (!id) {
+        await deleteDayAddressAction(delivery.subscriptionId, delivery.weekLabel, delivery.day);
+      } else {
+        await upsertDayAddressAction(delivery.subscriptionId, delivery.weekLabel, delivery.day, id);
+      }
+    });
+  }
+
   return (
     <div className="space-y-1">
       <select
         value={selected?.id ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full text-xs border rounded px-1.5 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+        onChange={(e) => handleChange(e.target.value)}
+        disabled={persisting}
+        className="w-full text-xs border rounded px-1.5 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
       >
+        <option value="">Use customer default</option>
         {addresses.map((a) => (
           <option key={a.id} value={a.id} title={a.label}>
             {a.address}{a.isDefault ? " (default)" : ""}

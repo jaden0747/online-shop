@@ -11,7 +11,6 @@ import {
   deleteExtra,
   deleteExtrasBySubscription,
 } from "@/lib/data/subscriptions";
-import { deleteOrdersBySubscription } from "@/lib/data/orders";
 import { addWorkingDays } from "@/lib/utils/subscription";
 
 export async function createSubscriptionAction(formData: FormData) {
@@ -81,7 +80,6 @@ export async function updateSubscriptionAction(
 
 export async function deleteSubscriptionAction(id: string) {
   deleteSubscription(id);
-  deleteOrdersBySubscription(id);
   deleteExtrasBySubscription(id);
   revalidatePath("/customers");
   revalidatePath("/subscriptions");

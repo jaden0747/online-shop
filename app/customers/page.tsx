@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AddCustomerForm } from "./add-customer-form";
 import { UnifiedCustomerTable } from "./unified-customer-table";
 import { EditSubscriptionRow } from "@/app/subscriptions/edit-subscription-row";
-import { CustomerOverlayTrigger } from "@/app/subscriptions/customer-overlay-trigger";
+import { CustomerOverlayTrigger } from "@/components/customer-overlay-trigger";
 
 export const dynamic = "force-dynamic";
 

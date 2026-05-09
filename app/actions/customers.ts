@@ -16,10 +16,9 @@ import { getAllSubscriptions, getAllSkips } from "@/lib/data/subscriptions";
 import { getAllSelections } from "@/lib/data/selections";
 import { getAllMenuItems } from "@/lib/data/menu";
 import { getAllPricing } from "@/lib/data/pricing";
-import { getAllOrders } from "@/lib/data/orders";
 import { getNotesByCustomer } from "@/lib/data/notes";
 import { getAllOrderDayAddresses } from "@/lib/data/order-day-addresses";
-import type { Customer, CustomerAddress, Subscription, Pricing, MealSkip, MealSelection, MenuItem, Order, KitchenNote, OrderDayAddress } from "@/lib/data/types";
+import type { Customer, CustomerAddress, Subscription, Pricing, MealSkip, MealSelection, MenuItem, KitchenNote, OrderDayAddress } from "@/lib/data/types";
 
 export async function createCustomerAction(formData: FormData) {
   createCustomer({
@@ -60,7 +59,6 @@ export async function getCustomerDetailsAction(customerId: string): Promise<{
   skips: MealSkip[];
   allSelections: MealSelection[];
   allMenuItems: MenuItem[];
-  orders: Order[];
   kitchenNotes: KitchenNote[];
   dayAddresses: OrderDayAddress[];
 }> {
@@ -81,11 +79,10 @@ export async function getCustomerDetailsAction(customerId: string): Promise<{
   const skips = allSkips.filter((sk) => subIds.has(sk.subscriptionId));
   const allSelections = getAllSelections().filter((s) => s.customerId === customerId);
   const allMenuItems = getAllMenuItems();
-  const orders = getAllOrders().filter((o) => subIds.has(o.subscriptionId));
   const kitchenNotes = getNotesByCustomer(customerId);
   const dayAddresses = getAllOrderDayAddresses().filter((r) => subIds.has(r.subscriptionId));
 
-  return { customer, addresses, subscriptions, skipCounts, totalSpend, pricing, skips, allSelections, allMenuItems, orders, kitchenNotes, dayAddresses };
+  return { customer, addresses, subscriptions, skipCounts, totalSpend, pricing, skips, allSelections, allMenuItems, kitchenNotes, dayAddresses };
 }
 
 export async function updateCustomerNoteAction(id: string, notes: string | null) {

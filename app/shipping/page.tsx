@@ -1,5 +1,6 @@
 import { getAllCustomers, getAllAddresses } from "@/lib/data/customers";
 import { getAllSubscriptions, getAllSkips } from "@/lib/data/subscriptions";
+import { getAllOrderDayAddresses } from "@/lib/data/order-day-addresses";
 import { isSubscriptionLive } from "@/lib/utils/subscription";
 import { getMenuItemsByWeek } from "@/lib/data/menu";
 import { getSelectionsByWeek } from "@/lib/data/selections";
@@ -52,6 +53,15 @@ export default async function ShippingPage({
   const menuItems = getMenuItemsByWeek(weekLabel);
   const selections = getSelectionsByWeek(weekLabel);
   const dayNotes = getNotesByWeek(weekLabel).filter((n) => n.day === dayNum);
+  const dayAddresses = getAllOrderDayAddresses();
+
+  // Per-day address override lookup: key = `${subscriptionId}-${day}`
+  const dayAddrMap = new Map<string, string>();
+  for (const da of dayAddresses) {
+    if (da.weekLabel === weekLabel) {
+      dayAddrMap.set(`${da.subscriptionId}-${da.day}`, da.addressId);
+    }
+  }
 
   // Group addresses by customerId
   const addressesByCustomer = new Map<string, typeof allAddresses>();
@@ -105,18 +115,24 @@ export default async function ShippingPage({
       );
       const defaultAddress = customerAddresses.find((a) => a.isDefault) ?? customerAddresses[0] ?? null;
 
+      // Per-day address override
+      const overrideAddrId = dayAddrMap.get(`${sub.id}-${dayNum}`);
+      const effectiveAddr = overrideAddrId
+        ? customerAddresses.find((a) => a.id === overrideAddrId) ?? defaultAddress
+        : defaultAddress;
+
       return {
         customerId: customer.id,
         name: customer.name,
         phone: customer.phone,
-        address: defaultAddress?.address ?? customer.address,
-        zone: defaultAddress?.zone ?? customer.zone,
+        address: effectiveAddr?.address ?? customer.address,
+        zone: effectiveAddr?.zone ?? customer.zone,
         plan: sub.plan,
         mealsPerDay: sub.mealsPerDay,
         isReplacement,
         meals,
-        lat: defaultAddress?.latitude ?? null,
-        lng: defaultAddress?.longitude ?? null,
+        lat: effectiveAddr?.latitude ?? null,
+        lng: effectiveAddr?.longitude ?? null,
         addresses: customerAddresses.map((a) => ({
           id: a.id,
           label: a.label,
@@ -127,6 +143,10 @@ export default async function ShippingPage({
           longitude: a.longitude,
         })),
         defaultAddressId: defaultAddress?.id ?? null,
+        effectiveAddressId: effectiveAddr?.id ?? null,
+        subscriptionId: sub.id,
+        weekLabel,
+        day: dayNum,
       };
     })
     .filter((d): d is NonNullable<typeof d> => d !== null);
