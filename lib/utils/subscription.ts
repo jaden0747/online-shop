@@ -19,21 +19,23 @@ export function countWorkingDays(from: Date, to: Date): number {
   return count;
 }
 
-export function daysRemaining(renewalDate: Date | string): number {
+export function daysRemaining(endDate: Date | string): number {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  const renewal = new Date(renewalDate);
-  renewal.setHours(0, 0, 0, 0);
-  return Math.max(0, Math.floor((renewal.getTime() - now.getTime()) / 86400000));
+  const end = new Date(endDate);
+  end.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.floor((end.getTime() - now.getTime()) / 86400000));
 }
 
-export function workingDaysRemaining(renewalDate: Date | string): number {
-  return countWorkingDays(new Date(), new Date(renewalDate));
+export function workingDaysRemaining(endDate: Date | string): number {
+  return countWorkingDays(new Date(), new Date(endDate));
 }
 
-/** Meals left = working days from today to endDate × mealsPerDay. */
+/** Meals left = working days from today to endDate (inclusive) × mealsPerDay. */
 export function mealsRemaining(endDate: Date | string, mealsPerDay: number): number {
-  return Math.max(0, countWorkingDays(new Date(), new Date(endDate)) * mealsPerDay);
+  const end = new Date(endDate);
+  end.setDate(end.getDate() + 1); // add 1 day to make endDate inclusive
+  return Math.max(0, countWorkingDays(new Date(), end) * mealsPerDay);
 }
 
 /** A subscription is live when `asOf` (defaults to today) falls within [startDate, endDate] and it is not cancelled. */
@@ -152,6 +154,16 @@ export function addWorkingDays(from: Date, n: number): Date {
     if (d.getDay() >= 1 && d.getDay() <= 5) remaining--;
   }
   return d;
+}
+
+/**
+ * Count working-day steps from `from` to `to`.
+ * Equivalent to the `n` you'd pass to `addWorkingDays(from, n)` to reach `to`.
+ */
+export function workingDaysBetween(from: Date, to: Date): number {
+  const f = new Date(from); f.setHours(0, 0, 0, 0); f.setDate(f.getDate() + 1);
+  const t = new Date(to); t.setHours(0, 0, 0, 0); t.setDate(t.getDate() + 1);
+  return Math.max(0, countWorkingDays(f, t));
 }
 
 /** Returns the next Mon–Fri day strictly after `from`. */

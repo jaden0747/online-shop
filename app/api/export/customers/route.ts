@@ -51,7 +51,7 @@ export async function GET() {
       "Subscription Price": s.subscriptionPrice,
       "Shipping Price": s.shippingPrice,
       "Start Date": fmt(s.startDate),
-      "Renewal Date": fmt(s.renewalDate),
+       "End Date": fmt(s.endDate),
       "Cancel Reason": s.cancelReason ?? "",
     };
   });

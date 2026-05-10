@@ -61,7 +61,8 @@ export function currentWeekMonday(): Date {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const dow = today.getDay(); // 0=Sun
-  const daysToMon = dow === 0 ? -6 : 1 - dow;
+  // Sunday belongs to the UPCOMING week (same as weekLabelForDate), so advance by +1
+  const daysToMon = dow === 0 ? 1 : 1 - dow;
   today.setDate(today.getDate() + daysToMon);
   return today;
 }

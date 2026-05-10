@@ -158,21 +158,7 @@ export function MenuSlot({
         <div className="space-y-1 flex-1">
           <p className="text-sm font-medium leading-tight">{item.name}</p>
           {item.description && (
-            <p className="text-xs text-muted-foreground">{item.description}</p>
-          )}
-          <div className="flex flex-wrap gap-1 pt-1">
-            {item.goals.split(",").map((g) => (
-              <Badge key={g} variant="outline" className="text-xs px-1.5 py-0 capitalize">
-                {g.trim()}
-              </Badge>
-            ))}
-          </div>
-          {(item.calories || item.protein) && (
-            <p className="text-xs text-muted-foreground">
-              {item.calories && `${item.calories} kcal`}
-              {item.calories && item.protein && " · "}
-              {item.protein && `${item.protein}g protein`}
-            </p>
+            <p className="text-xs text-muted-foreground truncate" title={item.description}>{item.description}</p>
           )}
         </div>
       )}

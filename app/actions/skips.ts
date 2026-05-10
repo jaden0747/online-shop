@@ -27,7 +27,7 @@ export async function createMealSkipAction(formData: FormData) {
     reason,
   });
 
-  // Only extend renewal for present/future skips with no replacement.
+  // Only extend end date for present/future skips with no replacement.
   // Past skips are historical records — endDate already reflects the original plan.
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -36,8 +36,8 @@ export async function createMealSkipAction(formData: FormData) {
   if (!replacementDay && skipDay >= today) {
     const sub = getSubscriptionById(subscriptionId);
     if (sub) {
-      const extended = nextWorkingDay(new Date(sub.renewalDate));
-      updateSubscription(subscriptionId, { renewalDate: extended.toISOString() });
+      const extended = nextWorkingDay(new Date(sub.endDate));
+      updateSubscription(subscriptionId, { endDate: extended.toISOString() });
     }
   }
 
@@ -55,7 +55,7 @@ export async function skipTodayToNextAction(subscriptionId: string) {
   const sub = getSubscriptionById(subscriptionId);
   if (!sub) return;
 
-  const replacement = nextWorkingDay(new Date(sub.renewalDate));
+  const replacement = nextWorkingDay(new Date(sub.endDate));
 
   createSkip({
     subscriptionId,
@@ -64,7 +64,7 @@ export async function skipTodayToNextAction(subscriptionId: string) {
     reason: "quick skip",
   });
 
-  updateSubscription(subscriptionId, { renewalDate: replacement.toISOString() });
+  updateSubscription(subscriptionId, { endDate: replacement.toISOString() });
 
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
@@ -83,8 +83,8 @@ export async function skipDayFromMenuAction(subscriptionId: string, originalDay:
   if (skipDay >= today) {
     const sub = getSubscriptionById(subscriptionId);
     if (sub) {
-      const extended = nextWorkingDay(new Date(sub.renewalDate));
-      updateSubscription(subscriptionId, { renewalDate: extended.toISOString() });
+      const extended = nextWorkingDay(new Date(sub.endDate));
+      updateSubscription(subscriptionId, { endDate: extended.toISOString() });
     }
   }
 
@@ -117,8 +117,8 @@ export async function createSkipDirectAction(data: {
   if (!replacementDay && skipDay >= today) {
     const sub = getSubscriptionById(data.subscriptionId);
     if (sub) {
-      const extended = nextWorkingDay(new Date(sub.renewalDate));
-      updateSubscription(data.subscriptionId, { renewalDate: extended.toISOString() });
+      const extended = nextWorkingDay(new Date(sub.endDate));
+      updateSubscription(data.subscriptionId, { endDate: extended.toISOString() });
     }
   }
 
@@ -130,19 +130,19 @@ export async function deleteMealSkipAction(id: string) {
   const skip = deleteSkip(id);
   if (!skip) return;
 
-  // Only revert renewal extension for present/future skips — past skips never extended it.
+  // Only revert end date extension for present/future skips — past skips never extended it.
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const skipDay = new Date(skip.originalDay); skipDay.setHours(0, 0, 0, 0);
   const didExtend = skipDay >= today && (!skip.replacementDay || skip.reason === "quick skip");
   if (didExtend) {
     const sub = getSubscriptionById(skip.subscriptionId);
     if (sub) {
-      const prevRenewal = new Date(sub.renewalDate);
-      prevRenewal.setDate(prevRenewal.getDate() - 1);
-      while (prevRenewal.getDay() === 0 || prevRenewal.getDay() === 6) {
-        prevRenewal.setDate(prevRenewal.getDate() - 1);
+      const prevEnd = new Date(sub.endDate);
+      prevEnd.setDate(prevEnd.getDate() - 1);
+      while (prevEnd.getDay() === 0 || prevEnd.getDay() === 6) {
+        prevEnd.setDate(prevEnd.getDate() - 1);
       }
-      updateSubscription(skip.subscriptionId, { renewalDate: prevRenewal.toISOString() });
+      updateSubscription(skip.subscriptionId, { endDate: prevEnd.toISOString() });
     }
   }
 
@@ -151,8 +151,8 @@ export async function deleteMealSkipAction(id: string) {
 }
 
 /**
- * Skip a specific day and auto-extend the subscription renewal by +1 working day.
- * replacementDay is set to the new renewalDate (before extension).
+ * Skip a specific day and auto-extend the subscription end date by +1 working day.
+ * replacementDay is set to the new endDate (before extension).
  */
 export async function skipDayAndExtendAction(
   subscriptionId: string,
@@ -162,16 +162,16 @@ export async function skipDayAndExtendAction(
   const sub = getSubscriptionById(subscriptionId);
   if (!sub) return;
 
-  const newRenewal = addWorkingDays(new Date(sub.renewalDate), 1);
+  const newEnd = addWorkingDays(new Date(sub.endDate), 1);
 
   createSkip({
     subscriptionId,
     originalDay,
-    replacementDay: newRenewal.toISOString(),
+    replacementDay: newEnd.toISOString(),
     reason: reason ?? null,
   });
 
-  updateSubscription(subscriptionId, { renewalDate: newRenewal.toISOString() });
+  updateSubscription(subscriptionId, { endDate: newEnd.toISOString() });
 
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
@@ -179,8 +179,8 @@ export async function skipDayAndExtendAction(
 }
 
 /**
- * Remove a skip and safely roll back the subscription renewal by -1 working day,
- * but only when renewalDate still matches the skip's replacementDay (i.e. not manually edited).
+ * Remove a skip and safely roll back the subscription end date by -1 working day,
+ * but only when endDate still matches the skip's replacementDay (i.e. not manually edited).
  */
 export async function unskipDayAndShortenAction(skipId: string): Promise<void> {
   const skip = deleteSkip(skipId);
@@ -188,13 +188,13 @@ export async function unskipDayAndShortenAction(skipId: string): Promise<void> {
 
   const sub = getSubscriptionById(skip.subscriptionId);
   if (sub && skip.replacementDay) {
-    const subRenewal = new Date(sub.renewalDate);
-    subRenewal.setHours(0, 0, 0, 0);
+    const subEnd = new Date(sub.endDate);
+    subEnd.setHours(0, 0, 0, 0);
     const skipReplacement = new Date(skip.replacementDay);
     skipReplacement.setHours(0, 0, 0, 0);
-    if (subRenewal.getTime() === skipReplacement.getTime()) {
-      const shortenedRenewal = addWorkingDays(subRenewal, -1);
-      updateSubscription(sub.id, { renewalDate: shortenedRenewal.toISOString() });
+    if (subEnd.getTime() === skipReplacement.getTime()) {
+      const shortenedEnd = addWorkingDays(subEnd, -1);
+      updateSubscription(sub.id, { endDate: shortenedEnd.toISOString() });
     }
   }
 

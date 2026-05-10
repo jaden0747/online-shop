@@ -26,14 +26,14 @@ export async function createSubscriptionAction(formData: FormData) {
   const startDateRaw = formData.get("startDate") as string;
   const startDate = startDateRaw ? new Date(startDateRaw) : new Date();
 
-  // Use manual renewal date if provided, otherwise auto-compute
-  const renewalDateRaw = formData.get("renewalDate") as string;
-  let renewalDate: Date;
-  if (renewalDateRaw) {
-    renewalDate = new Date(renewalDateRaw);
-  } else if (plan === "weekly") renewalDate = addWorkingDays(startDate, 5);
-  else if (plan === "monthly") renewalDate = addWorkingDays(startDate, 20);
-  else renewalDate = addWorkingDays(startDate, trialDays ?? 3);
+  // Use manual end date if provided, otherwise auto-compute
+  const endDateRaw = formData.get("endDate") as string;
+  let endDate: Date;
+  if (endDateRaw) {
+    endDate = new Date(endDateRaw);
+  } else if (plan === "weekly") endDate = addWorkingDays(startDate, 4);
+  else if (plan === "monthly") endDate = addWorkingDays(startDate, 19);
+  else endDate = addWorkingDays(startDate, (trialDays ?? 3) - 1);
 
   createSubscription({
     customerId,
@@ -46,7 +46,8 @@ export async function createSubscriptionAction(formData: FormData) {
     trialDays,
     status: "active",
     startDate: startDate.toISOString(),
-    renewalDate: renewalDate.toISOString(),
+    endDate: endDate.toISOString(),
+    endDateNoSkip: endDate.toISOString(),
     cancelReason: null,
   });
   revalidatePath("/customers");
@@ -74,13 +75,15 @@ export async function updateSubscriptionAction(
     discount: number;
     trialDays: number | null;
     startDate: Date;
-    renewalDate: Date;
+    endDate: Date;
+    endDateNoSkip: Date;
   }
 ) {
   updateSubscription(id, {
     ...data,
     startDate: data.startDate.toISOString(),
-    renewalDate: data.renewalDate.toISOString(),
+    endDate: data.endDate.toISOString(),
+    endDateNoSkip: data.endDateNoSkip.toISOString(),
   });
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
@@ -111,12 +114,12 @@ export async function deleteExtraAction(id: string) {
   revalidatePath("/subscriptions");
 }
 
-export async function extendSubscriptionRenewalAction(id: string) {
+export async function extendSubscriptionEndAction(id: string) {
   const sub = getSubscriptionById(id);
   if (!sub) return;
-  const base = new Date(sub.renewalDate);
+  const base = new Date(sub.endDate);
   const days = sub.plan === "weekly" ? 5 : sub.plan === "trial" ? (sub.trialDays ?? 3) : 20;
-  updateSubscription(id, { renewalDate: addWorkingDays(base, days).toISOString() });
+  updateSubscription(id, { endDate: addWorkingDays(base, days).toISOString() });
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
 }

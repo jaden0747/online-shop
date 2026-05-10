@@ -47,9 +47,9 @@ export default async function CustomersPage() {
   // Build active map per customer for sorting
   const activeSubMap = new Map<string, (typeof subscriptions)[number]>();
   for (const s of subscriptions) {
-    if (isSubscriptionLive(s.status, s.startDate, s.renewalDate)) {
+    if (isSubscriptionLive(s.status, s.startDate, s.endDate)) {
       const existing = activeSubMap.get(s.customer.id);
-      if (!existing || new Date(s.renewalDate).getTime() < new Date(existing.renewalDate).getTime()) {
+      if (!existing || new Date(s.endDate).getTime() < new Date(existing.endDate).getTime()) {
         activeSubMap.set(s.customer.id, s);
       }
     }
@@ -57,7 +57,7 @@ export default async function CustomersPage() {
 
   const sortedCustomers = [...customers].sort((a, b) => {
     const aActive = activeSubMap.has(a.id), bActive = activeSubMap.has(b.id);
-    if (aActive && bActive) return new Date(activeSubMap.get(a.id)!.renewalDate).getTime() - new Date(activeSubMap.get(b.id)!.renewalDate).getTime();
+    if (aActive && bActive) return new Date(activeSubMap.get(a.id)!.endDate).getTime() - new Date(activeSubMap.get(b.id)!.endDate).getTime();
     if (aActive) return -1; if (bActive) return 1;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
@@ -79,13 +79,13 @@ export default async function CustomersPage() {
         goal: activeSub.goal,
         subscriptionPrice: activeSub.subscriptionPrice,
         shippingPrice: activeSub.shippingPrice,
-        renewalDate: String(activeSub.renewalDate),
+        endDate: String(activeSub.endDate),
       } : null,
     };
   });
 
-  const active = subscriptions.filter((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate));
-  const inactive = subscriptions.filter((s) => !isSubscriptionLive(s.status, s.startDate, s.renewalDate))
+  const active = subscriptions.filter((s) => isSubscriptionLive(s.status, s.startDate, s.endDate));
+  const inactive = subscriptions.filter((s) => !isSubscriptionLive(s.status, s.startDate, s.endDate))
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   function extrasFor(subId: string) {
@@ -152,7 +152,7 @@ export default async function CustomersPage() {
                       </tr>
                     )}
                     {inactive.map((sub) => {
-                      const derivedStatus = subscriptionStatus(sub.status, sub.startDate, sub.renewalDate);
+                      const derivedStatus = subscriptionStatus(sub.status, sub.startDate, sub.endDate);
                       const total = sub.subscriptionPrice + sub.shippingPrice;
                       return (
                         <tr key={sub.id} className="hover:bg-accent/50 transition-colors">
@@ -167,7 +167,7 @@ export default async function CustomersPage() {
                             {sub.plan} · {sub.goal} · {sub.mealsPerDay}×/day
                           </td>
                           <td className="px-4 py-2 text-muted-foreground whitespace-nowrap">
-                            {formatDate(sub.startDate)} – {formatDate(sub.renewalDate)}
+                            {formatDate(sub.startDate)} – {formatDate(sub.endDate)}
                           </td>
                           <td className="px-4 py-2">
                             <span className="font-medium">₫{total.toLocaleString()}</span>
@@ -184,7 +184,7 @@ export default async function CustomersPage() {
                           </td>
                           <td className="px-2 py-2">
                             <EditSubscriptionRow
-                              sub={{ ...sub, startDate: String(sub.startDate), renewalDate: String(sub.renewalDate) }}
+                              sub={{ ...sub, startDate: String(sub.startDate), endDate: String(sub.endDate) }}
                               pricing={pricingEntries}
                               extras={extrasFor(sub.id)}
                             />

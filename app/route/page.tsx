@@ -69,7 +69,7 @@ export default async function RoutePage({
 
   const seenCustomers = new Set<string>();
   const deliveries = subscriptions
-    .filter((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate, selectedDate))
+    .filter((s) => isSubscriptionLive(s.status, s.startDate, s.endDate, selectedDate))
     .map((sub) => {
       const customer = customers.find((c) => c.phone === sub.customerId);
       const defaultAddr = customer ? defaultAddrMap.get(customer.id) : undefined;

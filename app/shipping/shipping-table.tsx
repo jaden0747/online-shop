@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Copy, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CustomerOverlayTrigger } from "@/components/customer-overlay-trigger";
 import { upsertDayAddressAction, deleteDayAddressAction } from "@/app/actions/order-day-addresses";
@@ -44,6 +45,7 @@ type Delivery = {
   mealsPerDay: number;
   isReplacement: boolean;
   meals: string[];
+  mealSlots: number[];
   lat: number | null;
   lng: number | null;
   addresses: AddressOption[];
@@ -77,6 +79,8 @@ export function ShippingTable({
   notes = [],
   permanentNotes = [],
   defaultHub,
+  menuOptionA = null,
+  menuOptionB = null,
 }: {
   deliveries: Delivery[];
   date: string;
@@ -84,7 +88,16 @@ export function ShippingTable({
   permanentNotes?: { customerId: string; note: string | null }[];
   defaultHub?: { lat: number; lng: number };
   onCustomerClick?: (customerId: string) => void;
+  menuOptionA?: string | null;
+  menuOptionB?: string | null;
 }) {
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  function copyToClipboard(text: string, key: string) {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 1500);
+  }
+
   const [hub, setHub] = useState(defaultHub ?? DEFAULT_HUB);
   const [constraints, setConstraints] = useState<Constraints>(DEFAULT_CONSTRAINTS);
   const [manualK, setManualK] = useState<number | null>(null);
@@ -115,6 +128,8 @@ export function ShippingTable({
     if (cStr) {
       try { setConstraints(JSON.parse(cStr)); } catch { /* ignore */ }
     }
+    const savedK = localStorage.getItem("route_manual_k");
+    if (savedK) { const k = parseInt(savedK, 10); if (!isNaN(k) && k >= 1) setManualK(k); }
     // Restore manual assignments and stop order from the Route page
     try {
       const savedOverrides = localStorage.getItem(`route-overrides-${date}`);
@@ -245,6 +260,308 @@ export function ShippingTable({
     }
   };
 
+  const [copiedText, setCopiedText] = useState(false);
+  const handleCopyText = () => {
+    const lines: string[] = [];
+
+    // Group sortedRows by shipper index
+    const shipperGroups = new Map<number, typeof sortedRows>();
+    for (const row of sortedRows) {
+      if (row.shipper === null) continue;
+      const group = shipperGroups.get(row.shipper) ?? [];
+      group.push(row);
+      shipperGroups.set(row.shipper, group);
+    }
+
+    for (const [shipperIdx, rows] of [...shipperGroups.entries()].sort((a, b) => a[0] - b[0])) {
+      lines.push(`--- Shipper ${shipperIdx + 1} (${rows.length} stop${rows.length !== 1 ? "s" : ""}) ---`);
+      for (const row of rows) {
+        const d = row.delivery;
+        const note = notes.find((n) => n.customerId === d.phone)?.note ?? null;
+        const permanentNote = permanentNotes.find((n) => n.customerId === d.customerId)?.note ?? null;
+        lines.push(`${row.stop}. ${d.name}`);
+        lines.push(`   Phone: ${d.phone}`);
+        lines.push(`   Address: ${d.address}`);
+        if (d.meals.length > 0) lines.push(`   Meals: ${d.meals.join(", ")}`);
+        if (permanentNote) lines.push(`   Note: ${permanentNote}`);
+        if (note) lines.push(`   Today: ${note}`);
+      }
+      lines.push("");
+    }
+
+    if (withoutCoords.length > 0) {
+      lines.push(`--- No route (${withoutCoords.length} stop${withoutCoords.length !== 1 ? "s" : ""}) ---`);
+      withoutCoords.forEach((d, i) => {
+        const note = notes.find((n) => n.customerId === d.phone)?.note ?? null;
+        const permanentNote = permanentNotes.find((n) => n.customerId === d.customerId)?.note ?? null;
+        lines.push(`${i + 1}. ${d.name}`);
+        lines.push(`   Phone: ${d.phone}`);
+        lines.push(`   Address: ${d.address}`);
+        if (d.meals.length > 0) lines.push(`   Meals: ${d.meals.join(", ")}`);
+        if (permanentNote) lines.push(`   Note: ${permanentNote}`);
+        if (note) lines.push(`   Today: ${note}`);
+      });
+    }
+
+    navigator.clipboard.writeText(lines.join("\n"));
+    setCopiedText(true);
+    setTimeout(() => setCopiedText(false), 2000);
+  };
+
+  const [copiedMenu, setCopiedMenu] = useState(false);
+  const handleCopyMenu = () => {
+    const lines: string[] = [];
+
+    const optionAName = menuOptionA ?? "Option A";
+    const optionBName = menuOptionB ?? "Option B";
+    const firstWord = (s: string) => s.split(/\s+/)[0];
+    const shortAddr = (s: string) => s.split(",")[0].trim();
+
+    // Overall meal summary
+    const allDeliveries = [...sortedRows.map((r) => r.delivery), ...withoutCoords];
+    let countA = 0, countB = 0;
+    for (const d of allDeliveries) {
+      for (const slot of d.mealSlots) {
+        if (slot === 1) countA++;
+        else if (slot === 2) countB++;
+      }
+    }
+    lines.push(`${optionAName}: ${countA} portions`);
+    lines.push(`${optionBName}: ${countB} portions`);
+    lines.push(`Total: ${countA + countB} meals`);
+    lines.push("");
+
+    // Group sortedRows by shipper
+    const shipperGroups = new Map<number, typeof sortedRows>();
+    for (const row of sortedRows) {
+      if (row.shipper === null) continue;
+      const group = shipperGroups.get(row.shipper) ?? [];
+      group.push(row);
+      shipperGroups.set(row.shipper, group);
+    }
+
+    const getNote = (d: typeof allDeliveries[number]) =>
+      notes.find((n) => n.customerId === d.phone)?.note ?? null;
+    const getPermNote = (d: typeof allDeliveries[number]) =>
+      permanentNotes.find((n) => n.customerId === d.customerId)?.note ?? null;
+    const hasNote = (d: typeof allDeliveries[number]) => !!(getNote(d) || getPermNote(d));
+
+    // First pass: emit all rows, track global number per customerId
+    const globalNumMap = new Map<string, number>();
+    let globalNum = 1;
+
+    const emitRow = (d: typeof allDeliveries[number], stopLabel: string) => {
+      const note = getNote(d);
+      const permanentNote = getPermNote(d);
+      const mealStr = d.meals.length > 0 ? d.meals.map(firstWord).join(" + ") : "—";
+      const parts = [mealStr];
+      if (permanentNote) parts.push(permanentNote);
+      if (note) parts.push(note);
+      parts.push(shortAddr(d.address));
+      const n = globalNum++;
+      globalNumMap.set(d.customerId, n);
+      lines.push(`${n} | ${stopLabel}. ${d.name} | ${parts.join(" | ")}`);
+    };
+
+    for (const [shipperIdx, rows] of [...shipperGroups.entries()].sort((a, b) => a[0] - b[0])) {
+      lines.push(`--- Shipper ${shipperIdx + 1} (${rows.length} stop${rows.length !== 1 ? "s" : ""}) ---`);
+      for (const row of rows) emitRow(row.delivery, String(row.stop));
+      lines.push("");
+    }
+
+    if (withoutCoords.length > 0) {
+      lines.push(`--- No route (${withoutCoords.length} stop${withoutCoords.length !== 1 ? "s" : ""}) ---`);
+      withoutCoords.forEach((d, i) => emitRow(d, String(i + 1)));
+      lines.push("");
+    }
+
+    // Bottom section 1: no-notes meal summary (1 line)
+    let noNotesA = 0, noNotesB = 0;
+    for (const d of allDeliveries) {
+      if (hasNote(d)) continue;
+      for (const slot of d.mealSlots) {
+        if (slot === 1) noNotesA++;
+        else if (slot === 2) noNotesB++;
+      }
+    }
+    lines.push(`No notes: ${optionAName} ×${noNotesA}  |  ${optionBName} ×${noNotesB}  |  Total: ${noNotesA + noNotesB} meals`);
+    lines.push("");
+
+    // Bottom section 2: with-notes customers flat list, original global numbers
+    const notedDeliveries = allDeliveries.filter(hasNote);
+    if (notedDeliveries.length > 0) {
+      lines.push("--- With notes ---");
+      for (const d of notedDeliveries) {
+        const note = getNote(d);
+        const permanentNote = getPermNote(d);
+        const mealStr = d.meals.length > 0 ? d.meals.map(firstWord).join(" + ") : "—";
+        const parts = [mealStr];
+        if (permanentNote) parts.push(permanentNote);
+        if (note) parts.push(note);
+        parts.push(shortAddr(d.address));
+        lines.push(`${globalNumMap.get(d.customerId)}. ${d.name} | ${parts.join(" | ")}`);
+      }
+    }
+
+    navigator.clipboard.writeText(lines.join("\n"));
+    setCopiedMenu(true);
+    setTimeout(() => setCopiedMenu(false), 2000);
+  };
+
+  const [copyingMenuPng, setCopyingMenuPng] = useState(false);
+
+  const captureMenuPng = async (): Promise<Blob> => {
+    const isDark = document.documentElement.classList.contains("dark");
+    const bg = isDark ? "#0f172a" : "#ffffff";
+    const fg = isDark ? "#f8fafc" : "#0f172a";
+    const muted = isDark ? "#cbd5e1" : "#374151";
+    const rowAlt = isDark ? "#1e293b" : "#f1f5f9";
+    const noteBg = isDark ? "#422006" : "#fef3c7";
+    const noteFg = isDark ? "#fde68a" : "#92400e";
+    const sectionBorder = isDark ? "#334155" : "#e2e8f0";
+
+    const optionAName = menuOptionA ?? "Option A";
+    const optionBName = menuOptionB ?? "Option B";
+    const fw = (s: string) => s.split(/\s+/)[0];
+    const sa = (s: string) => s.split(",")[0].trim();
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    const allDels = [...sortedRows.map((r) => r.delivery), ...withoutCoords];
+    const gNote = (d: typeof allDels[number]) => notes.find((n) => n.customerId === d.phone)?.note ?? null;
+    const gPerm = (d: typeof allDels[number]) => permanentNotes.find((n) => n.customerId === d.customerId)?.note ?? null;
+    const hNote = (d: typeof allDels[number]) => !!(gNote(d) || gPerm(d));
+
+    let cA = 0, cB = 0;
+    for (const d of allDels) for (const s of d.mealSlots) { if (s === 1) cA++; else if (s === 2) cB++; }
+
+    const sgLocal = new Map<number, typeof sortedRows>();
+    for (const row of sortedRows) {
+      if (row.shipper === null) continue;
+      const g = sgLocal.get(row.shipper) ?? []; g.push(row); sgLocal.set(row.shipper, g);
+    }
+    const sortedSh = [...sgLocal.entries()].sort((a, b) => a[0] - b[0]);
+
+    const gnMap = new Map<string, number>();
+    let gn = 1;
+    for (const [, rows] of sortedSh) for (const r of rows) gnMap.set(r.delivery.customerId, gn++);
+    for (const d of withoutCoords) gnMap.set(d.customerId, gn++);
+
+    let noA = 0, noB = 0;
+    for (const d of allDels) {
+      if (hNote(d)) continue;
+      for (const s of d.mealSlots) { if (s === 1) noA++; else if (s === 2) noB++; }
+    }
+    const noted = allDels.filter(hNote);
+
+    const mkRow = (d: typeof allDels[number], stopLabel: string, idx: number) => {
+      const note = gNote(d); const perm = gPerm(d); const hasN = !!(note || perm);
+      const meal = d.meals.length > 0 ? d.meals.map(fw).join(" + ") : "—";
+      const noteStr = [perm, note].filter(Boolean).map(esc).join(" · ");
+      const rowBg = hasN ? noteBg : (idx % 2 === 0 ? rowAlt : bg);
+      return `<tr style="background:${rowBg}">
+        <td style="padding:4px 6px;color:${fg};font-size:13px;font-weight:700;text-align:right;white-space:nowrap;width:28px">${gnMap.get(d.customerId)}</td>
+        <td style="padding:4px 5px;color:${muted};font-size:13px;font-weight:700;text-align:right;width:22px">${esc(stopLabel)}</td>
+        <td style="padding:4px 8px;font-weight:700;white-space:nowrap;color:${fg}">${esc(d.name)}</td>
+        <td style="padding:4px 8px;color:#4f46e5;font-weight:700;white-space:nowrap">${esc(meal)}</td>
+        <td style="padding:4px 8px;color:${hasN ? noteFg : muted};font-size:13px;font-weight:600;max-width:180px">${noteStr || ""}</td>
+        <td style="padding:4px 8px;color:${muted};font-size:13px;font-weight:600">${esc(sa(d.address))}</td>
+      </tr>`;
+    };
+
+    let shipperHtml = "";
+    for (const [si, rows] of sortedSh) {
+      const color = CLUSTER_COLORS[si % CLUSTER_COLORS.length];
+      const rowsHtml = rows.map((r, i) => mkRow(r.delivery, String(r.stop), i)).join("");
+      shipperHtml += `<div style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:8px;padding:5px 10px;background:${color}33;border-left:5px solid ${color};border-radius:0 6px 6px 0;margin-bottom:4px">
+          <span style="color:${color};font-weight:800;font-size:14px">Shipper ${si + 1}</span>
+          <span style="color:${fg};font-size:13px;font-weight:700">${rows.length} stop${rows.length !== 1 ? "s" : ""}</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;color:${fg}">${rowsHtml}</table>
+      </div>`;
+    }
+    if (withoutCoords.length > 0) {
+      const rowsHtml = withoutCoords.map((d, i) => mkRow(d, String(i + 1), i)).join("");
+      shipperHtml += `<div style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:8px;padding:5px 10px;background:${sectionBorder};border-left:5px solid ${muted};border-radius:0 6px 6px 0;margin-bottom:4px">
+          <span style="color:${fg};font-weight:800;font-size:14px">No route</span>
+          <span style="color:${fg};font-size:13px;font-weight:700">${withoutCoords.length} stop${withoutCoords.length !== 1 ? "s" : ""}</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;color:${fg}">${rowsHtml}</table>
+      </div>`;
+    }
+
+    let notedHtml = "";
+    if (noted.length > 0) {
+      const noteRows = noted.map((d, i) => {
+        const note = gNote(d); const perm = gPerm(d);
+        const meal = d.meals.length > 0 ? d.meals.map(fw).join(" + ") : "—";
+        const noteStr = [perm, note].filter(Boolean).map(esc).join(" · ");
+        return `<tr style="background:${i % 2 === 0 ? noteBg : bg}">
+          <td style="padding:4px 6px;color:${fg};font-size:13px;font-weight:700;text-align:right;width:28px">${gnMap.get(d.customerId)}</td>
+          <td style="padding:4px 8px;font-weight:700;white-space:nowrap;color:${fg}">${esc(d.name)}</td>
+          <td style="padding:4px 8px;color:#4f46e5;font-weight:700;white-space:nowrap">${esc(meal)}</td>
+          <td style="padding:4px 8px;color:${noteFg};font-size:13px;font-weight:700">${noteStr}</td>
+          <td style="padding:4px 8px;color:${muted};font-size:13px;font-weight:600">${esc(sa(d.address))}</td>
+        </tr>`;
+      }).join("");
+      notedHtml = `<div style="margin-top:16px;padding-top:12px;border-top:2px solid ${sectionBorder}">
+        <div style="font-weight:800;font-size:14px;margin-bottom:6px;color:${fg}">With notes</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;color:${fg}">${noteRows}</table>
+      </div>`;
+    }
+
+    const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;width:740px;padding:24px;background:${bg};color:${fg}">
+      <div style="margin-bottom:18px">
+        <div style="font-size:16px;font-weight:800;margin-bottom:10px;color:${fg}">Menu Report · ${esc(date)}</div>
+        <div style="display:flex;gap:10px">
+          <div style="background:#6366f1;color:white;padding:10px 18px;border-radius:8px;min-width:130px">
+            <div style="font-size:10px;opacity:0.75;margin-bottom:2px">${esc(optionAName)}</div>
+            <div style="font-size:28px;font-weight:800;line-height:1">${cA}</div>
+          </div>
+          <div style="background:#22c55e;color:white;padding:10px 18px;border-radius:8px;min-width:130px">
+            <div style="font-size:10px;opacity:0.75;margin-bottom:2px">${esc(optionBName)}</div>
+            <div style="font-size:28px;font-weight:800;line-height:1">${cB}</div>
+          </div>
+          <div style="background:${isDark ? "#1e293b" : "#0f172a"};color:white;padding:10px 18px;border-radius:8px;min-width:110px">
+            <div style="font-size:10px;opacity:0.75;margin-bottom:2px">Total meals</div>
+            <div style="font-size:28px;font-weight:800;line-height:1">${cA + cB}</div>
+          </div>
+        </div>
+      </div>
+      ${shipperHtml}
+      <div style="padding:7px 12px;background:${rowAlt};border-radius:6px;font-size:13px;font-weight:700;color:${fg};border:1px solid ${sectionBorder}">
+        No notes: &nbsp;${esc(optionAName)} ×${noA}&nbsp; | &nbsp;${esc(optionBName)} ×${noB}&nbsp; | &nbsp;Total: ${noA + noB} meals
+      </div>
+      ${notedHtml}
+    </div>`;
+
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "position:fixed;left:-9999px;top:0;z-index:-1";
+    wrap.innerHTML = html;
+    document.body.appendChild(wrap);
+    try {
+      const { toPng } = await import("html-to-image");
+      const dataUrl = await toPng(wrap.firstElementChild as HTMLElement, { backgroundColor: bg, pixelRatio: 2 });
+      const res = await fetch(dataUrl);
+      return await res.blob();
+    } finally {
+      document.body.removeChild(wrap);
+    }
+  };
+
+  const handleCopyMenuPng = async () => {
+    setCopyingMenuPng(true);
+    try {
+      const blobPromise = captureMenuPng();
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blobPromise })]);
+    } catch (e) {
+      console.error("Copy menu PNG failed:", e);
+    } finally {
+      setCopyingMenuPng(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
       <div className="px-3 pt-2 flex items-center gap-3 text-xs">
@@ -257,14 +574,14 @@ export function ShippingTable({
             value={manualK ?? cluster.k}
             onChange={(e) => {
               const v = parseInt(e.target.value);
-              if (!isNaN(v) && v >= 1) setManualK(v);
+              if (!isNaN(v) && v >= 1) { setManualK(v); localStorage.setItem("route_manual_k", String(v)); }
             }}
             className="h-7 w-16 px-2 border rounded text-sm"
           />
           {manualK !== null && (
             <button
               type="button"
-              onClick={() => setManualK(null)}
+              onClick={() => { setManualK(null); localStorage.removeItem("route_manual_k"); }}
               className="h-7 px-2 text-xs rounded border bg-background hover:bg-accent"
               title="Use auto"
             >
@@ -293,31 +610,55 @@ export function ShippingTable({
           >
             {copying ? "Copying…" : "Copy PNG"}
           </button>
+          <button
+            type="button"
+            onClick={handleCopyText}
+            className="h-7 px-3 text-xs rounded border bg-background hover:bg-accent transition-colors"
+            title="Copy shipping details as text, grouped by shipper"
+          >
+            {copiedText ? "Copied!" : "Copy Text"}
+          </button>
+          <button
+            type="button"
+            onClick={handleCopyMenu}
+            className="h-7 px-3 text-xs rounded border bg-background hover:bg-accent transition-colors"
+            title="Copy menu summary and per-customer info grouped by shipper"
+          >
+            {copiedMenu ? "Copied!" : "Menu"}
+          </button>
+          <button
+            type="button"
+            onClick={handleCopyMenuPng}
+            disabled={copyingMenuPng}
+            className="h-7 px-3 text-xs font-bold rounded border bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
+            title="Copy menu report as PNG to clipboard"
+          >
+            {copyingMenuPng ? "Copying…" : "Menu PNG"}
+          </button>
         </div>
       </div>
 
-      <div className="overflow-x-auto" ref={tableRef}>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/50">
-              <th className="text-left px-2 py-1.5 font-medium w-8">#</th>
-              <th className="text-left px-2 py-1.5 font-medium w-16">Shipper</th>
-              <th className="text-left px-2 py-1.5 font-medium">Customer</th>
-              <th className="text-left px-2 py-1.5 font-medium">Address</th>
-              <th className="text-left px-2 py-1.5 font-medium">Zone</th>
-              <th className="text-left px-2 py-1.5 font-medium">Dist</th>
-              <th className="text-left px-2 py-1.5 font-medium">Today&apos;s Meals</th>
-              <th className="text-left px-2 py-1.5 font-medium">Note</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {deliveries.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-4 py-6 text-center text-muted-foreground">
-                  No deliveries scheduled for today.
-                </td>
-              </tr>
-            )}
+       <div className="overflow-x-auto" ref={tableRef}>
+         <table className="w-full text-sm">
+           <thead>
+             <tr className="border-b bg-muted/50">
+               <th className="text-left px-2 py-1.5 font-medium w-8">#</th>
+               <th className="text-left px-2 py-1.5 font-medium w-16">Shipper</th>
+               <th className="text-left px-2 py-1.5 font-medium">Customer</th>
+               <th className="text-left px-2 py-1.5 font-medium">Permanent Note</th>
+               <th className="text-left px-2 py-1.5 font-medium">Today&apos;s Note</th>
+               <th className="text-left px-2 py-1.5 font-medium">Today&apos;s Meals</th>
+               <th className="text-left px-2 py-1.5 font-medium">Address</th>
+             </tr>
+           </thead>
+           <tbody className="divide-y">
+             {deliveries.length === 0 && (
+               <tr>
+                 <td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">
+                   No deliveries scheduled for today.
+                 </td>
+               </tr>
+             )}
             {sortedRows.map((row, idx) => {
               const d = row.delivery;
               const color = row.shipper !== null ? CLUSTER_COLORS[row.shipper % CLUSTER_COLORS.length] : null;
@@ -347,33 +688,35 @@ export function ShippingTable({
                       phone={d.phone}
                       permanentNote={permanentNote}
                     />
+                    <div className="flex items-center gap-1 mt-0.5">
+                      {([["name", d.name], ["phone", d.phone], ["addr", d.address]] as const).map(([type, value]) => {
+                        const key = `${d.customerId}-${type}`;
+                        return (
+                          <button key={type} type="button" onClick={() => copyToClipboard(value, key)}
+                            title={`Copy ${type === "addr" ? "address" : type}`}
+                            className="flex items-center gap-1 px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border border-transparent hover:border-border">
+                            {copiedKey === key ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                            <span>{type === "addr" ? "addr" : type}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </td>
-                  <td className="px-2 py-1.5 max-w-[200px]">
-                    <AddressCell
-                      delivery={d}
-                      selectedId={selectedAddressIds.get(d.customerId) ?? d.defaultAddressId}
-                      onChange={(id) => setSelectedAddressIds((prev) => new Map(prev).set(d.customerId, id))}
-                    />
-                  </td>
-                  <td className="px-2 py-1.5 text-xs">{d.zone}</td>
-                  <td className="px-2 py-1.5">
-                    {d.lat !== null && d.lng !== null ? (() => {
-                      const km = haversineKm(hub.lat, hub.lng, d.lat, d.lng);
-                      const { text, bar } = distanceColor(km);
-                      const barWidthPct = Math.min(100, (km / 12) * 100);
-                      return (
-                        <div className="space-y-1 min-w-[52px]">
-                          <span className={`text-xs font-medium ${text}`}>{km.toFixed(1)}km</span>
-                          <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${bar}`} style={{ width: `${barWidthPct}%` }} />
-                          </div>
-                        </div>
-                      );
-                    })() : (
-                      <span className="text-xs text-muted-foreground">—</span>
+                  <td className="px-2 py-1.5 max-w-[120px]">
+                    {permanentNote ? (
+                      <span className="text-xs text-blue-600 dark:text-blue-400 whitespace-pre-wrap">{permanentNote}</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/40">—</span>
                     )}
                   </td>
-                  <td className="px-2 py-1.5 max-w-[260px]">
+                  <td className="px-2 py-1.5 max-w-[120px]">
+                    {note ? (
+                      <span className="text-xs text-blue-600 dark:text-blue-400 whitespace-pre-wrap">{note}</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/40">—</span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 max-w-[110px]">
                     {d.meals.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
                         {d.meals.map((m, i) => (
@@ -386,12 +729,12 @@ export function ShippingTable({
                       <span className="text-xs text-muted-foreground italic">not selected</span>
                     )}
                   </td>
-                  <td className="px-2 py-1.5 max-w-[180px]">
-                    {note ? (
-                      <span className="text-xs text-blue-700 whitespace-pre-wrap">{note}</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground/40">—</span>
-                    )}
+                  <td className="px-2 py-1.5 max-w-[200px]">
+                    <AddressCell
+                      delivery={d}
+                      selectedId={selectedAddressIds.get(d.customerId) ?? d.defaultAddressId}
+                      onChange={(id) => setSelectedAddressIds((prev) => new Map(prev).set(d.customerId, id))}
+                    />
                   </td>
                 </tr>
               );
@@ -413,19 +756,35 @@ export function ShippingTable({
                       phone={d.phone}
                       permanentNote={permanentNote}
                     />
+                    <div className="flex items-center gap-1 mt-0.5">
+                      {([["name", d.name], ["phone", d.phone], ["addr", d.address]] as const).map(([type, value]) => {
+                        const key = `${d.customerId}-${type}`;
+                        return (
+                          <button key={type} type="button" onClick={() => copyToClipboard(value, key)}
+                            title={`Copy ${type === "addr" ? "address" : type}`}
+                            className="flex items-center gap-1 px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border border-transparent hover:border-border">
+                            {copiedKey === key ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                            <span>{type === "addr" ? "addr" : type}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </td>
-                  <td className="px-2 py-1.5 max-w-[200px]">
-                    <AddressCell
-                      delivery={d}
-                      selectedId={selectedAddressIds.get(d.customerId) ?? d.defaultAddressId}
-                      onChange={(id) => setSelectedAddressIds((prev) => new Map(prev).set(d.customerId, id))}
-                    />
+                  <td className="px-2 py-1.5 max-w-[120px]">
+                    {permanentNote ? (
+                      <span className="text-xs text-blue-600 dark:text-blue-400 whitespace-pre-wrap">{permanentNote}</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/40">—</span>
+                    )}
                   </td>
-                  <td className="px-2 py-1.5 text-xs">{d.zone}</td>
-                  <td className="px-2 py-1.5">
-                    <span className="text-xs text-muted-foreground">—</span>
+                  <td className="px-2 py-1.5 max-w-[120px]">
+                    {note ? (
+                      <span className="text-xs text-blue-600 dark:text-blue-400 whitespace-pre-wrap">{note}</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/40">—</span>
+                    )}
                   </td>
-                  <td className="px-2 py-1.5 max-w-[260px]">
+                  <td className="px-2 py-1.5 max-w-[110px]">
                     {d.meals.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
                         {d.meals.map((m, i) => (
@@ -436,12 +795,12 @@ export function ShippingTable({
                       <span className="text-xs text-muted-foreground italic">not selected</span>
                     )}
                   </td>
-                  <td className="px-2 py-1.5 max-w-[180px]">
-                    {note ? (
-                      <span className="text-xs text-blue-700 whitespace-pre-wrap">{note}</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground/40">—</span>
-                    )}
+                  <td className="px-2 py-1.5 max-w-[200px]">
+                    <AddressCell
+                      delivery={d}
+                      selectedId={selectedAddressIds.get(d.customerId) ?? d.defaultAddressId}
+                      onChange={(id) => setSelectedAddressIds((prev) => new Map(prev).set(d.customerId, id))}
+                    />
                   </td>
                 </tr>
               );

@@ -3,13 +3,11 @@ export function CustomerNameWithNote({ name, note }: { name: string; note: strin
     return <span>{name}</span>;
   }
 
-  const truncated = note.length > 40 ? note.slice(0, 40) + "…" : note;
-
   return (
     <div className="flex flex-col gap-0.5">
       <span>{name}</span>
-      <span className="text-xs text-muted-foreground truncate" title={note}>
-        {truncated}
+      <span className="text-xs text-blue-600 dark:text-blue-400 whitespace-pre-wrap">
+        {note}
       </span>
     </div>
   );

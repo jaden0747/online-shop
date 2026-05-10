@@ -10,7 +10,6 @@ import {
   nextWeekMonday,
   formatWeekLabel,
 } from "@/lib/utils/week";
-import { isSubscriptionLive } from "@/lib/utils/subscription";
 import { OpenInFinderButton } from "@/components/open-in-finder-button";
 import { MenuTabs, type WeekData } from "./menu-tabs";
 
@@ -35,10 +34,16 @@ function buildWeekData(
     return d;
   });
 
+  const weekStart = weekDates[0]; // Monday midnight
+  const weekEnd = weekDates[4];   // Friday midnight
+
   const seenCustomers = new Set<string>();
   const activeCustomers = subscriptions
     .filter((s) => {
-      if (!isSubscriptionLive(s.status, s.startDate, s.renewalDate)) return false;
+      if (s.status === "cancelled") return false;
+      const subStart = new Date(s.startDate); subStart.setHours(0, 0, 0, 0);
+      const subEnd = new Date(s.endDate); subEnd.setHours(0, 0, 0, 0);
+      if (subStart > weekEnd || subEnd < weekStart) return false;
       if (seenCustomers.has(s.customerId)) return false;
       seenCustomers.add(s.customerId);
       return true;
@@ -65,7 +70,7 @@ function buildWeekData(
         mealsPerDay: sub.mealsPerDay,
         goal: sub.goal,
         startDate: sub.startDate,
-        endDate: sub.renewalDate,
+        endDate: sub.endDate,
         subscriptionId: sub.id,
         skips,
         notes: cust.notes,

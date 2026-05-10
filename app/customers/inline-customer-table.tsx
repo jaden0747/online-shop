@@ -24,7 +24,7 @@ type Sub = {
   mealsPerDay: number;
   status: string;
   startDate: string;
-  renewalDate: string;
+  endDate: string;
 };
 
 type Props = {
@@ -34,12 +34,12 @@ type Props = {
 };
 
 
-function RenewalCell({ sub }: { sub: Sub | null }) {
+function EndDateCell({ sub }: { sub: Sub | null }) {
   if (!sub) {
     return <span className="text-muted-foreground">—</span>;
   }
 
-  const isLive = isSubscriptionLive(sub.status, sub.startDate, sub.renewalDate);
+  const isLive = isSubscriptionLive(sub.status, sub.startDate, sub.endDate);
 
   if (!isLive) {
     // cancelled or expired
@@ -50,7 +50,7 @@ function RenewalCell({ sub }: { sub: Sub | null }) {
     );
   }
 
-  const days = daysRemaining(sub.renewalDate);
+  const days = daysRemaining(sub.endDate);
   let colorClass = "text-green-600";
   if (days <= 6) colorClass = "text-red-600";
   else if (days <= 13) colorClass = "text-yellow-600";
@@ -103,7 +103,7 @@ export function InlineCustomerTable({ customers, subscriptions, onCustomerClick 
               <th className="text-left px-4 py-2 font-medium">Zone</th>
               <th className="text-left px-4 py-2 font-medium">Plan</th>
               <th className="text-left px-4 py-2 font-medium w-8">Note</th>
-              <th className="text-left px-4 py-2 font-medium">Renewal</th>
+              <th className="text-left px-4 py-2 font-medium">End Date</th>
               <th className="w-10" />
             </tr>
           </thead>
@@ -118,7 +118,7 @@ export function InlineCustomerTable({ customers, subscriptions, onCustomerClick 
             {filtered.map((c) => {
               const activeSub =
                 subscriptions.find(
-                  (s) => s.customerId === c.id && isSubscriptionLive(s.status, s.startDate, s.renewalDate)
+                  (s) => s.customerId === c.id && isSubscriptionLive(s.status, s.startDate, s.endDate)
                 ) ?? null;
               const anySub =
                 activeSub ??
@@ -160,7 +160,7 @@ export function InlineCustomerTable({ customers, subscriptions, onCustomerClick 
                     ) : null}
                   </td>
                   <td className="px-4 py-2">
-                    <RenewalCell sub={anySub} />
+                     <EndDateCell sub={anySub} />
                   </td>
                   <td className="px-2 py-2">
                     <button

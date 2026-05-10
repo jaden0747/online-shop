@@ -65,7 +65,7 @@ for (const c of customers) {
     packagePrice: PACKAGE_PRICE,
     pricePerMeal: PRICE_PER_MEAL,
     startDate: START,
-    renewalDate: RENEWAL,
+     endDate: RENEWAL,
     cancelReason: null,
     createdAt: new Date().toISOString(),
   });

@@ -162,6 +162,8 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
     }
     const savedPrice = localStorage.getItem("route_price_per_km");
     if (savedPrice) setPricePerKm(parseFloat(savedPrice) || DEFAULT_PRICE_PER_KM);
+    const savedK = localStorage.getItem("route_manual_k");
+    if (savedK) { const k = parseInt(savedK, 10); if (!isNaN(k) && k >= 1) setManualK(k); }
 
     // Restore manual overrides for this week
     try {
@@ -406,15 +408,15 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
   };
 
   const buildRouteCanvas = async (): Promise<HTMLCanvasElement> => {
-    const CANVAS_W = 1600;
+    const DETAIL_W = 400;
     const MAP_W = 720;
+    const CANVAS_W = MAP_W + DETAIL_W;
     const DETAIL_X = MAP_W;
-    const DETAIL_W = CANVAS_W - MAP_W;
     const HEADER_H = 56;
     const PAD = 16;
     const SHIP_BANNER_H = 44;
     const MIN_SECTION_H = 280;
-    const STOP_BASE_H = 50;
+    const STOP_BASE_H = 60;
 
     function calcStopH(d: Delivery): number {
       let h = STOP_BASE_H;
@@ -660,18 +662,17 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
 
         ctx.fillStyle = T.stopName;
         ctx.font = "bold 13px system-ui,sans-serif";
-        ctx.fillText(truncateText(ctx, d.name, maxTW - 140), tx, dy + 14);
+        ctx.fillText(truncateText(ctx, d.name, maxTW), tx, dy + 14);
+
         ctx.fillStyle = T.stopPhone;
         ctx.font = "11px system-ui,sans-serif";
-        ctx.textAlign = "right";
-        ctx.fillText(d.phone, DETAIL_X + DETAIL_W - PAD, dy + 14);
-        ctx.textAlign = "left";
+        ctx.fillText(d.phone, tx, dy + 27);
 
         ctx.fillStyle = T.stopAddress;
         ctx.font = "11px system-ui,sans-serif";
-        ctx.fillText(truncateText(ctx, d.address, maxTW), tx, dy + 29);
+        ctx.fillText(truncateText(ctx, d.address, maxTW), tx, dy + 40);
 
-        let rowY = dy + 44;
+        let rowY = dy + 54;
 
         if (d.meals && d.meals.length > 0) {
           ctx.fillStyle = T.stopMeal;
@@ -787,14 +788,14 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
                 value={manualK ?? recommendedK}
                 onChange={(e) => {
                   const v = parseInt(e.target.value);
-                  if (!isNaN(v) && v >= 1) setManualK(v);
+                  if (!isNaN(v) && v >= 1) { setManualK(v); localStorage.setItem("route_manual_k", String(v)); }
                 }}
                 className="h-8 text-sm"
               />
               {manualK !== null && (
                 <button
                   type="button"
-                  onClick={() => setManualK(null)}
+                  onClick={() => { setManualK(null); localStorage.removeItem("route_manual_k"); }}
                   className="h-8 px-2 text-xs rounded border bg-background hover:bg-accent shrink-0"
                   title="Use recommended"
                 >

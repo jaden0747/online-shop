@@ -36,6 +36,9 @@ const PALETTE = [
   "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16",
 ];
 
+// One color per weekday (Mon–Fri), used for meal selection bars
+const DAY_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#06b6d4"];
+
 const PLAN_COLORS: Record<string, string> = {
   trial: "#f59e0b",
   weekly: "#6366f1",
@@ -52,10 +55,11 @@ type ChartProps = {
   planMix: { name: string; value: number }[];
   goalMix: { name: string; value: number }[];
   weekdayDeliveries: { day: string; count: number }[];
-  mealSelections: { name: string; count: number }[];
+  mealSelections: { name: string; count: number; day: number }[];
   zoneData: { zone: string; count: number }[];
   renewalData: { bucket: string; count: number }[];
   mealsPerDayData: { meals: string; count: number }[];
+  totalMealsThisWeek: number;
 };
 
 function EmptyState() {
@@ -154,6 +158,7 @@ export function DashboardCharts({
   zoneData,
   renewalData,
   mealsPerDayData,
+  totalMealsThisWeek,
 }: ChartProps) {
   const mutedFg = useCssColor("--muted-foreground");
   const border = useCssColor("--border");
@@ -227,32 +232,49 @@ export function DashboardCharts({
 
       {/* Meal Selections — full width */}
       <Card className="col-span-2 lg:col-span-4">
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-sm">Meal Selections This Week</CardTitle>
+          <span className="text-sm font-semibold tabular-nums">
+            {totalMealsThisWeek} <span className="text-xs font-normal text-muted-foreground">meals total</span>
+          </span>
         </CardHeader>
         <CardContent>
-          {mealSelections.length === 0 ? (
+          {mealSelections.every((m) => m.count === 0) ? (
             <EmptyState />
           ) : (
-            <div className="h-[180px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={mealSelections} layout="vertical" barSize={16}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={border} horizontal={false} />
-                  <XAxis type="number" tick={axisStyle} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    tick={axisStyle}
-                    axisLine={false}
-                    tickLine={false}
-                    width={140}
-                    tickFormatter={(v: string) => v.length > 22 ? v.slice(0, 21) + "…" : v}
-                  />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: accent }} />
-                  <Bar dataKey="count" name="Selections" fill="#f59e0b" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <>
+              <div className="flex gap-4 mb-3">
+                {["Mon", "Tue", "Wed", "Thu", "Fri"].map((label, i) => (
+                  <div key={label} className="flex items-center gap-1.5 text-xs">
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: DAY_COLORS[i] }} />
+                    <span className="text-muted-foreground">{label}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={mealSelections} layout="vertical" barSize={16}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={border} horizontal={false} />
+                    <XAxis type="number" tick={axisStyle} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      tick={axisStyle}
+                      axisLine={false}
+                      tickLine={false}
+                      width={160}
+                      tickFormatter={(v: string) => v.length > 26 ? v.slice(0, 25) + "…" : v}
+                    />
+                    <Tooltip content={<ChartTooltip />} cursor={{ fill: accent }} />
+                    <Bar dataKey="count" name="Selections" radius={[0, 4, 4, 0]}>
+                      {mealSelections.map((entry) => (
+                        <Cell key={entry.name} fill={DAY_COLORS[(entry.day - 1) % 5]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

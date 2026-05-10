@@ -42,7 +42,10 @@ export type WeekData = {
 
 
 export function MenuTabs({ thisWeek, nextWeek }: { thisWeek: WeekData; nextWeek: WeekData }) {
-  const [tab, setTab] = useState<"this" | "next">("this");
+  const [tab, setTab] = useState<"this" | "next">(() => {
+    const d = new Date().getDay();
+    return d === 0 || d === 6 ? "next" : "this";
+  });
   const [overlayCustomerId, setOverlayCustomerId] = useState<string | null>(null);
   const data = tab === "this" ? thisWeek : nextWeek;
   const todayDow = new Date().getDay();

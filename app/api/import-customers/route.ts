@@ -55,9 +55,9 @@ function parseDate(val: string): Date | null {
 }
 
 function planDurationDays(plan: string): number {
-  if (plan === "monthly") return 20;
-  if (plan === "weekly") return 5;
-  return 3; // trial
+  if (plan === "monthly") return 19;
+  if (plan === "weekly") return 4;
+  return 2; // trial default (trialDays - 1)
 }
 
 export async function POST(req: NextRequest) {
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
         if (!activeSub) {
           const startDate   = parseDate(get(row, "start date", "start_date")) ?? new Date();
           const duration    = planDurationDays(plan);
-          const renewalDate = addWorkingDays(startDate, duration + skipDays);
+          const endDate = addWorkingDays(startDate, duration + skipDays);
 
           const pricing           = pricingEntries.find((p: { plan: string; goal: string; mealsPerDay: number; totalPrice: number }) => p.plan === plan && p.goal === goal && p.mealsPerDay === mealsPerDay);
           const subscriptionPrice = pricing?.totalPrice ?? 0;
@@ -153,7 +153,8 @@ export async function POST(req: NextRequest) {
             trialDays: plan === "trial" ? duration : null,
             status: "active",
             startDate: startDate.toISOString(),
-            renewalDate: renewalDate.toISOString(),
+            endDate: endDate.toISOString(),
+            endDateNoSkip: endDate.toISOString(),
             cancelReason: null,
           });
         }

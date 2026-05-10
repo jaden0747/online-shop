@@ -33,7 +33,8 @@ type Sub = {
   discount: number;
   trialDays: number | null;
   startDate: string;
-  renewalDate: string;
+  endDate: string;
+  endDateNoSkip: string;
 };
 
 type PricingEntry = { goal: string; plan: string; mealsPerDay: number; totalPrice: number };
@@ -71,8 +72,8 @@ export function EditSubscriptionRow({
   const [startDateStr, setStartDateStr] = useState(
     new Date(sub.startDate).toISOString().split("T")[0]
   );
-  const [renewalDateStr, setRenewalDateStr] = useState(
-    new Date(sub.renewalDate).toISOString().split("T")[0]
+  const [endDateStr, setEndDateStr] = useState(
+    new Date(sub.endDate).toISOString().split("T")[0]
   );
   const [pendingExtras, setPendingExtras] = useState<PendingExtra[]>([]);
   const [deletingExtraId, setDeletingExtraId] = useState<string | null>(null);
@@ -89,8 +90,8 @@ export function EditSubscriptionRow({
   useEffect(() => {
     const start = new Date(startDateStr);
     if (isNaN(start.getTime())) return;
-    const duration = plan === "monthly" ? 20 : plan === "weekly" ? 5 : trialDays;
-    setRenewalDateStr(addWorkingDays(start, duration).toISOString().split("T")[0]);
+    const duration = plan === "monthly" ? 19 : plan === "weekly" ? 4 : (trialDays ?? 3) - 1;
+    setEndDateStr(addWorkingDays(start, duration).toISOString().split("T")[0]);
   }, [plan, startDateStr, trialDays]);
 
   useEffect(() => {
@@ -103,7 +104,7 @@ export function EditSubscriptionRow({
       setDiscount(sub.discount ?? 0);
       setTrialDays(sub.trialDays ?? 3);
       setStartDateStr(new Date(sub.startDate).toISOString().split("T")[0]);
-      setRenewalDateStr(new Date(sub.renewalDate).toISOString().split("T")[0]);
+      setEndDateStr(new Date(sub.endDate).toISOString().split("T")[0]);
       setPendingExtras([]);
     }
   }, [open, sub]);
@@ -119,8 +120,8 @@ export function EditSubscriptionRow({
 
   function handleSave() {
     const startDate = new Date(startDateStr);
-    const renewalDate = new Date(renewalDateStr);
-    if (isNaN(startDate.getTime()) || isNaN(renewalDate.getTime())) return;
+    const endDate = new Date(endDateStr);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return;
     const mpd = parseInt(mealsPerDay, 10);
     startTransition(async () => {
       await updateSubscriptionAction(sub.id, {
@@ -132,7 +133,8 @@ export function EditSubscriptionRow({
         discount,
         trialDays: plan === "trial" ? trialDays : null,
         startDate,
-        renewalDate,
+        endDate,
+        endDateNoSkip: new Date(sub.endDateNoSkip || sub.endDate),
       });
       for (const extra of pendingExtras) {
         if (extra.amount !== 0) {
@@ -224,8 +226,8 @@ export function EditSubscriptionRow({
               <Label>End Date</Label>
               <Input
                 type="date"
-                value={renewalDateStr}
-                onChange={(e) => setRenewalDateStr(e.target.value)}
+                value={endDateStr}
+                onChange={(e) => setEndDateStr(e.target.value)}
               />
             </div>
           </div>

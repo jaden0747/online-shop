@@ -18,8 +18,8 @@ const PLANS = ["trial", "weekly", "monthly"];
 const GOALS = ["cutting", "maintenance", "bulking"];
 const MEALS_PER_DAY = [1, 2];
 
-function RenewalCell({ renewalDate }: { renewalDate: string }) {
-  const days = daysRemaining(renewalDate);
+function EndDateCell({ endDate }: { endDate: string }) {
+  const days = daysRemaining(endDate);
   let textClass: string;
   let barClass: string;
   if (days >= 14) {
@@ -84,8 +84,8 @@ export default async function SubscriptionsPage() {
   const lookup = new Map(
     pricingEntries.map((e) => [`${e.plan}-${e.goal}-${e.mealsPerDay}`, e])
   );
-  const active = subscriptions.filter((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate));
-  const inactive = subscriptions.filter((s) => !isSubscriptionLive(s.status, s.startDate, s.renewalDate));
+  const active = subscriptions.filter((s) => isSubscriptionLive(s.status, s.startDate, s.endDate));
+  const inactive = subscriptions.filter((s) => !isSubscriptionLive(s.status, s.startDate, s.endDate));
 
   function extrasFor(subId: string) {
     return allExtras.filter((e) => e.subscriptionId === subId);
@@ -133,7 +133,7 @@ export default async function SubscriptionsPage() {
                       <th className="text-left px-4 py-2 font-medium">Customer</th>
                       <th className="text-left px-4 py-2 font-medium">Plan</th>
                       <th className="text-left px-4 py-2 font-medium">Period</th>
-                      <th className="text-left px-4 py-2 font-medium">Renewal</th>
+                      <th className="text-left px-4 py-2 font-medium">End Date</th>
                       <th className="text-left px-4 py-2 font-medium">Skips</th>
                       <th className="text-left px-4 py-2 font-medium">Price</th>
                       <th className="w-10" />
@@ -160,10 +160,10 @@ export default async function SubscriptionsPage() {
                           {sub.plan} · {sub.goal} · {sub.mealsPerDay}×/day
                         </td>
                         <td className="px-4 py-2 text-muted-foreground whitespace-nowrap">
-                          {formatDate(sub.startDate)} – {formatDate(sub.renewalDate)}
+                          {formatDate(sub.startDate)} – {formatDate(sub.endDate)}
                         </td>
                         <td className="px-4 py-2">
-                          <RenewalCell renewalDate={sub.renewalDate} />
+                          <EndDateCell endDate={sub.endDate} />
                         </td>
                         <td className="px-4 py-2">{sub._count.mealSkips > 0 ? sub._count.mealSkips : "—"}</td>
                         <td className="px-4 py-2">
@@ -171,7 +171,7 @@ export default async function SubscriptionsPage() {
                         </td>
                         <td className="px-2 py-2">
                           <EditSubscriptionRow
-                            sub={{ ...sub, startDate: String(sub.startDate), renewalDate: String(sub.renewalDate) }}
+                            sub={{ ...sub, startDate: String(sub.startDate), endDate: String(sub.endDate) }}
                             pricing={pricingEntries}
                             extras={extrasFor(sub.id)}
                           />
@@ -210,7 +210,7 @@ export default async function SubscriptionsPage() {
                       </tr>
                     )}
                     {inactive.map((sub) => {
-                      const derivedStatus = subscriptionStatus(sub.status, sub.startDate, sub.renewalDate);
+                      const derivedStatus = subscriptionStatus(sub.status, sub.startDate, sub.endDate);
                       return (
                         <tr key={sub.id} className="hover:bg-accent/50 transition-colors">
                           <td className="px-4 py-2">
@@ -226,7 +226,7 @@ export default async function SubscriptionsPage() {
                             {sub.plan} · {sub.goal} · {sub.mealsPerDay}×/day
                           </td>
                           <td className="px-4 py-2 text-muted-foreground whitespace-nowrap">
-                            {formatDate(sub.startDate)} – {formatDate(sub.renewalDate)}
+                            {formatDate(sub.startDate)} – {formatDate(sub.endDate)}
                           </td>
                           <td className="px-4 py-2">{sub._count.mealSkips > 0 ? sub._count.mealSkips : "—"}</td>
                           <td className="px-4 py-2">
@@ -239,7 +239,7 @@ export default async function SubscriptionsPage() {
                           </td>
                           <td className="px-2 py-2">
                             <EditSubscriptionRow
-                              sub={{ ...sub, startDate: String(sub.startDate), renewalDate: String(sub.renewalDate) }}
+                              sub={{ ...sub, startDate: String(sub.startDate), endDate: String(sub.endDate) }}
                               pricing={pricingEntries}
                               extras={extrasFor(sub.id)}
                             />

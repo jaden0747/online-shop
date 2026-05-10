@@ -18,7 +18,7 @@ export async function GET() {
 
   const customers = getAllCustomers().sort((a, b) => a.name.localeCompare(b.name));
   const addresses = getAllAddresses();
-  const subscriptions = getAllSubscriptions().filter((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate));
+  const subscriptions = getAllSubscriptions().filter((s) => isSubscriptionLive(s.status, s.startDate, s.endDate));
   const menuItems = getMenuItemsByWeek(weekLabel).sort((a, b) =>
     a.day !== b.day ? a.day - b.day : a.slot - b.slot
   );
@@ -61,7 +61,7 @@ export async function GET() {
       "Subscription Price": s.subscriptionPrice,
       "Shipping Price": s.shippingPrice,
       "Start Date": fmt(s.startDate),
-      "Renewal Date": fmt(s.renewalDate),
+       "End Date": fmt(s.endDate),
       Status: s.status,
     };
   });

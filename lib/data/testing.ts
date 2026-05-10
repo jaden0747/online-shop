@@ -317,7 +317,8 @@ function makeSub(
     discount: 0,
     trialDays: null,
     startDate: daysFromNow(-20),
-    renewalDate: daysFromNow(10),
+    endDate: daysFromNow(10),
+    endDateNoSkip: daysFromNow(10),
     cancelReason: null,
     createdAt: now,
     ...overrides,
@@ -364,26 +365,26 @@ function seedScenario(id: ScenarioId) {
         subscriptionPrice: plans[i % 2] === "weekly" ? 700000 : 2600000,
         shippingPrice: [0, 30000, 50000, 0, 30000][i % 5],
         startDate: daysFromNow(-20 - (i % 10)),
-        renewalDate: daysFromNow(renewalDays),
+        endDate: daysFromNow(renewalDays),
       });
     });
 
     // 20 inactive: 14 cancelled, 6 no subscription
     const inactiveSubs: Subscription[] = [
-      makeSub("0901000031", { status: "cancelled", cancelReason: "Đi du lịch dài ngày", renewalDate: daysFromNow(-3) }),
-      makeSub("0901000032", { status: "cancelled", cancelReason: "Tài chính", renewalDate: daysFromNow(-10) }),
-      makeSub("0901000033", { status: "cancelled", cancelReason: "Không hài lòng", renewalDate: daysFromNow(-5) }),
-      makeSub("0901000034", { status: "cancelled", cancelReason: "Chuyển nhà xa", renewalDate: daysFromNow(-20) }),
-      makeSub("0901000035", { status: "cancelled", cancelReason: "Hết nhu cầu", renewalDate: daysFromNow(-1) }),
-      makeSub("0901000036", { status: "cancelled", cancelReason: "Mang thai", renewalDate: daysFromNow(-8) }),
-      makeSub("0901000037", { status: "cancelled", cancelReason: "Đổi chế độ ăn", renewalDate: daysFromNow(-15) }),
-      makeSub("0901000038", { status: "cancelled", cancelReason: "Công việc bận rộn", renewalDate: daysFromNow(-7) }),
-      makeSub("0901000039", { status: "cancelled", renewalDate: daysFromNow(-10) }),
-      makeSub("0901000040", { status: "cancelled", renewalDate: daysFromNow(-14) }),
-      makeSub("0901000041", { status: "cancelled", renewalDate: daysFromNow(-20) }),
-      makeSub("0901000042", { status: "cancelled", renewalDate: daysFromNow(-8) }),
-      makeSub("0901000043", { status: "cancelled", renewalDate: daysFromNow(-5) }),
-      makeSub("0901000044", { status: "cancelled", renewalDate: daysFromNow(-30) }),
+      makeSub("0901000031", { status: "cancelled", cancelReason: "Đi du lịch dài ngày", endDate: daysFromNow(-3) }),
+      makeSub("0901000032", { status: "cancelled", cancelReason: "Tài chính", endDate: daysFromNow(-10) }),
+      makeSub("0901000033", { status: "cancelled", cancelReason: "Không hài lòng", endDate: daysFromNow(-5) }),
+      makeSub("0901000034", { status: "cancelled", cancelReason: "Chuyển nhà xa", endDate: daysFromNow(-20) }),
+      makeSub("0901000035", { status: "cancelled", cancelReason: "Hết nhu cầu", endDate: daysFromNow(-1) }),
+      makeSub("0901000036", { status: "cancelled", cancelReason: "Mang thai", endDate: daysFromNow(-8) }),
+      makeSub("0901000037", { status: "cancelled", cancelReason: "Đổi chế độ ăn", endDate: daysFromNow(-15) }),
+      makeSub("0901000038", { status: "cancelled", cancelReason: "Công việc bận rộn", endDate: daysFromNow(-7) }),
+      makeSub("0901000039", { status: "cancelled", endDate: daysFromNow(-10) }),
+      makeSub("0901000040", { status: "cancelled", endDate: daysFromNow(-14) }),
+      makeSub("0901000041", { status: "cancelled", endDate: daysFromNow(-20) }),
+      makeSub("0901000042", { status: "cancelled", endDate: daysFromNow(-8) }),
+      makeSub("0901000043", { status: "cancelled", endDate: daysFromNow(-5) }),
+      makeSub("0901000044", { status: "cancelled", endDate: daysFromNow(-30) }),
       // 45–50: no subscription (no entry added)
     ];
 
@@ -403,7 +404,7 @@ function seedScenario(id: ScenarioId) {
         plan: i % 2 === 0 ? "weekly" : "monthly",
         goal: (["cutting", "maintenance", "bulking"] as const)[i % 3],
         mealsPerDay: i % 3 === 0 ? 2 : 1,
-        renewalDate: daysFromNow(i % 4),
+        endDate: daysFromNow(i % 4),
       })
     );
     writeRows("subscriptions.xlsx", "Subscriptions", subs);
@@ -423,7 +424,7 @@ function seedScenario(id: ScenarioId) {
         goal: (["cutting", "maintenance", "bulking"] as const)[i % 3],
         mealsPerDay: i % 3 === 0 ? 2 : 1,
         subscriptionPrice: i % 2 === 0 ? 700000 : 2600000,
-        renewalDate: daysFromNow(5 + (i % 30)),
+        endDate: daysFromNow(5 + (i % 30)),
       })
     );
     writeRows("subscriptions.xlsx", "Subscriptions", subs);

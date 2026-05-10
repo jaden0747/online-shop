@@ -31,7 +31,7 @@ import { CustomerMinimap } from "./customer-minimap";
 import type { Customer, CustomerAddress, Subscription, Pricing, MealSkip, MealSelection, MenuItem, KitchenNote, OrderDayAddress } from "@/lib/data/types";
 import { subscriptionStatus, daysRemaining, planTotalMeals, addWorkingDays, isSubscriptionLive } from "@/lib/utils/subscription";
 import { weekLabelForDate } from "@/lib/utils/week";
-import { Pencil, X, Plus, Star, Trash2, Check, MapPin, ChevronLeft, ChevronRight } from "lucide-react";
+import { Pencil, X, Plus, Star, Trash2, Check, MapPin, ChevronLeft, ChevronRight, Copy } from "lucide-react";
 
 type Details = {
   customer: Customer | null;
@@ -132,6 +132,7 @@ function SubForm({
   customerId,
   pricing,
   initial,
+  skips = [],
   onSaved,
   onCancel,
 }: {
@@ -140,6 +141,7 @@ function SubForm({
   customerId: string;
   pricing: Pricing[];
   initial?: Subscription;
+  skips?: MealSkip[];
   onSaved: () => void;
   onCancel: () => void;
 }) {
@@ -148,15 +150,19 @@ function SubForm({
   const [meals, setMeals] = useState(initial?.mealsPerDay ?? 2);
   const [trialDays, setTrialDays] = useState(initial?.trialDays ?? 3);
   const [startDate, setStartDate] = useState(
-    initial?.startDate ? initial.startDate.slice(0, 10) : new Date().toISOString().slice(0, 10)
+    initial?.startDate ? localDateStr(new Date(initial.startDate)) : localDateStr(new Date())
   );
-  const [renewalDate, setRenewalDate] = useState(
-    initial?.renewalDate ? initial.renewalDate.slice(0, 10) : ""
+  const [endDate, setEndDate] = useState(
+    initial?.endDate ? localDateStr(new Date(initial.endDate)) : ""
+  );
+  const [endDateNoSkip, setEndDateNoSkip] = useState(
+    initial?.endDateNoSkip ? localDateStr(new Date(initial.endDateNoSkip)) : ""
   );
   const [subPrice, setSubPrice] = useState(initial ? String(initial.subscriptionPrice) : "");
   const [shipPrice, setShipPrice] = useState(initial ? String(initial.shippingPrice) : "");
   const [discount, setDiscount] = useState(initial ? String(initial.discount ?? 0) : "0");
   const [autoRenewal, setAutoRenewal] = useState(mode === "create");
+
   const [saving, startSave] = useTransition();
 
   // Auto-fill price from pricing table (create mode only, or when plan/goal/meals change in edit)
@@ -168,15 +174,17 @@ function SubForm({
     if (match && mode === "create") setSubPrice(String(match.totalPrice));
   }, [plan, goal, meals, pricing, mode]);
 
-  // Auto-compute renewal when plan/startDate/trialDays change (only if auto mode)
+  // Auto-compute end date when plan/startDate/trialDays/skips change (only if auto mode)
   useEffect(() => {
     if (!autoRenewal) return;
     try {
       const start = new Date(startDate);
-      const days = plan === "weekly" ? 5 : plan === "monthly" ? 20 : trialDays;
-      setRenewalDate(addWorkingDays(start, days).toISOString().slice(0, 10));
+      const days = plan === "weekly" ? 4 : plan === "monthly" ? 19 : ((trialDays ?? 3) - 1);
+      const newBase = addWorkingDays(start, days);
+      setEndDateNoSkip(localDateStr(newBase));
+      setEndDate(localDateStr(addWorkingDays(newBase, skips.length)));
     } catch { /* ignore */ }
-  }, [plan, startDate, trialDays, autoRenewal]);
+  }, [plan, startDate, trialDays, autoRenewal, skips.length]);
 
   function submit() {
     if (mode === "create") {
@@ -189,11 +197,13 @@ function SubForm({
       fd.set("shippingPrice", shipPrice || "0");
       fd.set("discount", discount || "0");
       fd.set("startDate", startDate);
-      if (!autoRenewal && renewalDate) fd.set("renewalDate", renewalDate);
+      if (!autoRenewal && endDate) fd.set("endDate", endDate);
       if (plan === "trial") fd.set("trialDays", String(trialDays));
       startSave(async () => { await createSubscriptionAction(fd); onSaved(); });
     } else {
       if (!subId) return;
+      // If user manually set endDate (no auto), treat it as the new base (no skip extensions)
+      const submitEndDateNoSkip = autoRenewal ? endDateNoSkip : endDate;
       startSave(async () => {
         await updateSubscriptionAction(subId, {
           plan, goal, mealsPerDay: meals,
@@ -202,7 +212,8 @@ function SubForm({
           discount: parseFloat(discount) || 0,
           trialDays: plan === "trial" ? trialDays : null,
           startDate: new Date(startDate),
-          renewalDate: new Date(renewalDate),
+          endDate: new Date(endDate),
+          endDateNoSkip: new Date(submitEndDateNoSkip || endDate),
         });
         onSaved();
       });
@@ -263,7 +274,7 @@ const inp = "w-full border rounded px-1 py-0.5 text-xs bg-background outline-non
         </label>
         <label className="flex items-center gap-1">
           <span className="text-[10px] text-muted-foreground shrink-0">End</span>
-          <input className={inp} type="date" value={renewalDate} onChange={(e) => { setRenewalDate(e.target.value); setAutoRenewal(false); }} />
+          <input className={inp} type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setAutoRenewal(false); }} />
         </label>
       </div>
       <div className="flex items-center gap-2">
@@ -368,18 +379,44 @@ function SchedulePanel({
     return days;
   }, [year, month]);
 
-  const skippedSet = useMemo(() => new Set(skips.map((s) => s.originalDay.slice(0, 10))), [skips]);
-  const replacementSet = useMemo(() => new Set(skips.filter((s) => s.replacementDay).map((s) => s.replacementDay!.slice(0, 10))), [skips]);
+  const skippedSet = useMemo(() => new Set(skips.map((s) => localDateStr(new Date(s.originalDay)))), [skips]);
+  const replacementSet = useMemo(() => new Set(skips.filter((s) => s.replacementDay).map((s) => localDateStr(new Date(s.replacementDay!)))), [skips]);
 
-  const isActiveOnDate = useCallback((dateStr: string) => {
+  const isLiveOrUpcomingOnDate = useCallback((dateStr: string) => {
     const d = new Date(dateStr + "T12:00:00");
-    return subscriptions.some((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate, d));
+    return subscriptions.some((s) => {
+      if (s.status === "cancelled") return false;
+      const status = subscriptionStatus(s.status, s.startDate, s.endDate);
+      if (status === "active") return isSubscriptionLive(s.status, s.startDate, s.endDate, d);
+      if (status === "upcoming") {
+        const start = new Date(s.startDate); start.setHours(0, 0, 0, 0);
+        const end = new Date(s.endDate); end.setHours(0, 0, 0, 0);
+        const dMid = new Date(d); dMid.setHours(0, 0, 0, 0);
+        return dMid >= start && dMid <= end;
+      }
+      if (status === "expired") {
+        const start = new Date(s.startDate); start.setHours(0, 0, 0, 0);
+        const end = new Date(s.endDate); end.setHours(0, 0, 0, 0);
+        const dMid = new Date(d); dMid.setHours(0, 0, 0, 0);
+        return dMid >= start && dMid <= end;
+      }
+      return false;
+    });
   }, [subscriptions]);
+
+  const isActiveOnDate = isLiveOrUpcomingOnDate;
 
   const selectedActiveSub = useMemo(() => {
     if (!selectedDateStr) return null;
     const d = new Date(selectedDateStr + "T12:00:00");
-    return subscriptions.find((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate, d)) ?? null;
+    // Check for active subscriptions (today is between start and end)
+    let sub = subscriptions.find((s) => isSubscriptionLive(s.status, s.startDate, s.endDate, d));
+    if (sub) return sub;
+    // Also check for upcoming subscriptions (today is before start)
+    return subscriptions.find((s) => {
+      const status = subscriptionStatus(s.status, s.startDate, s.endDate);
+      return status === "upcoming";
+    }) ?? null;
   }, [selectedDateStr, subscriptions]);
 
   const selectedSkip = useMemo(() =>
@@ -504,35 +541,42 @@ function SchedulePanel({
                     if (!dateStr) return <div key={`e${i}`} className="h-7" />;
                     const d = new Date(dateStr + "T12:00:00");
                     const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-                    const isActive = !isWeekend && isActiveOnDate(dateStr);
+                    const isActive = !isWeekend && isLiveOrUpcomingOnDate(dateStr);
                     const isSkipped = skippedSet.has(dateStr);
                     const isReplacement = replacementSet.has(dateStr);
                     const isToday = dateStr === todayStr;
                     const isSelected = dateStr === selectedDateStr;
                     const isClickable = !isWeekend && dateStr <= maxDateStr;
 
-                    // Priority: skipped > replacement > today > active-past(delivered) > active-future > inactive
+                    // Check if this is an end date for any non-cancelled subscription
+                    const isEndDate = isActive && subscriptions.some(
+                      (s) => s.status !== "cancelled" && localDateStr(new Date(s.endDate)) === dateStr
+                    );
+
+                    // Priority: skipped > replacement > today > end date > active-past(delivered) > active-future > inactive
                     let bg = "";
                     let tc = isWeekend ? "text-muted-foreground/40" : "text-muted-foreground/60";
                     if (isSkipped) {
                       bg = "bg-yellow-100 dark:bg-yellow-900/30"; tc = "text-yellow-800 dark:text-yellow-300";
                     } else if (isReplacement) {
-                      bg = "bg-blue-100 dark:bg-blue-900/30"; tc = "text-blue-700 dark:text-blue-400";
+                      bg = "bg-indigo-100 dark:bg-indigo-900/30"; tc = "text-indigo-700 dark:text-indigo-300";
                     } else if (isToday) {
-                      bg = "bg-emerald-600"; tc = "text-white font-bold";
+                      bg = "bg-purple-500"; tc = "text-white font-bold";
+                    } else if (isEndDate) {
+                      bg = "bg-pink-300 dark:bg-pink-400/30"; tc = "text-pink-900 dark:text-pink-100";
                     } else if (isActive && dateStr < todayStr) {
-                      bg = "bg-muted/60"; tc = "text-muted-foreground/70";
+                      bg = "bg-green-500/15"; tc = "text-green-700 dark:text-green-300";
                     } else if (isActive) {
-                      bg = "bg-emerald-50 dark:bg-emerald-900/10"; tc = "text-emerald-700 dark:text-emerald-300";
+                      bg = "bg-sky-200/60 dark:bg-sky-900/20"; tc = "text-sky-700 dark:text-sky-300";
                     }
 
-                    // Border: today gets solid emerald, selected gets dashed primary
+                    // Border: today gets solid purple, selected gets dashed black/white
                     const borderClass = isToday && isSelected
-                      ? "border-2 border-dashed border-emerald-400"
+                      ? "border-2 border-dashed border-purple-400 dark:border-purple-300"
                       : isToday
-                      ? "border-2 border-emerald-800"
+                      ? "border-2 border-purple-800 dark:border-purple-300"
                       : isSelected
-                      ? "border-2 border-dashed border-primary"
+                      ? "border-2 border-dashed border-black dark:border-white"
                       : "";
 
                 return (
@@ -553,19 +597,20 @@ function SchedulePanel({
                 </div>
               </div>
 
-              {/* Legend - right side */}
-              <div className="flex flex-col gap-0.5 pt-4">
-                {[
-                  ["bg-emerald-600", "Today"],
-                  ["bg-muted/60", "Delivered"],
-                  ["bg-emerald-50 border border-emerald-200", "Upcoming"],
-                  ["bg-yellow-100", "Skipped"],
-                  ["bg-blue-100", "Replacement"],
-                ].map(([c, l]) => (
-                  <span key={l} className="flex items-center gap-1 text-[9px] text-muted-foreground whitespace-nowrap">
-                    <span className={`w-2.5 h-2.5 rounded-sm ${c}`} />{l}
-                  </span>
-                ))}
+                {/* Legend - right side */}
+                <div className="flex flex-col gap-0.5 pt-4">
+                  {[
+                    ["bg-purple-500", "Today"],
+                    ["bg-green-500/15 border border-green-200", "Delivered"],
+                    ["bg-sky-200/60 border border-sky-300", "Upcoming"],
+                    ["bg-pink-300 border border-pink-400", "End Date"],
+                    ["bg-yellow-100", "Skipped"],
+                    ["bg-indigo-100 border border-indigo-300", "Replacement"],
+                  ].map(([c, l]) => (
+                    <span key={l} className="flex items-center gap-1 text-[9px] text-muted-foreground whitespace-nowrap">
+                      <span className={`w-2.5 h-2.5 rounded-sm ${c}`} />{l}
+                    </span>
+                  ))}
               </div>
             </div>
           </div>
@@ -594,8 +639,8 @@ function SchedulePanel({
                         >
                           <option value="">Default address</option>
                           {addresses.map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {a.label ? `${a.label}` : "Address"}
+                            <option key={a.id} value={a.id} title={a.label}>
+                              {a.address || a.label}
                             </option>
                           ))}
                         </select>
@@ -613,7 +658,7 @@ function SchedulePanel({
                             <div key={mealNum} className="flex items-center gap-1">
                               <span className="text-[10px] text-muted-foreground w-8 shrink-0">M{mealNum}</span>
                               <select
-                                className="flex-1 border rounded px-1 py-0.5 text-[11px] bg-background outline-none focus:ring-1 focus:ring-ring"
+                                className="flex-1 border rounded px-1 py-0.5 text-[11px] bg-background outline-none focus:ring-1 focus:ring-ring min-w-[120px] whitespace-nowrap"
                                 value={cur?.menuSlot ?? ""}
                                 onChange={(e) => handleMealChange(mealNum, e.target.value ? Number(e.target.value) : null)}
                                 disabled={isPending || isPast}
@@ -700,6 +745,13 @@ export function CustomerOverlay({
   const [addrForm, setAddrForm] = useState({ label: "", address: "", zone: "" });
   const [showAddAddr, setShowAddAddr] = useState(false);
   const [newAddr, setNewAddr] = useState({ label: "", address: "", zone: "" });
+
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  function copyToClipboard(text: string, key: string) {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 1500);
+  }
 
   // Subscription new / cancel / edit
   const [showAddSub, setShowAddSub] = useState(false);
@@ -963,8 +1015,26 @@ export function CustomerOverlay({
                     >
                       <Pencil size={12} />
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(details.customer!.name, "name")}
+                      className="shrink-0 h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                      title="Copy name"
+                    >
+                      {copiedKey === "name" ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                    </button>
                   </div>
-                  <p className="text-sm text-muted-foreground">{details.customer.phone}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm text-muted-foreground">{details.customer.phone}</p>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(details.customer!.phone, "phone")}
+                      className="shrink-0 h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                      title="Copy phone"
+                    >
+                      {copiedKey === "phone" ? <Check size={11} className="text-green-500" /> : <Copy size={11} />}
+                    </button>
+                  </div>
                 </div>
               )}
             </DialogHeader>
@@ -1031,6 +1101,11 @@ export function CustomerOverlay({
                              {addr.latitude != null && addr.longitude != null && getRouteInfo(routes, loadingRoutes, addr.id)}
                            </div>
                           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0">
+                            <button type="button" onClick={() => copyToClipboard(addr.address, `addr-${addr.id}`)}
+                              className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent"
+                              title="Copy address">
+                              {copiedKey === `addr-${addr.id}` ? <Check size={10} className="text-green-500" /> : <Copy size={10} />}
+                            </button>
                             <button type="button" onClick={() => startEditAddr(addr)}
                               className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent">
                               <Pencil size={10} />
@@ -1107,6 +1182,7 @@ export function CustomerOverlay({
                     const editingSub = details.subscriptions.find(s => s.id === editingSubId);
                     return editingSub ? (
                       <SubForm mode="edit" subId={editingSub.id} customerId={currentId} pricing={details.pricing} initial={editingSub}
+                        skips={details.skips.filter(s => s.subscriptionId === editingSub.id)}
                         onSaved={() => { setEditingSubId(null); reload(); }}
                         onCancel={() => setEditingSubId(null)} />
                     ) : null;
@@ -1119,12 +1195,12 @@ export function CustomerOverlay({
                     {[...details.subscriptions].sort((a, b) => {
                       const today = new Date();
                       const liveRank = (s: Subscription) =>
-                        isSubscriptionLive(s.status, s.startDate, s.renewalDate, today) ? 0 : 1;
+                        isSubscriptionLive(s.status, s.startDate, s.endDate, today) ? 0 : 1;
                       const r = liveRank(a) - liveRank(b);
                       return r !== 0 ? r : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
                     }).map((sub) => {
-                      const status = subscriptionStatus(sub.status, sub.startDate, sub.renewalDate);
-                      const days = daysRemaining(sub.renewalDate);
+                      const status = subscriptionStatus(sub.status, sub.startDate, sub.endDate);
+                      const days = daysRemaining(sub.endDate);
                       const skips = details.skipCounts[sub.id] ?? 0;
                       const canAct = sub.status === "active";
                       const isCancelling = cancellingId === sub.id;
@@ -1162,7 +1238,7 @@ export function CustomerOverlay({
                                 <div className="flex items-center justify-between text-muted-foreground mt-0.5">
                                   <span className="truncate">
                                     <span>₫{(sub.subscriptionPrice + sub.shippingPrice - sub.discount).toLocaleString()}{sub.discount > 0 && <span className="text-[9px]"> (-₫{sub.discount.toLocaleString()})</span>} · </span>
-                                    Renews {fmt(sub.renewalDate)}
+                                    Ends {fmt(sub.endDate)}
                                     {status === "active" && ` · ${days}d`}
                                     {skips > 0 && ` · ${skips} skip${skips !== 1 ? "s" : ""}`}
                                   </span>
@@ -1214,10 +1290,8 @@ export function CustomerOverlay({
               {/* Minimap removed from here - now in SchedulePanel */}
             </div>
 
-            {/* ── Schedule (only when at least one live subscription) ── */}
-            {details.subscriptions.some((s) =>
-              isSubscriptionLive(s.status, s.startDate, s.renewalDate, new Date())
-            ) && (
+            {/* ── Schedule (when at least one non-cancelled subscription) ── */}
+            {details.subscriptions.some((s) => s.status !== "cancelled") && (
               <SchedulePanel
                 subscriptions={details.subscriptions}
                 addresses={details.addresses}
@@ -1229,7 +1303,7 @@ export function CustomerOverlay({
                 customerId={currentId}
                 onReload={reload}
                 minimap={
-                  details.hub && details.addresses.some((a) => a.latitude != null && a.longitude != null)
+                  details.addresses.some((a) => a.latitude != null && a.longitude != null)
                     ? <CustomerMinimap
                         addresses={details.addresses}
                         hub={details.hub}

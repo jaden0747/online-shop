@@ -28,6 +28,32 @@ const SCENARIOS = [
   },
 ] as const;
 
+function ScenarioCard({ scenario }: { scenario: typeof SCENARIOS[number] }) {
+  async function loadAction() {
+    "use server";
+    await loadScenarioAction(scenario.id);
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">{scenario.name}</CardTitle>
+        <CardDescription>{scenario.description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form action={loadAction}>
+          <button
+            type="submit"
+            className="text-sm px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            Load scenario
+          </button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function TestingPage() {
   if (!isTestingMode()) redirect("/settings");
 
@@ -41,31 +67,9 @@ export default function TestingPage() {
       </div>
 
       <div className="grid gap-4">
-        {SCENARIOS.map((scenario) => {
-          async function loadAction() {
-            "use server";
-            await loadScenarioAction(scenario.id);
-          }
-
-          return (
-            <Card key={scenario.id}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">{scenario.name}</CardTitle>
-                <CardDescription>{scenario.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form action={loadAction}>
-                  <button
-                    type="submit"
-                    className="text-sm px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                  >
-                    Load scenario
-                  </button>
-                </form>
-              </CardContent>
-            </Card>
-          );
-        })}
+        {SCENARIOS.map((scenario) => (
+          <ScenarioCard key={scenario.id} scenario={scenario} />
+        ))}
       </div>
     </div>
   );

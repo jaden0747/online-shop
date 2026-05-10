@@ -32,7 +32,8 @@ export interface Subscription {
   discount: number;
   trialDays: number | null; // only when plan = "trial"
   startDate: string; // ISO string
-  renewalDate: string; // ISO string
+  endDate: string; // ISO string - last delivery day (inclusive), extended by skips
+  endDateNoSkip: string; // ISO string - base end date without skip extensions
   cancelReason: string | null;
   createdAt: string; // ISO string
 }

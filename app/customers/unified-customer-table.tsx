@@ -24,12 +24,12 @@ type CustomerRow = {
     goal: string;
     subscriptionPrice: number;
     shippingPrice: number;
-    renewalDate: string;
+    endDate: string;
   } | null;
 };
 
-function RenewalCell({ renewalDate }: { renewalDate: string }) {
-  const days = daysRemaining(renewalDate);
+function EndDateCell({ endDate }: { endDate: string }) {
+  const days = daysRemaining(endDate);
   let textClass = "text-green-600";
   let barClass = "bg-green-500";
   if (days < 3) { textClass = "text-red-600"; barClass = "bg-red-500"; }
@@ -87,7 +87,7 @@ export function UnifiedCustomerTable({ rows }: { rows: CustomerRow[] }) {
               <th className="text-left px-4 py-2 font-medium">Zone</th>
               <th className="text-left px-4 py-2 font-medium">Goal</th>
               <th className="text-left px-4 py-2 font-medium">Plan / Price</th>
-              <th className="text-left px-4 py-2 font-medium">Renewal</th>
+              <th className="text-left px-4 py-2 font-medium">End Date</th>
               <th className="text-left px-4 py-2 font-medium w-8">Note</th>
             </tr>
           </thead>
@@ -158,7 +158,7 @@ export function UnifiedCustomerTable({ rows }: { rows: CustomerRow[] }) {
                   </td>
                   <td className="px-4 py-2">
                     {r.activeSub ? (
-                      <RenewalCell renewalDate={r.activeSub.renewalDate} />
+                       <EndDateCell endDate={r.activeSub.endDate} />
                     ) : (
                       <span className="text-muted-foreground opacity-40 text-xs">—</span>
                     )}

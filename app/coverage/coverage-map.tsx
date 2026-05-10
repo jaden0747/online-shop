@@ -46,7 +46,7 @@ export function CoverageMap({ pins }: { pins: PinWithSubs[] }) {
     () =>
       pins.filter((p) =>
         p.subscriptions.some((s) =>
-          isSubscriptionLive(s.status, s.startDate, s.renewalDate, today)
+          isSubscriptionLive(s.status, s.startDate, s.endDate, today)
         )
       ),
     [pins, today]

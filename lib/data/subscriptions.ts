@@ -22,8 +22,9 @@ function parseSub(raw: Record<string, unknown>): Subscription {
     subscriptionPrice,
     discount: toNum(raw.discount) || 0,
     trialDays: raw.trialDays !== undefined && raw.trialDays !== null && raw.trialDays !== "" ? toNum(raw.trialDays) : null,
-    startDate: parseExcelDate(raw.startDate as string | number) ?? new Date().toISOString(),
-    renewalDate: parseExcelDate(raw.renewalDate as string | number) ?? new Date().toISOString(),
+     startDate: parseExcelDate(raw.startDate as string | number) ?? new Date().toISOString(),
+     endDate: parseExcelDate(raw.endDate as string | number) ?? parseExcelDate(raw.renewalDate as string | number) ?? new Date().toISOString(),
+     endDateNoSkip: parseExcelDate(raw.endDateNoSkip as string | number) ?? parseExcelDate(raw.endDate as string | number) ?? parseExcelDate(raw.renewalDate as string | number) ?? new Date().toISOString(),
     cancelReason: toStrOrNull(raw.cancelReason),
     createdAt: toStr(raw.createdAt) || new Date().toISOString(),
   };

@@ -59,7 +59,7 @@ export function MealSelectionGrid({ weekLabel, weekMonday, activeCustomers, menu
     const dayDate = weekDates[dayNum - 1];
     const start = new Date(cust.startDate); start.setHours(0, 0, 0, 0);
     const end = new Date(cust.endDate); end.setHours(0, 0, 0, 0);
-    return dayDate >= start && dayDate < end;
+    return dayDate >= start && dayDate <= end;
   }
 
   function getMenuName(day: number, slot: number) {
@@ -163,7 +163,7 @@ export function MealSelectionGrid({ weekLabel, weekMonday, activeCustomers, menu
                     {cust.name}
                   </button>
                   {cust.notes && (
-                    <span className="block text-xs text-muted-foreground truncate max-w-[8rem]">{cust.notes}</span>
+                    <span className="block text-xs text-blue-600 dark:text-blue-400 whitespace-pre-wrap">{cust.notes}</span>
                   )}
                   <div className="text-muted-foreground text-xs">{cust.mealsPerDay}×/day · {cust.goal}</div>
                 </td>

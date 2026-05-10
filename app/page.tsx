@@ -23,20 +23,20 @@ export default async function DashboardPage() {
 
   // Active subscriptions (live today)
   const activeSubs = subscriptions.filter((s) =>
-    isSubscriptionLive(s.status, s.startDate, s.renewalDate)
+    isSubscriptionLive(s.status, s.startDate, s.endDate)
   );
 
   const todayDeliveryCount = todayIsWeekday ? activeSubs.length : 0;
 
-  // Expiring soon: active subs with renewalDate within 7 days
+  // Expiring soon: active subs with endDate within 7 days
   const sevenDaysFromNow = new Date(today);
   sevenDaysFromNow.setDate(today.getDate() + 7);
 
   const expiringSoon = activeSubs
     .map((s) => {
-      const renewal = new Date(s.renewalDate);
+      const renewal = new Date(s.endDate);
       renewal.setHours(0, 0, 0, 0);
-      const days = daysRemaining(s.renewalDate);
+      const days = daysRemaining(s.endDate);
       return { sub: s, days, renewal };
     })
     .filter(({ renewal }) => renewal <= sevenDaysFromNow)
@@ -52,7 +52,7 @@ export default async function DashboardPage() {
   const thisWeekSubIds = new Set<string>();
   for (const s of subscriptions) {
     for (const d of weekDates) {
-      if (isSubscriptionLive(s.status, s.startDate, s.renewalDate, d)) {
+      if (isSubscriptionLive(s.status, s.startDate, s.endDate, d)) {
         thisWeekSubIds.add(s.id);
         break;
       }
@@ -63,17 +63,31 @@ export default async function DashboardPage() {
   const selections = getSelectionsByWeek(weekLabel);
   const menuItems = getMenuItemsByWeek(weekLabel);
 
-  const slotCounts = new Map<number, number>();
-  for (const sel of selections) {
-    slotCounts.set(sel.menuSlot, (slotCounts.get(sel.menuSlot) ?? 0) + 1);
+  const DAY_NAMES_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+
+  // Per (day × slot) selection counts — correct name lookup
+  const mealSelectionsPerDay = DAY_NAMES_SHORT.flatMap((dayLabel, i) =>
+    [1, 2].map((slot) => {
+      const day = i + 1;
+      const count = selections.filter((s) => s.day === day && s.menuSlot === slot).length;
+      const item = menuItems.find((m) => m.day === day && m.slot === slot);
+      return { name: `${dayLabel} · ${item?.name ?? `Option ${slot}`}`, count, day };
+    })
+  );
+
+  // Top meal by highest single (day × slot) count
+  const topMealEntry = [...mealSelectionsPerDay].sort((a, b) => b.count - a.count)[0];
+  const topMeals = topMealEntry ? [topMealEntry] : [];
+
+  // Total meals to prepare this week (mealsPerDay × active delivery days, no skips factored)
+  let totalMealsThisWeek = 0;
+  for (const d of weekDates) {
+    for (const s of subscriptions) {
+      if (isSubscriptionLive(s.status, s.startDate, s.endDate, d)) {
+        totalMealsThisWeek += s.mealsPerDay;
+      }
+    }
   }
-  const topMeals = Array.from(slotCounts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([slot, count]) => {
-      const item = menuItems.find((m) => m.slot === slot);
-      return { name: item?.name ?? `Option ${slot}`, count };
-    });
 
   // ── Chart data ──────────────────────────────────────────────────────────────
 
@@ -91,16 +105,11 @@ export default async function DashboardPage() {
   const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri"];
   const weekdayDeliveries = weekDates.map((d, i) => ({
     day: DAY_NAMES[i],
-    count: subscriptions.filter((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate, d)).length,
+    count: subscriptions.filter((s) => isSubscriptionLive(s.status, s.startDate, s.endDate, d)).length,
   }));
 
-  // Chart 3: All meal selections this week
-  const mealSelections = Array.from(slotCounts.entries())
-    .map(([slot, count]) => {
-      const item = menuItems.find((m) => m.slot === slot);
-      return { name: item?.name ?? `Option ${slot}`, count };
-    })
-    .sort((a, b) => b.count - a.count);
+  // Chart 3: All meal selections this week (per day × slot)
+  const mealSelections = mealSelectionsPerDay;
 
   // Chart 4: Active customers by zone
   const activeCustomerPhones = new Set(activeSubs.map((s) => s.customerId));
@@ -126,7 +135,7 @@ export default async function DashboardPage() {
   const renewalData = renewalBuckets.map(({ bucket, min, max }) => ({
     bucket,
     count: activeSubs.filter((s) => {
-      const d = daysRemaining(s.renewalDate);
+      const d = daysRemaining(s.endDate);
       return d >= min && d <= max;
     }).length,
   }));
@@ -244,7 +253,7 @@ export default async function DashboardPage() {
                         name={customer?.name ?? sub.customerId}
                       />
                       <span className="text-muted-foreground text-xs text-right tabular-nums">
-                        {new Date(sub.renewalDate).toLocaleDateString("en-GB")}
+                        {new Date(sub.endDate).toLocaleDateString("en-GB")}
                       </span>
                       <span className={`font-semibold text-xs text-right tabular-nums w-10 ${expiryColor(days)}`}>
                         {days === 0 ? "today" : `${days}d`}
@@ -291,6 +300,7 @@ export default async function DashboardPage() {
         zoneData={zoneData}
         renewalData={renewalData}
         mealsPerDayData={mealsPerDayData}
+        totalMealsThisWeek={totalMealsThisWeek}
       />
     </div>
   );

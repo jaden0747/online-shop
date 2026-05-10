@@ -78,7 +78,7 @@ export default async function ShippingPage({
 
   const seenCustomers = new Set<string>();
   const activeDeliveries = subscriptions
-    .filter((s) => isSubscriptionLive(s.status, s.startDate, s.renewalDate, selectedDate))
+    .filter((s) => isSubscriptionLive(s.status, s.startDate, s.endDate, selectedDate))
     .map((sub) => {
       const customer = customers.find((c) => c.phone === sub.customerId);
       if (!customer) return null;
@@ -102,11 +102,13 @@ export default async function ShippingPage({
         .sort((a, b) => a.mealNum - b.mealNum);
 
       const meals: string[] = [];
+      const mealSlots: number[] = [];
       for (let mealNum = 1; mealNum <= sub.mealsPerDay; mealNum++) {
         const sel = customerSelections.find((s) => s.mealNum === mealNum);
         if (sel) {
           const name = menuName(dayNum, sel.menuSlot);
           if (name) meals.push(name);
+          mealSlots.push(sel.menuSlot);
         }
       }
 
@@ -131,6 +133,7 @@ export default async function ShippingPage({
         mealsPerDay: sub.mealsPerDay,
         isReplacement,
         meals,
+        mealSlots,
         lat: effectiveAddr?.latitude ?? null,
         lng: effectiveAddr?.longitude ?? null,
         addresses: customerAddresses.map((a) => ({
@@ -186,6 +189,8 @@ export default async function ShippingPage({
             notes={dayNotes.map((n) => ({ customerId: n.customerId, note: n.note }))}
             permanentNotes={permanentNotes}
             defaultHub={{ lat: settings.hubLat, lng: settings.hubLng }}
+            menuOptionA={menuItems.find((m) => m.day === dayNum && m.slot === 1)?.name ?? null}
+            menuOptionB={menuItems.find((m) => m.day === dayNum && m.slot === 2)?.name ?? null}
           />
         </CardContent>
       </Card>
