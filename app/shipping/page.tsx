@@ -37,7 +37,6 @@ export default async function ShippingPage({
   const params = await searchParams;
   const dateParam = typeof params.date === "string" ? params.date : null;
   const selectedDateStr = dateParam ?? defaultDateStr();
-  // Parse as local midnight to avoid UTC shift on the server
   const selectedDate = new Date(selectedDateStr + "T00:00:00");
 
   const dayNum = selectedDate.getDay() === 0 ? 7 : selectedDate.getDay();
@@ -76,83 +75,127 @@ export default async function ShippingPage({
     return m?.name ?? null;
   };
 
-  const seenCustomers = new Set<string>();
-  const activeDeliveries = subscriptions
-    .filter((s) => isSubscriptionLive(s.status, s.startDate, s.endDate, selectedDate))
-    .map((sub) => {
-      const customer = customers.find((c) => c.phone === sub.customerId);
-      if (!customer) return null;
-      if (seenCustomers.has(customer.id)) return null;
-      seenCustomers.add(customer.id);
+  // Build one entry per active-and-not-skipped subscription
+  type SubDelivery = {
+    sub: typeof subscriptions[number];
+    customer: typeof customers[number];
+    effectiveAddr: typeof allAddresses[number] | null;
+    effectiveAddressId: string | null;
+    meals: string[];
+    mealSlots: number[];
+    isReplacement: boolean;
+    customerAddresses: typeof allAddresses;
+  };
 
-      const isSkipped = skips.some((skip) => {
-        return skip.subscriptionId === sub.id && localDateStr(new Date(skip.originalDay + (skip.originalDay.length === 10 ? "T00:00:00" : ""))) === selectedDateStr;
-      });
-      const isReplacement = skips.some((skip) => {
-        return (
-          skip.subscriptionId === sub.id &&
-          skip.replacementDay !== null &&
-          localDateStr(new Date(skip.replacementDay + (skip.replacementDay.length === 10 ? "T00:00:00" : ""))) === selectedDateStr
-        );
-      });
-      if (isSkipped && !isReplacement) return null;
+  const subDeliveries: SubDelivery[] = [];
 
-      const customerSelections = selections
-        .filter((sel) => sel.customerId === customer.id && sel.day === dayNum)
-        .sort((a, b) => a.mealNum - b.mealNum);
+  for (const sub of subscriptions) {
+    if (!isSubscriptionLive(sub.status, sub.startDate, sub.endDate, selectedDate)) continue;
 
-      const meals: string[] = [];
-      const mealSlots: number[] = [];
-      for (let mealNum = 1; mealNum <= sub.mealsPerDay; mealNum++) {
-        const sel = customerSelections.find((s) => s.mealNum === mealNum);
-        if (sel) {
-          const name = menuName(dayNum, sel.menuSlot);
-          if (name) meals.push(name);
-          mealSlots.push(sel.menuSlot);
-        }
+    const customer = customers.find((c) => c.phone === sub.customerId);
+    if (!customer) continue;
+
+    const isSkipped = skips.some((skip) =>
+      skip.subscriptionId === sub.id &&
+      localDateStr(new Date(skip.originalDay + (skip.originalDay.length === 10 ? "T00:00:00" : ""))) === selectedDateStr
+    );
+    const isReplacement = skips.some((skip) =>
+      skip.subscriptionId === sub.id &&
+      skip.replacementDay !== null &&
+      localDateStr(new Date(skip.replacementDay + (skip.replacementDay.length === 10 ? "T00:00:00" : ""))) === selectedDateStr
+    );
+    if (isSkipped && !isReplacement) continue;
+
+    const customerAddresses = (addressesByCustomer.get(customer.id) ?? []).sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+    const defaultAddress = customerAddresses.find((a) => a.isDefault) ?? customerAddresses[0] ?? null;
+
+    // Effective address: per-day override → sub.addressId → customer default
+    const overrideAddrId = dayAddrMap.get(`${sub.id}-${dayNum}`);
+    const subDefaultAddr = sub.addressId
+      ? customerAddresses.find((a) => a.id === sub.addressId) ?? defaultAddress
+      : defaultAddress;
+    const effectiveAddr = overrideAddrId
+      ? customerAddresses.find((a) => a.id === overrideAddrId) ?? subDefaultAddr
+      : subDefaultAddr;
+
+    const subSelections = selections
+      .filter((sel) => sel.subscriptionId === sub.id && sel.day === dayNum)
+      .sort((a, b) => a.mealNum - b.mealNum);
+
+    const meals: string[] = [];
+    const mealSlots: number[] = [];
+    for (let mealNum = 1; mealNum <= sub.mealsPerDay; mealNum++) {
+      const sel = subSelections.find((s) => s.mealNum === mealNum);
+      if (sel) {
+        const name = menuName(dayNum, sel.menuSlot);
+        if (name) meals.push(name);
+        mealSlots.push(sel.menuSlot);
       }
+    }
 
-      const customerAddresses = (addressesByCustomer.get(customer.id) ?? []).sort(
-        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      );
-      const defaultAddress = customerAddresses.find((a) => a.isDefault) ?? customerAddresses[0] ?? null;
+    subDeliveries.push({
+      sub,
+      customer,
+      effectiveAddr,
+      effectiveAddressId: effectiveAddr?.id ?? null,
+      meals,
+      mealSlots,
+      isReplacement,
+      customerAddresses,
+    });
+  }
 
-      // Per-day address override
-      const overrideAddrId = dayAddrMap.get(`${sub.id}-${dayNum}`);
-      const effectiveAddr = overrideAddrId
-        ? customerAddresses.find((a) => a.id === overrideAddrId) ?? defaultAddress
-        : defaultAddress;
+  // Group by (customerId, effectiveAddressId) — same customer + same address = one row
+  type GroupKey = string;
+  const groups = new Map<GroupKey, SubDelivery[]>();
+  for (const d of subDeliveries) {
+    const key: GroupKey = `${d.customer.id}::${d.effectiveAddressId ?? "none"}`;
+    const list = groups.get(key) ?? [];
+    list.push(d);
+    groups.set(key, list);
+  }
 
-      return {
-        customerId: customer.id,
-        name: customer.name,
-        phone: customer.phone,
-        address: effectiveAddr?.address ?? customer.address,
-        zone: effectiveAddr?.zone ?? customer.zone,
-        plan: sub.plan,
-        mealsPerDay: sub.mealsPerDay,
-        isReplacement,
-        meals,
-        mealSlots,
-        lat: effectiveAddr?.latitude ?? null,
-        lng: effectiveAddr?.longitude ?? null,
-        addresses: customerAddresses.map((a) => ({
-          id: a.id,
-          label: a.label,
-          address: a.address,
-          zone: a.zone,
-          isDefault: a.isDefault,
-          latitude: a.latitude,
-          longitude: a.longitude,
-        })),
-        defaultAddressId: defaultAddress?.id ?? null,
-        effectiveAddressId: effectiveAddr?.id ?? null,
-        subscriptionId: sub.id,
-        weekLabel,
-        day: dayNum,
-      };
-    })
-    .filter((d): d is NonNullable<typeof d> => d !== null);
+  const activeDeliveries = [...groups.values()].map((group) => {
+    // Latest-created sub owns the per-day address override UI
+    group.sort((a, b) => new Date(b.sub.createdAt).getTime() - new Date(a.sub.createdAt).getTime());
+    const latest = group[0];
+    const { customer, effectiveAddr, customerAddresses } = latest;
+    const defaultAddress = customerAddresses.find((a) => a.isDefault) ?? customerAddresses[0] ?? null;
+
+    const meals = group.flatMap((d) => d.meals);
+    const mealSlots = group.flatMap((d) => d.mealSlots);
+
+    return {
+      customerId: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+      address: effectiveAddr?.address ?? customer.address,
+      zone: effectiveAddr?.zone ?? customer.zone,
+      plan: latest.sub.plan,
+      mealsPerDay: group.reduce((sum, d) => sum + d.sub.mealsPerDay, 0),
+      isReplacement: group.some((d) => d.isReplacement),
+      meals,
+      mealSlots,
+      lat: effectiveAddr?.latitude ?? null,
+      lng: effectiveAddr?.longitude ?? null,
+      addresses: customerAddresses.map((a) => ({
+        id: a.id,
+        label: a.label,
+        address: a.address,
+        zone: a.zone,
+        isDefault: a.isDefault,
+        latitude: a.latitude,
+        longitude: a.longitude,
+      })),
+      defaultAddressId: defaultAddress?.id ?? null,
+      effectiveAddressId: latest.effectiveAddressId,
+      subscriptionId: latest.sub.id,
+      weekLabel,
+      day: dayNum,
+    };
+  });
 
   const isToday = selectedDateStr === localDateStr(new Date());
 

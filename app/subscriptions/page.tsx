@@ -1,5 +1,5 @@
 import { getAllSubscriptions, getAllSkips, getAllExtras } from "@/lib/data/subscriptions";
-import { getAllCustomers } from "@/lib/data/customers";
+import { getAllCustomers, getAllAddresses } from "@/lib/data/customers";
 import { getAllPricing } from "@/lib/data/pricing";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -63,9 +63,17 @@ function PriceCell({ subscriptionPrice, shippingPrice }: { subscriptionPrice: nu
 export default async function SubscriptionsPage() {
   const rawSubscriptions = getAllSubscriptions();
   const customers = getAllCustomers();
+  const allAddresses = getAllAddresses();
   const skips = getAllSkips();
   const pricingEntries = getAllPricing();
   const allExtras = getAllExtras();
+
+  const addressesByCustomer = new Map<string, typeof allAddresses>();
+  for (const a of allAddresses) {
+    const list = addressesByCustomer.get(a.customerId) ?? [];
+    list.push(a);
+    addressesByCustomer.set(a.customerId, list);
+  }
 
   const customerMap = new Map(customers.map((c) => [c.phone, c]));
   const skipCountMap = new Map<string, number>();
@@ -101,7 +109,7 @@ export default async function SubscriptionsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <NewSubscriptionDialog customers={customers} pricing={pricingEntries} />
+          <NewSubscriptionDialog customers={customers} pricing={pricingEntries} allAddresses={allAddresses} />
           <OpenInFinderButton file="subscriptions.xlsx" />
         </div>
       </div>
@@ -174,6 +182,7 @@ export default async function SubscriptionsPage() {
                             sub={{ ...sub, startDate: String(sub.startDate), endDate: String(sub.endDate) }}
                             pricing={pricingEntries}
                             extras={extrasFor(sub.id)}
+                            customerAddresses={addressesByCustomer.get(sub.customerId) ?? []}
                           />
                         </td>
                       </tr>

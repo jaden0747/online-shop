@@ -6,24 +6,29 @@ import { upsertSelectionAction, deleteSelectionAction } from "../actions/selecti
 import { skipDayFromMenuAction, deleteMealSkipAction } from "../actions/skips";
 import { upsertKitchenNoteAction } from "../actions/notes";
 
-type CustomerData = {
-  id: string;
-  name: string;
+type SubRow = {
+  subscriptionId: string;
   mealsPerDay: number;
   goal: string;
+  plan: string;
   startDate: string;
   endDate: string;
-  subscriptionId: string;
   skips: { dayNum: number; skipId: string }[];
+};
+
+type CustomerGroup = {
+  customerId: string;
+  name: string;
   notes: string | null;
+  subscriptions: SubRow[];
 };
 
 type Props = {
   weekLabel: string;
   weekMonday: string;
-  activeCustomers: CustomerData[];
+  customerGroups: CustomerGroup[];
   menuItems: { day: number; slot: number; name: string; goals: string }[];
-  selections: { customerId: string; day: number; mealNum: number; menuSlot: number }[];
+  selections: { subscriptionId: string; day: number; mealNum: number; menuSlot: number }[];
   notes?: { customerId: string; day: number; note: string }[];
   onCustomerClick?: (customerId: string) => void;
 };
@@ -36,11 +41,10 @@ const DAYS = [
   { num: 5, label: "Fri" },
 ];
 
-export function MealSelectionGrid({ weekLabel, weekMonday, activeCustomers, menuItems, selections, notes = [], onCustomerClick }: Props) {
+export function MealSelectionGrid({ weekLabel, weekMonday, customerGroups, menuItems, selections, notes = [], onCustomerClick }: Props) {
   const router = useRouter();
   const [showNames, setShowNames] = useState(true);
   const [pending, setPending] = useState<string | null>(null);
-  // editingNoteKey = `${customerId}-${day}`
   const [editingNoteKey, setEditingNoteKey] = useState<string | null>(null);
   const [noteValues, setNoteValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(notes.map((n) => [`${n.customerId}-${n.day}`, n.note]))
@@ -55,10 +59,10 @@ export function MealSelectionGrid({ weekLabel, weekMonday, activeCustomers, menu
     return d;
   });
 
-  function isDayInRange(cust: CustomerData, dayNum: number): boolean {
+  function isDayInRange(sub: SubRow, dayNum: number): boolean {
     const dayDate = weekDates[dayNum - 1];
-    const start = new Date(cust.startDate); start.setHours(0, 0, 0, 0);
-    const end = new Date(cust.endDate); end.setHours(0, 0, 0, 0);
+    const start = new Date(sub.startDate); start.setHours(0, 0, 0, 0);
+    const end = new Date(sub.endDate); end.setHours(0, 0, 0, 0);
     return dayDate >= start && dayDate <= end;
   }
 
@@ -66,21 +70,21 @@ export function MealSelectionGrid({ weekLabel, weekMonday, activeCustomers, menu
     return menuItems.find((m) => m.day === day && m.slot === slot)?.name ?? (slot === 1 ? "Cơm" : "Bún");
   }
 
-  function getSelection(customerId: string, day: number, mealNum: number) {
-    return selections.find((s) => s.customerId === customerId && s.day === day && s.mealNum === mealNum);
+  function getSelection(subscriptionId: string, day: number, mealNum: number) {
+    return selections.find((s) => s.subscriptionId === subscriptionId && s.day === day && s.mealNum === mealNum);
   }
 
-  async function handleSelect(customerId: string, day: number, mealNum: number, menuSlot: number) {
-    const key = `${customerId}-${day}-${mealNum}-sel`;
+  async function handleSelect(subscriptionId: string, day: number, mealNum: number, menuSlot: number) {
+    const key = `${subscriptionId}-${day}-${mealNum}-sel`;
     setPending(key);
-    const existing = getSelection(customerId, day, mealNum);
+    const existing = getSelection(subscriptionId, day, mealNum);
     if (existing?.menuSlot === menuSlot) {
-      const selId = `${weekLabel}-${customerId}-${day}-${mealNum}`;
+      const selId = `${weekLabel}-${subscriptionId}-${day}-${mealNum}`;
       await deleteSelectionAction(selId);
     } else {
       const fd = new FormData();
       fd.set("weekLabel", weekLabel);
-      fd.set("customerId", customerId);
+      fd.set("subscriptionId", subscriptionId);
       fd.set("day", String(day));
       fd.set("mealNum", String(mealNum));
       fd.set("menuSlot", String(menuSlot));
@@ -120,7 +124,10 @@ export function MealSelectionGrid({ weekLabel, weekMonday, activeCustomers, menu
     router.refresh();
   }
 
-  if (activeCustomers.length === 0) {
+  const totalGroups = customerGroups.length;
+  const totalSubs = customerGroups.reduce((sum, g) => sum + g.subscriptions.length, 0);
+
+  if (totalGroups === 0) {
     return (
       <div className="px-4 py-6 text-center text-sm text-muted-foreground">
         No active customers with subscriptions.
@@ -152,154 +159,169 @@ export function MealSelectionGrid({ weekLabel, weekMonday, activeCustomers, menu
             </tr>
           </thead>
           <tbody className="divide-y">
-            {activeCustomers.map((cust) => (
-              <tr key={cust.id} className="hover:bg-accent/30">
-                <td className="px-3 py-2 sticky left-0 bg-background">
-                  <button
-                    type="button"
-                    onClick={() => onCustomerClick?.(cust.id)}
-                    className="font-medium text-sm text-left hover:underline focus:outline-none"
-                  >
-                    {cust.name}
-                  </button>
-                  {cust.notes && (
-                    <span className="block text-xs text-blue-600 dark:text-blue-400 whitespace-pre-wrap">{cust.notes}</span>
-                  )}
-                  <div className="text-muted-foreground text-xs">{cust.mealsPerDay}×/day · {cust.goal}</div>
-                </td>
-                {DAYS.map(({ num }) => {
-                  const inRange = isDayInRange(cust, num);
-                  const skipEntry = cust.skips.find((s) => s.dayNum === num);
-                  const isSkipped = !!skipEntry;
-                  const skipPendingKey = `${cust.subscriptionId}-${num}-skip`;
-                  const isSkipPending = pending === skipPendingKey;
-
-                  // Out of subscription range
-                  if (!inRange) {
-                    return (
-                      <td key={num} className="px-2 py-2">
-                        <div className="flex flex-col gap-0.5">
-                          {Array.from({ length: cust.mealsPerDay }, (_, i) => (
-                            <div key={i} className="px-1 py-0.5 rounded text-[10px] text-center text-muted-foreground/30 bg-muted/10 select-none">
-                              —
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                    );
-                  }
-
-                  // Skipped day — show clickable "skip" to undo
-                  if (isSkipped) {
-                    return (
-                      <td key={num} className="px-2 py-2">
-                        <div className="flex flex-col gap-0.5">
-                          {Array.from({ length: cust.mealsPerDay }, (_, i) => (
-                            <button
-                              key={i}
-                              disabled={isSkipPending}
-                              onClick={() => handleUnskip(skipEntry.skipId, cust.subscriptionId, num)}
-                              className="px-1 py-0.5 rounded text-[10px] text-center w-full text-amber-600 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors disabled:opacity-50"
-                              title="Click to remove skip"
-                            >
-                              {isSkipPending ? "…" : "skip ×"}
-                            </button>
-                          ))}
-                        </div>
-                      </td>
-                    );
-                  }
-
-                  // Normal selectable day — A / B / Skip + Note
-                  const noteKey = `${cust.id}-${num}`;
-                  const noteValue = noteValues[noteKey] ?? "";
-                  const isEditingNote = editingNoteKey === noteKey;
-                  return (
-                    <td key={num} className="px-2 py-2">
-                      <div className="space-y-0.5">
-                        {Array.from({ length: cust.mealsPerDay }, (_, mealIdx) => {
-                          const mealNum = mealIdx + 1;
-                          const sel = getSelection(cust.id, num, mealNum);
-                          const selPendingKey = `${cust.id}-${num}-${mealNum}-sel`;
-                          const isSelPending = pending === selPendingKey;
-                          return (
-                            <div key={mealNum} className="flex gap-0.5">
-                              <button
-                                disabled={isSelPending || isSkipPending}
-                                onClick={() => handleSelect(cust.id, num, mealNum, 1)}
-                                className={`flex-1 px-1 py-0.5 rounded text-[10px] border transition-colors disabled:opacity-50 text-center leading-tight ${
-                                  showNames ? "whitespace-normal" : "truncate"
-                                } ${
-                                  sel?.menuSlot === 1
-                                    ? "bg-primary text-primary-foreground border-primary"
-                                    : "bg-muted/50 hover:bg-muted border-transparent"
-                                }`}
-                                title={getMenuName(num, 1)}
-                              >
-                                {showNames ? getMenuName(num, 1) : "A"}
-                              </button>
-                              <button
-                                disabled={isSelPending || isSkipPending}
-                                onClick={() => handleSelect(cust.id, num, mealNum, 2)}
-                                className={`flex-1 px-1 py-0.5 rounded text-[10px] border transition-colors disabled:opacity-50 text-center leading-tight ${
-                                  showNames ? "whitespace-normal" : "truncate"
-                                } ${
-                                  sel?.menuSlot === 2
-                                    ? "bg-primary text-primary-foreground border-primary"
-                                    : "bg-muted/50 hover:bg-muted border-transparent"
-                                }`}
-                                title={getMenuName(num, 2)}
-                              >
-                                {showNames ? getMenuName(num, 2) : "B"}
-                              </button>
-                              {mealIdx === 0 && (
-                                <button
-                                  disabled={isSkipPending || isSelPending}
-                                  onClick={() => handleSkip(cust.subscriptionId, num)}
-                                  className="flex-1 px-1 py-0.5 rounded text-[10px] border border-transparent text-muted-foreground hover:text-amber-600 hover:bg-amber-50 hover:border-amber-200 transition-colors disabled:opacity-50"
-                                  title="Skip this day"
-                                >
-                                  {isSkipPending ? "…" : "Skip"}
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })}
-                        {/* Per-day note */}
-                        {isEditingNote ? (
-                          <textarea
-                            ref={noteInputRef}
-                            value={noteValue}
-                            onChange={(e) => setNoteValues((prev) => ({ ...prev, [noteKey]: e.target.value }))}
-                            onBlur={() => saveNote(cust.id, num)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Escape") setEditingNoteKey(null);
-                              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveNote(cust.id, num); }
-                            }}
-                            rows={2}
-                            placeholder="Note for kitchen…"
-                            className="w-full mt-0.5 text-[10px] bg-transparent border border-primary rounded px-1 py-0.5 outline-none resize-none leading-tight"
-                          />
-                        ) : (
+            {customerGroups.flatMap((group) =>
+              group.subscriptions.map((sub, subIdx) => {
+                const isFirst = subIdx === 0;
+                const isMultiSub = group.subscriptions.length > 1;
+                return (
+                  <tr key={sub.subscriptionId} className="hover:bg-accent/30">
+                    <td className="px-3 py-2 sticky left-0 bg-background">
+                      {isFirst ? (
+                        <>
                           <button
                             type="button"
-                            onClick={() => startEditNote(cust.id, num)}
-                            className={`w-full mt-0.5 text-left text-[10px] px-1 py-0.5 rounded transition-colors leading-tight ${
-                              noteValue
-                                ? "text-blue-600 hover:bg-blue-50"
-                                : "text-muted-foreground/40 hover:text-muted-foreground hover:bg-accent/50"
-                            }`}
-                            title="Click to add/edit note"
+                            onClick={() => onCustomerClick?.(group.customerId)}
+                            className="font-medium text-sm text-left hover:underline focus:outline-none"
                           >
-                            {noteValue || "+ note"}
+                            {group.name}
                           </button>
-                        )}
+                          {group.notes && (
+                            <span className="block text-xs text-blue-600 dark:text-blue-400 whitespace-pre-wrap">{group.notes}</span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="block text-xs text-muted-foreground/40 pl-2">↳</span>
+                      )}
+                      <div className="text-muted-foreground text-xs">
+                        {isMultiSub && <span className="capitalize">{sub.plan} · </span>}
+                        {sub.mealsPerDay}×/day · {sub.goal}
                       </div>
                     </td>
-                  );
-                })}
-              </tr>
-            ))}
+                    {DAYS.map(({ num }) => {
+                      const inRange = isDayInRange(sub, num);
+                      const skipEntry = sub.skips.find((s) => s.dayNum === num);
+                      const isSkipped = !!skipEntry;
+                      const skipPendingKey = `${sub.subscriptionId}-${num}-skip`;
+                      const isSkipPending = pending === skipPendingKey;
+
+                      if (!inRange) {
+                        return (
+                          <td key={num} className="px-2 py-2">
+                            <div className="flex flex-col gap-0.5">
+                              {Array.from({ length: sub.mealsPerDay }, (_, i) => (
+                                <div key={i} className="px-1 py-0.5 rounded text-[10px] text-center text-muted-foreground/30 bg-muted/10 select-none">
+                                  —
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        );
+                      }
+
+                      if (isSkipped) {
+                        return (
+                          <td key={num} className="px-2 py-2">
+                            <div className="flex flex-col gap-0.5">
+                              {Array.from({ length: sub.mealsPerDay }, (_, i) => (
+                                <button
+                                  key={i}
+                                  disabled={isSkipPending}
+                                  onClick={() => handleUnskip(skipEntry.skipId, sub.subscriptionId, num)}
+                                  className="px-1 py-0.5 rounded text-[10px] text-center w-full text-amber-600 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors disabled:opacity-50"
+                                  title="Click to remove skip"
+                                >
+                                  {isSkipPending ? "…" : "skip ×"}
+                                </button>
+                              ))}
+                            </div>
+                          </td>
+                        );
+                      }
+
+                      // Normal selectable day
+                      const noteKey = `${group.customerId}-${num}`;
+                      const noteValue = noteValues[noteKey] ?? "";
+                      const isEditingNote = editingNoteKey === noteKey;
+                      return (
+                        <td key={num} className="px-2 py-2">
+                          <div className="space-y-0.5">
+                            {Array.from({ length: sub.mealsPerDay }, (_, mealIdx) => {
+                              const mealNum = mealIdx + 1;
+                              const sel = getSelection(sub.subscriptionId, num, mealNum);
+                              const selPendingKey = `${sub.subscriptionId}-${num}-${mealNum}-sel`;
+                              const isSelPending = pending === selPendingKey;
+                              return (
+                                <div key={mealNum} className="flex gap-0.5">
+                                  <button
+                                    disabled={isSelPending || isSkipPending}
+                                    onClick={() => handleSelect(sub.subscriptionId, num, mealNum, 1)}
+                                    className={`flex-1 px-1 py-0.5 rounded text-[10px] border transition-colors disabled:opacity-50 text-center leading-tight ${
+                                      showNames ? "whitespace-normal" : "truncate"
+                                    } ${
+                                      sel?.menuSlot === 1
+                                        ? "bg-primary text-primary-foreground border-primary"
+                                        : "bg-muted/50 hover:bg-muted border-transparent"
+                                    }`}
+                                    title={getMenuName(num, 1)}
+                                  >
+                                    {showNames ? getMenuName(num, 1) : "A"}
+                                  </button>
+                                  <button
+                                    disabled={isSelPending || isSkipPending}
+                                    onClick={() => handleSelect(sub.subscriptionId, num, mealNum, 2)}
+                                    className={`flex-1 px-1 py-0.5 rounded text-[10px] border transition-colors disabled:opacity-50 text-center leading-tight ${
+                                      showNames ? "whitespace-normal" : "truncate"
+                                    } ${
+                                      sel?.menuSlot === 2
+                                        ? "bg-primary text-primary-foreground border-primary"
+                                        : "bg-muted/50 hover:bg-muted border-transparent"
+                                    }`}
+                                    title={getMenuName(num, 2)}
+                                  >
+                                    {showNames ? getMenuName(num, 2) : "B"}
+                                  </button>
+                                  {mealIdx === 0 && (
+                                    <button
+                                      disabled={isSkipPending || isSelPending}
+                                      onClick={() => handleSkip(sub.subscriptionId, num)}
+                                      className="flex-1 px-1 py-0.5 rounded text-[10px] border border-transparent text-muted-foreground hover:text-amber-600 hover:bg-amber-50 hover:border-amber-200 transition-colors disabled:opacity-50"
+                                      title="Skip this day"
+                                    >
+                                      {isSkipPending ? "…" : "Skip"}
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {/* Per-day note — only on the first sub row for this customer */}
+                            {isFirst && (
+                              isEditingNote ? (
+                                <textarea
+                                  ref={noteInputRef}
+                                  value={noteValue}
+                                  onChange={(e) => setNoteValues((prev) => ({ ...prev, [noteKey]: e.target.value }))}
+                                  onBlur={() => saveNote(group.customerId, num)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Escape") setEditingNoteKey(null);
+                                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveNote(group.customerId, num); }
+                                  }}
+                                  rows={2}
+                                  placeholder="Note for kitchen…"
+                                  className="w-full mt-0.5 text-[10px] bg-transparent border border-primary rounded px-1 py-0.5 outline-none resize-none leading-tight"
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => startEditNote(group.customerId, num)}
+                                  className={`w-full mt-0.5 text-left text-[10px] px-1 py-0.5 rounded transition-colors leading-tight ${
+                                    noteValue
+                                      ? "text-blue-600 hover:bg-blue-50"
+                                      : "text-muted-foreground/40 hover:text-muted-foreground hover:bg-accent/50"
+                                  }`}
+                                  title="Click to add/edit note"
+                                >
+                                  {noteValue || "+ note"}
+                                </button>
+                              )
+                            )}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>

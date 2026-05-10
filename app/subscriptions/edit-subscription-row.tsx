@@ -25,6 +25,7 @@ import { Pencil, Trash2, Plus } from "lucide-react";
 
 type Sub = {
   id: string;
+  customerId: string;
   plan: string;
   goal: string;
   mealsPerDay: number;
@@ -35,7 +36,10 @@ type Sub = {
   startDate: string;
   endDate: string;
   endDateNoSkip: string;
+  addressId: string | null;
 };
+
+type CustomerAddress = { id: string; label: string; isDefault: boolean };
 
 type PricingEntry = { goal: string; plan: string; mealsPerDay: number; totalPrice: number };
 
@@ -55,10 +59,12 @@ export function EditSubscriptionRow({
   sub,
   pricing,
   extras,
+  customerAddresses = [],
 }: {
   sub: Sub;
   pricing: PricingEntry[];
   extras: Extra[];
+  customerAddresses?: CustomerAddress[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -75,6 +81,7 @@ export function EditSubscriptionRow({
   const [endDateStr, setEndDateStr] = useState(
     new Date(sub.endDate).toISOString().split("T")[0]
   );
+  const [addressId, setAddressId] = useState<string>(sub.addressId ?? "none");
   const [pendingExtras, setPendingExtras] = useState<PendingExtra[]>([]);
   const [deletingExtraId, setDeletingExtraId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -105,6 +112,7 @@ export function EditSubscriptionRow({
       setTrialDays(sub.trialDays ?? 3);
       setStartDateStr(new Date(sub.startDate).toISOString().split("T")[0]);
       setEndDateStr(new Date(sub.endDate).toISOString().split("T")[0]);
+      setAddressId(sub.addressId ?? "none");
       setPendingExtras([]);
     }
   }, [open, sub]);
@@ -135,6 +143,7 @@ export function EditSubscriptionRow({
         startDate,
         endDate,
         endDateNoSkip: new Date(sub.endDateNoSkip || sub.endDate),
+        addressId: addressId === "none" ? null : addressId,
       });
       for (const extra of pendingExtras) {
         if (extra.amount !== 0) {
@@ -210,6 +219,23 @@ export function EditSubscriptionRow({
                 value={trialDays}
                 onChange={(e) => setTrialDays(Math.min(10, Math.max(1, parseInt(e.target.value, 10) || 1)))}
               />
+            </div>
+          )}
+
+          {customerAddresses.length > 0 && (
+            <div className="space-y-1">
+              <Label>Delivery Address</Label>
+              <Select value={addressId} onValueChange={(v) => v && setAddressId(v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Customer default</SelectItem>
+                  {customerAddresses.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.label}{a.isDefault ? " (default)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
 

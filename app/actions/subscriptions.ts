@@ -35,6 +35,9 @@ export async function createSubscriptionAction(formData: FormData) {
   else if (plan === "monthly") endDate = addWorkingDays(startDate, 19);
   else endDate = addWorkingDays(startDate, (trialDays ?? 3) - 1);
 
+  const addressIdRaw = formData.get("addressId") as string | null;
+  const addressId = addressIdRaw && addressIdRaw !== "none" ? addressIdRaw : null;
+
   createSubscription({
     customerId,
     plan,
@@ -49,6 +52,7 @@ export async function createSubscriptionAction(formData: FormData) {
     endDate: endDate.toISOString(),
     endDateNoSkip: endDate.toISOString(),
     cancelReason: null,
+    addressId,
   });
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
@@ -77,6 +81,7 @@ export async function updateSubscriptionAction(
     startDate: Date;
     endDate: Date;
     endDateNoSkip: Date;
+    addressId: string | null;
   }
 ) {
   updateSubscription(id, {

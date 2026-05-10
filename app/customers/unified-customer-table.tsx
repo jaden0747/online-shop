@@ -12,6 +12,14 @@ type AddressItem = {
   isDefault: boolean;
 };
 
+type ActiveSub = {
+  plan: string;
+  goal: string;
+  subscriptionPrice: number;
+  shippingPrice: number;
+  endDate: string;
+};
+
 type CustomerRow = {
   id: string;
   name: string;
@@ -19,13 +27,7 @@ type CustomerRow = {
   notes: string | null;
   zone: string;
   addresses: AddressItem[];
-  activeSub: {
-    plan: string;
-    goal: string;
-    subscriptionPrice: number;
-    shippingPrice: number;
-    endDate: string;
-  } | null;
+  activeSubs: ActiveSub[];
 };
 
 function EndDateCell({ endDate }: { endDate: string }) {
@@ -85,92 +87,81 @@ export function UnifiedCustomerTable({ rows }: { rows: CustomerRow[] }) {
               <th className="text-left px-4 py-2 font-medium">Customer</th>
               <th className="text-left px-4 py-2 font-medium">Address</th>
               <th className="text-left px-4 py-2 font-medium">Zone</th>
-              <th className="text-left px-4 py-2 font-medium">Goal</th>
-              <th className="text-left px-4 py-2 font-medium">Plan / Price</th>
-              <th className="text-left px-4 py-2 font-medium">End Date</th>
+              <th className="text-left px-4 py-2 font-medium">Active Subscriptions</th>
               <th className="text-left px-4 py-2 font-medium w-8">Note</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-6 text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
                   {search.trim() ? `No customers matching "${search}"` : "No customers yet."}
                 </td>
               </tr>
             )}
-            {filtered.map((r) => {
-              const total = r.activeSub ? r.activeSub.subscriptionPrice + r.activeSub.shippingPrice : null;
-              return (
-                <tr key={r.id} className="hover:bg-accent/50 transition-colors">
-                  <td className="px-2 py-2">
-                    <button
-                      type="button"
-                      onClick={() => setOverlayId(r.id)}
-                      className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                      title="Edit customer"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                  </td>
-                  <td className="px-4 py-2">
-                    <button
-                      type="button"
-                      onClick={() => setOverlayId(r.id)}
-                      className="text-left"
-                    >
-                      <span className="font-medium leading-none block hover:underline">{r.name}</span>
-                      <span className="text-xs text-muted-foreground">{r.phone}</span>
-                    </button>
-                  </td>
-                  <td className="px-4 py-2 max-w-[220px]">
-                    {r.addresses.length === 0 ? (
-                      <span className="text-xs text-muted-foreground opacity-40">—</span>
-                    ) : (
-                      <div className="space-y-0.5">
-                        {r.addresses.map((a, i) => (
-                          <div key={i} className={`text-xs truncate ${a.isDefault ? "font-medium text-foreground" : "text-muted-foreground/60"}`}>
-                            {a.address}
+            {filtered.map((r) => (
+              <tr key={r.id} className="hover:bg-accent/50 transition-colors">
+                <td className="px-2 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setOverlayId(r.id)}
+                    className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                    title="Edit customer"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                </td>
+                <td className="px-4 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setOverlayId(r.id)}
+                    className="text-left"
+                  >
+                    <span className="font-medium leading-none block hover:underline">{r.name}</span>
+                    <span className="text-xs text-muted-foreground">{r.phone}</span>
+                  </button>
+                </td>
+                <td className="px-4 py-2 max-w-[220px]">
+                  {r.addresses.length === 0 ? (
+                    <span className="text-xs text-muted-foreground opacity-40">—</span>
+                  ) : (
+                    <div className="space-y-0.5">
+                      {r.addresses.map((a, i) => (
+                        <div key={i} className={`text-xs truncate ${a.isDefault ? "font-medium text-foreground" : "text-muted-foreground/60"}`}>
+                          {a.address}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </td>
+                <td className="px-4 py-2 text-xs text-muted-foreground">
+                  {r.zone || <span className="opacity-40">—</span>}
+                </td>
+                <td className="px-4 py-2">
+                  {r.activeSubs.length === 0 ? (
+                    <span className="text-xs text-muted-foreground opacity-40">—</span>
+                  ) : (
+                    <div className="space-y-1">
+                      {r.activeSubs.map((s, i) => {
+                        const total = s.subscriptionPrice + s.shippingPrice;
+                        return (
+                          <div key={i} className="flex items-center gap-2">
+                            <span className="text-xs capitalize font-medium">{s.plan}</span>
+                            <span className="text-xs text-muted-foreground">· {s.goal} · ₫{total.toLocaleString()}</span>
+                            <EndDateCell endDate={s.endDate} />
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-xs text-muted-foreground">
-                    {r.zone || <span className="opacity-40">—</span>}
-                  </td>
-                  <td className="px-4 py-2">
-                    {r.activeSub ? (
-                      <span className="text-xs capitalize text-muted-foreground">{r.activeSub.goal}</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground opacity-40">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2">
-                    {r.activeSub && total !== null ? (
-                      <div>
-                        <span className="text-xs capitalize font-medium">{r.activeSub.plan}</span>
-                        <span className="text-xs text-muted-foreground"> · ₫{total.toLocaleString()}</span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground opacity-40">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2">
-                    {r.activeSub ? (
-                       <EndDateCell endDate={r.activeSub.endDate} />
-                    ) : (
-                      <span className="text-muted-foreground opacity-40 text-xs">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2">
-                    {r.notes ? (
-                      <span className="inline-block w-2 h-2 rounded-full bg-blue-400" title={r.notes} />
-                    ) : null}
-                  </td>
-                </tr>
-              );
-            })}
+                        );
+                      })}
+                    </div>
+                  )}
+                </td>
+                <td className="px-4 py-2">
+                  {r.notes ? (
+                    <span className="inline-block w-2 h-2 rounded-full bg-blue-400" title={r.notes} />
+                  ) : null}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

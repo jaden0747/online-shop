@@ -8,7 +8,7 @@ function parse(raw: Record<string, unknown>): MealSelection {
   return {
     id: toStr(raw.id),
     weekLabel: toStr(raw.weekLabel),
-    customerId: toStr(raw.customerId),
+    subscriptionId: toStr(raw.subscriptionId),
     day: toNum(raw.day),
     mealNum: toNum(raw.mealNum) || 1,
     menuSlot: toNum(raw.menuSlot) || 1,
@@ -18,7 +18,7 @@ function parse(raw: Record<string, unknown>): MealSelection {
 export function getAllSelections(): MealSelection[] {
   return readRows<Record<string, unknown>>(FILE, SHEET)
     .map(parse)
-    .filter((s) => s.id && s.weekLabel && s.customerId && s.day);
+    .filter((s) => s.id && s.weekLabel && s.subscriptionId && s.day);
 }
 
 export function getSelectionsByWeek(weekLabel: string): MealSelection[] {
@@ -31,13 +31,13 @@ export function saveSelections(selections: MealSelection[]): void {
 
 export function upsertSelection(data: {
   weekLabel: string;
-  customerId: string;
+  subscriptionId: string;
   day: number;
   mealNum: number;
   menuSlot: number;
 }): MealSelection {
   const all = getAllSelections();
-  const id = `${data.weekLabel}-${data.customerId}-${data.day}-${data.mealNum}`;
+  const id = `${data.weekLabel}-${data.subscriptionId}-${data.day}-${data.mealNum}`;
   const idx = all.findIndex((s) => s.id === id);
   const sel: MealSelection = { ...data, id };
   if (idx >= 0) {

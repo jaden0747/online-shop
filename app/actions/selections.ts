@@ -6,7 +6,7 @@ import { upsertSelection, deleteSelection } from "@/lib/data/selections";
 export async function upsertSelectionAction(formData: FormData) {
   upsertSelection({
     weekLabel: formData.get("weekLabel") as string,
-    customerId: formData.get("customerId") as string,
+    subscriptionId: formData.get("subscriptionId") as string,
     day: parseInt(formData.get("day") as string, 10),
     mealNum: parseInt(formData.get("mealNum") as string, 10),
     menuSlot: parseInt(formData.get("menuSlot") as string, 10),
@@ -21,7 +21,7 @@ export async function deleteSelectionAction(id: string) {
 
 export async function upsertSelectionDirectAction(data: {
   weekLabel: string;
-  customerId: string;
+  subscriptionId: string;
   day: number;
   mealNum: number;
   menuSlot: number;

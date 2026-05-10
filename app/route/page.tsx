@@ -67,61 +67,85 @@ export default async function RoutePage({
     allAddresses.filter((a) => a.isDefault).map((a) => [a.customerId, a])
   );
 
-  const seenCustomers = new Set<string>();
-  const deliveries = subscriptions
-    .filter((s) => isSubscriptionLive(s.status, s.startDate, s.endDate, selectedDate))
-    .map((sub) => {
-      const customer = customers.find((c) => c.phone === sub.customerId);
-      const defaultAddr = customer ? defaultAddrMap.get(customer.id) : undefined;
-      if (!customer) return null;
+  // Build per-sub entries, then group by (customerId, effectiveAddr) same as shipping page
+  type SubEntry = {
+    sub: typeof subscriptions[number];
+    customer: typeof customers[number];
+    effectiveAddr: typeof allAddresses[number];
+    meals: string[];
+  };
+  const subEntries: SubEntry[] = [];
 
-      // Per-day address override
-      const overrideAddrId = dayAddrMap.get(`${sub.id}-${dayNum}`);
-      const addrOverride = overrideAddrId ? allAddresses.find((a) => a.id === overrideAddrId) : null;
-      const effectiveAddr = addrOverride ?? defaultAddr;
-      if (!effectiveAddr?.latitude || !effectiveAddr?.longitude) return null;
-      if (seenCustomers.has(customer.id)) return null;
-      seenCustomers.add(customer.id);
+  for (const sub of subscriptions) {
+    if (!isSubscriptionLive(sub.status, sub.startDate, sub.endDate, selectedDate)) continue;
+    const customer = customers.find((c) => c.phone === sub.customerId);
+    if (!customer) continue;
 
-      const isSkipped = skips.some(
-        (skip) =>
-          skip.subscriptionId === sub.id &&
-          localDateStr(new Date(skip.originalDay + (skip.originalDay.length === 10 ? "T00:00:00" : ""))) === selectedDateStr
-      );
-      const isReplacement = skips.some(
-        (skip) =>
-          skip.subscriptionId === sub.id &&
-          skip.replacementDay !== null &&
-          localDateStr(new Date(skip.replacementDay + (skip.replacementDay.length === 10 ? "T00:00:00" : ""))) === selectedDateStr
-      );
-      if (isSkipped && !isReplacement) return null;
+    const isSkipped = skips.some(
+      (skip) =>
+        skip.subscriptionId === sub.id &&
+        localDateStr(new Date(skip.originalDay + (skip.originalDay.length === 10 ? "T00:00:00" : ""))) === selectedDateStr
+    );
+    const isReplacement = skips.some(
+      (skip) =>
+        skip.subscriptionId === sub.id &&
+        skip.replacementDay !== null &&
+        localDateStr(new Date(skip.replacementDay + (skip.replacementDay.length === 10 ? "T00:00:00" : ""))) === selectedDateStr
+    );
+    if (isSkipped && !isReplacement) continue;
 
-      const customerSelections = selections
-        .filter((sel) => sel.customerId === customer.phone && sel.day === dayNum)
-        .sort((a, b) => a.mealNum - b.mealNum);
+    const customerAddresses = allAddresses.filter((a) => a.customerId === customer.id);
+    const defaultAddr = defaultAddrMap.get(customer.id);
+    const overrideAddrId = dayAddrMap.get(`${sub.id}-${dayNum}`);
+    const addrOverride = overrideAddrId ? allAddresses.find((a) => a.id === overrideAddrId) : null;
+    const subDefaultAddr = sub.addressId
+      ? customerAddresses.find((a) => a.id === sub.addressId) ?? defaultAddr
+      : defaultAddr;
+    const effectiveAddr = addrOverride ?? subDefaultAddr;
+    if (!effectiveAddr?.latitude || !effectiveAddr?.longitude) continue;
 
-      const meals: string[] = [];
-      for (let mealNum = 1; mealNum <= sub.mealsPerDay; mealNum++) {
-        const sel = customerSelections.find((s) => s.mealNum === mealNum);
-        if (sel) {
-          const name = menuName(dayNum, sel.menuSlot);
-          if (name) meals.push(name);
-        }
+    const subSelections = selections
+      .filter((sel) => sel.subscriptionId === sub.id && sel.day === dayNum)
+      .sort((a, b) => a.mealNum - b.mealNum);
+
+    const meals: string[] = [];
+    for (let mealNum = 1; mealNum <= sub.mealsPerDay; mealNum++) {
+      const sel = subSelections.find((s) => s.mealNum === mealNum);
+      if (sel) {
+        const name = menuName(dayNum, sel.menuSlot);
+        if (name) meals.push(name);
       }
+    }
 
-      return {
-        id: customer.id,
-        name: customer.name,
-        phone: customer.phone,
-        address: effectiveAddr.address,
-        lat: effectiveAddr.latitude as number,
-        lng: effectiveAddr.longitude as number,
-        meals,
-        permanentNote: customer.notes ?? null,
-        dateNote: dayNotes.find((n) => n.customerId === customer.phone)?.note ?? null,
-      };
-    })
-    .filter(Boolean) as { id: string; name: string; phone: string; address: string; lat: number; lng: number; meals: string[]; permanentNote: string | null; dateNote: string | null }[];
+    subEntries.push({ sub, customer, effectiveAddr: effectiveAddr as typeof allAddresses[number], meals });
+  }
+
+  // Group by (customerId, effectiveAddr.id)
+  const routeGroups = new Map<string, SubEntry[]>();
+  for (const entry of subEntries) {
+    const key = `${entry.customer.id}::${entry.effectiveAddr.id}`;
+    const list = routeGroups.get(key) ?? [];
+    list.push(entry);
+    routeGroups.set(key, list);
+  }
+
+  const deliveries = [...routeGroups.values()].map((group) => {
+    // Sort latest-created sub first — matches shipping page's representative sub selection
+    group.sort((a, b) => new Date(b.sub.createdAt).getTime() - new Date(a.sub.createdAt).getTime());
+    const { customer, effectiveAddr } = group[0];
+    const meals = group.flatMap((e) => e.meals);
+    return {
+      id: group[0].sub.id,  // subscription UUID — matches the key used by ShippingTable's manualAssign
+      name: customer.name,
+      phone: customer.phone,
+      address: effectiveAddr.address,
+      lat: effectiveAddr.latitude as number,
+      lng: effectiveAddr.longitude as number,
+      meals,
+      permanentNote: customer.notes ?? null,
+      dateNote: dayNotes.find((n) => n.customerId === customer.phone)?.note ?? null,
+    };
+  });
 
   const isToday = selectedDateStr === localDateStr(new Date());
 

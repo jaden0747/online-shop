@@ -34,49 +34,50 @@ function buildWeekData(
     return d;
   });
 
-  const weekStart = weekDates[0]; // Monday midnight
-  const weekEnd = weekDates[4];   // Friday midnight
+  const weekStart = weekDates[0];
+  const weekEnd = weekDates[4];
 
-  const seenCustomers = new Set<string>();
-  const activeCustomers = subscriptions
-    .filter((s) => {
-      if (s.status === "cancelled") return false;
-      const subStart = new Date(s.startDate); subStart.setHours(0, 0, 0, 0);
-      const subEnd = new Date(s.endDate); subEnd.setHours(0, 0, 0, 0);
-      if (subStart > weekEnd || subEnd < weekStart) return false;
-      if (seenCustomers.has(s.customerId)) return false;
-      seenCustomers.add(s.customerId);
-      return true;
-    })
-    .map((sub) => {
-      const cust = customers.find((c) => c.phone === sub.customerId);
-      if (!cust) return null;
+  // Build one group per customer, with one SubRow per active subscription that overlaps the week
+  const groupMap = new Map<string, WeekData["customerGroups"][number]>();
 
-      const subSkips = allSkips.filter((sk) => sk.subscriptionId === sub.id);
-      const skips = weekDates
-        .map((dayDate, i) => {
-          const sk = subSkips.find((sk) => {
-            const d = new Date(sk.originalDay);
-            d.setHours(0, 0, 0, 0);
-            return d.getTime() === dayDate.getTime();
-          });
-          return sk ? { dayNum: i + 1, skipId: sk.id } : null;
-        })
-        .filter((s): s is { dayNum: number; skipId: string } => s !== null);
+  for (const sub of subscriptions) {
+    if (sub.status === "cancelled") continue;
+    const subStart = new Date(sub.startDate); subStart.setHours(0, 0, 0, 0);
+    const subEnd = new Date(sub.endDate); subEnd.setHours(0, 0, 0, 0);
+    if (subStart > weekEnd || subEnd < weekStart) continue;
 
-      return {
-        id: cust.phone,
-        name: cust.name,
-        mealsPerDay: sub.mealsPerDay,
-        goal: sub.goal,
-        startDate: sub.startDate,
-        endDate: sub.endDate,
-        subscriptionId: sub.id,
-        skips,
-        notes: cust.notes,
-      };
-    })
-    .filter(Boolean) as WeekData["activeCustomers"];
+    const cust = customers.find((c) => c.phone === sub.customerId);
+    if (!cust) continue;
+
+    const subSkips = allSkips.filter((sk) => sk.subscriptionId === sub.id);
+    const skips = weekDates
+      .map((dayDate, i) => {
+        const sk = subSkips.find((sk) => {
+          const d = new Date(sk.originalDay);
+          d.setHours(0, 0, 0, 0);
+          return d.getTime() === dayDate.getTime();
+        });
+        return sk ? { dayNum: i + 1, skipId: sk.id } : null;
+      })
+      .filter((s): s is { dayNum: number; skipId: string } => s !== null);
+
+    const group = groupMap.get(cust.phone) ?? {
+      customerId: cust.phone,
+      name: cust.name,
+      notes: cust.notes,
+      subscriptions: [],
+    };
+    group.subscriptions.push({
+      subscriptionId: sub.id,
+      mealsPerDay: sub.mealsPerDay,
+      goal: sub.goal,
+      plan: sub.plan,
+      startDate: sub.startDate,
+      endDate: sub.endDate,
+      skips,
+    });
+    groupMap.set(cust.phone, group);
+  }
 
   return {
     weekLabel,
@@ -86,12 +87,12 @@ function buildWeekData(
     menuItems: items,
     notes: weekNotes.map((n) => ({ customerId: n.customerId, day: n.day, note: n.note })),
     selections: selections.map((s) => ({
-      customerId: s.customerId,
+      subscriptionId: s.subscriptionId,
       day: s.day,
       mealNum: s.mealNum,
       menuSlot: s.menuSlot,
     })),
-    activeCustomers,
+    customerGroups: [...groupMap.values()],
   };
 }
 

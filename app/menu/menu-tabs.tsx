@@ -16,17 +16,24 @@ const DAYS = [
   { num: 4, label: "Thu" },
   { num: 5, label: "Fri" },
 ];
-type Selection = { customerId: string; day: number; mealNum: number; menuSlot: number };
-type ActiveCustomer = {
-  id: string;
-  name: string;
+
+type Selection = { subscriptionId: string; day: number; mealNum: number; menuSlot: number };
+
+type SubRow = {
+  subscriptionId: string;
   mealsPerDay: number;
   goal: string;
+  plan: string;
   startDate: string;
   endDate: string;
-  subscriptionId: string;
   skips: { dayNum: number; skipId: string }[];
+};
+
+type CustomerGroup = {
+  customerId: string;
+  name: string;
   notes: string | null;
+  subscriptions: SubRow[];
 };
 
 export type WeekData = {
@@ -36,7 +43,7 @@ export type WeekData = {
   isCurrentWeek: boolean;
   menuItems: MenuItem[];
   selections: Selection[];
-  activeCustomers: ActiveCustomer[];
+  customerGroups: CustomerGroup[];
   notes: { customerId: string; day: number; note: string }[];
 };
 
@@ -154,7 +161,7 @@ export function MenuTabs({ thisWeek, nextWeek }: { thisWeek: WeekData; nextWeek:
       </Card>
 
       {/* Kitchen notes summary */}
-      <KitchenNotesSummary notes={data.notes} customers={data.activeCustomers} />
+      <KitchenNotesSummary notes={data.notes} customerGroups={data.customerGroups} />
 
       {/* Customer meal selections */}
       <Card>
@@ -174,7 +181,7 @@ export function MenuTabs({ thisWeek, nextWeek }: { thisWeek: WeekData; nextWeek:
             onCustomerClick={setOverlayCustomerId}
             weekLabel={data.weekLabel}
             weekMonday={data.weekMondayISO}
-            activeCustomers={data.activeCustomers}
+            customerGroups={data.customerGroups}
             menuItems={data.menuItems.map((i) => ({ day: i.day, slot: i.slot, name: i.name, goals: i.goals }))}
             selections={data.selections}
             notes={data.notes}
@@ -187,10 +194,10 @@ export function MenuTabs({ thisWeek, nextWeek }: { thisWeek: WeekData; nextWeek:
 
 function KitchenNotesSummary({
   notes,
-  customers,
+  customerGroups,
 }: {
   notes: { customerId: string; day: number; note: string }[];
-  customers: ActiveCustomer[];
+  customerGroups: CustomerGroup[];
 }) {
   const todayNum = new Date().getDay(); // 0=Sun
   const defaultDay = todayNum >= 1 && todayNum <= 5 ? todayNum : 1;
@@ -240,10 +247,10 @@ function KitchenNotesSummary({
         ) : (
           <div className="space-y-2">
             {dayNotes.map((n) => {
-              const cust = customers.find((c) => c.id === n.customerId);
+              const group = customerGroups.find((g) => g.customerId === n.customerId);
               return (
                 <div key={n.customerId} className="flex gap-3 text-sm">
-                  <span className="font-medium min-w-[120px] shrink-0 text-foreground">{cust?.name ?? n.customerId}</span>
+                  <span className="font-medium min-w-[120px] shrink-0 text-foreground">{group?.name ?? n.customerId}</span>
                   <span className="text-muted-foreground whitespace-pre-wrap">{n.note}</span>
                 </div>
               );

@@ -24,13 +24,16 @@ import { planTotalMeals } from "@/lib/utils/subscription";
 
 type Customer = { id: string; name: string; phone: string };
 type PricingEntry = { goal: string; plan: string; mealsPerDay: number; totalPrice: number };
+type AddressEntry = { id: string; customerId: string; label: string; isDefault: boolean };
 
 export function NewSubscriptionDialog({
   customers,
   pricing,
+  allAddresses,
 }: {
   customers: Customer[];
   pricing: PricingEntry[];
+  allAddresses: AddressEntry[];
 }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
@@ -44,6 +47,7 @@ export function NewSubscriptionDialog({
   const [shippingPrice, setShippingPrice] = useState(0);
   const [trialDays, setTrialDays] = useState(3);
   const [search, setSearch] = useState("");
+  const [addressId, setAddressId] = useState<string>("none");
 
   const filteredCustomers = search.trim()
     ? customers.filter((c) =>
@@ -53,6 +57,7 @@ export function NewSubscriptionDialog({
     : customers;
 
   const selectedCustomer = customers.find((c) => c.id === customerId);
+  const customerAddresses = allAddresses.filter((a) => a.customerId === customerId);
 
   useEffect(() => {
     if (plan === "trial") return;
@@ -73,8 +78,14 @@ export function NewSubscriptionDialog({
       setStartDate(new Date().toISOString().split("T")[0]);
       setShippingPrice(0);
       setTrialDays(3);
+      setAddressId("none");
     }
   }, [open, customers]);
+
+  // Reset addressId when customer changes
+  useEffect(() => {
+    setAddressId("none");
+  }, [customerId]);
 
   const [, action, pending] = useActionState(
     async (_: unknown, formData: FormData) => {
@@ -84,6 +95,7 @@ export function NewSubscriptionDialog({
       formData.set("mealsPerDay", mealsPerDay);
       formData.set("subscriptionPrice", String(subscriptionPrice));
       formData.set("shippingPrice", String(shippingPrice));
+      formData.set("addressId", addressId);
       if (plan === "trial") formData.set("trialDays", String(trialDays));
       formData.set("startDate", startDate);
       await createSubscriptionAction(formData);
@@ -208,6 +220,23 @@ export function NewSubscriptionDialog({
                 value={trialDays}
                 onChange={(e) => setTrialDays(Math.min(10, Math.max(1, parseInt(e.target.value, 10) || 1)))}
               />
+            </div>
+          )}
+
+          {customerAddresses.length > 0 && (
+            <div className="space-y-1.5">
+              <Label>Delivery Address</Label>
+              <Select value={addressId} onValueChange={(v) => v && setAddressId(v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Customer default</SelectItem>
+                  {customerAddresses.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.label}{a.isDefault ? " (default)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
 

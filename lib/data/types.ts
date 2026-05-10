@@ -35,6 +35,7 @@ export interface Subscription {
   endDate: string; // ISO string - last delivery day (inclusive), extended by skips
   endDateNoSkip: string; // ISO string - base end date without skip extensions
   cancelReason: string | null;
+  addressId: string | null; // default delivery address for this sub; null = use customer default
   createdAt: string; // ISO string
 }
 
@@ -81,9 +82,9 @@ export interface Pricing {
 }
 
 export interface MealSelection {
-  id: string; // `${weekLabel}-${customerId}-${day}-${mealNum}`
+  id: string; // `${weekLabel}-${subscriptionId}-${day}-${mealNum}`
   weekLabel: string;
-  customerId: string; // customer phone
+  subscriptionId: string;
   day: number; // 1-5
   mealNum: number; // 1, 2 (which meal of the day if mealsPerDay > 1)
   menuSlot: number; // 1 or 2 (Option A or Option B)

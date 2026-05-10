@@ -44,20 +44,27 @@ export default async function CustomersPage() {
     _count: { mealSkips: skipCountMap.get(s.id) ?? 0 },
   }));
 
-  // Build active map per customer for sorting
-  const activeSubMap = new Map<string, (typeof subscriptions)[number]>();
+  // Build active subs list per customer
+  const activeSubsMap = new Map<string, (typeof subscriptions)[number][]>();
   for (const s of subscriptions) {
     if (isSubscriptionLive(s.status, s.startDate, s.endDate)) {
-      const existing = activeSubMap.get(s.customer.id);
-      if (!existing || new Date(s.endDate).getTime() < new Date(existing.endDate).getTime()) {
-        activeSubMap.set(s.customer.id, s);
-      }
+      const list = activeSubsMap.get(s.customer.id) ?? [];
+      list.push(s);
+      activeSubsMap.set(s.customer.id, list);
     }
+  }
+  // Sort each customer's active subs by endDate ascending
+  for (const list of activeSubsMap.values()) {
+    list.sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime());
   }
 
   const sortedCustomers = [...customers].sort((a, b) => {
-    const aActive = activeSubMap.has(a.id), bActive = activeSubMap.has(b.id);
-    if (aActive && bActive) return new Date(activeSubMap.get(a.id)!.endDate).getTime() - new Date(activeSubMap.get(b.id)!.endDate).getTime();
+    const aList = activeSubsMap.get(a.id), bList = activeSubsMap.get(b.id);
+    const aActive = !!(aList?.length), bActive = !!(bList?.length);
+    if (aActive && bActive) {
+      // Sort by earliest ending active sub
+      return new Date(aList![0].endDate).getTime() - new Date(bList![0].endDate).getTime();
+    }
     if (aActive) return -1; if (bActive) return 1;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
@@ -66,7 +73,13 @@ export default async function CustomersPage() {
   const customerRows = sortedCustomers.map((c) => {
     const addresses = addressesByCustomer.get(c.id) ?? [];
     const defaultAddr = addresses.find((a) => a.isDefault) ?? addresses[0] ?? null;
-    const activeSub = activeSubMap.get(c.id) ?? null;
+    const activeSubs = (activeSubsMap.get(c.id) ?? []).map((s) => ({
+      plan: s.plan,
+      goal: s.goal,
+      subscriptionPrice: s.subscriptionPrice,
+      shippingPrice: s.shippingPrice,
+      endDate: String(s.endDate),
+    }));
     return {
       id: c.id,
       name: c.name,
@@ -74,13 +87,7 @@ export default async function CustomersPage() {
       notes: c.notes,
       zone: defaultAddr?.zone ?? c.zone,
       addresses: addresses.map((a) => ({ label: a.label, address: a.address, isDefault: a.isDefault })),
-      activeSub: activeSub ? {
-        plan: activeSub.plan,
-        goal: activeSub.goal,
-        subscriptionPrice: activeSub.subscriptionPrice,
-        shippingPrice: activeSub.shippingPrice,
-        endDate: String(activeSub.endDate),
-      } : null,
+      activeSubs,
     };
   });
 

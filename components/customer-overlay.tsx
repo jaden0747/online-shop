@@ -214,6 +214,7 @@ function SubForm({
           startDate: new Date(startDate),
           endDate: new Date(endDate),
           endDateNoSkip: new Date(submitEndDateNoSkip || endDate),
+          addressId: null,
         });
         onSaved();
       });
@@ -439,9 +440,9 @@ function SchedulePanel({
   }, [allMenuItems, selectedWeekLabel, selectedDayNum]);
 
   const selectedSelections = useMemo(() => {
-    if (!selectedWeekLabel || !selectedDayNum) return [];
-    return allSelections.filter((s) => s.weekLabel === selectedWeekLabel && s.day === selectedDayNum);
-  }, [allSelections, selectedWeekLabel, selectedDayNum]);
+    if (!selectedWeekLabel || !selectedDayNum || !selectedActiveSub) return [];
+    return allSelections.filter((s) => s.subscriptionId === selectedActiveSub.id && s.weekLabel === selectedWeekLabel && s.day === selectedDayNum);
+  }, [allSelections, selectedWeekLabel, selectedDayNum, selectedActiveSub]);
 
   // Per-day address override
   const selectedDayAddress = useMemo(() => {
@@ -465,12 +466,12 @@ function SchedulePanel({
   function nextMonth() { if (month === 11) { setYear((y) => y + 1); setMonth(0); } else setMonth((m) => m + 1); }
 
   function handleMealChange(mealNum: number, menuSlot: number | null) {
-    if (!selectedWeekLabel || !selectedDayNum) return;
+    if (!selectedWeekLabel || !selectedDayNum || !selectedActiveSub) return;
     startTransition(async () => {
       if (menuSlot === null) {
-        await deleteSelectionDirectAction(`${selectedWeekLabel}-${customerId}-${selectedDayNum}-${mealNum}`);
+        await deleteSelectionDirectAction(`${selectedWeekLabel}-${selectedActiveSub.id}-${selectedDayNum}-${mealNum}`);
       } else {
-        await upsertSelectionDirectAction({ weekLabel: selectedWeekLabel, customerId, day: selectedDayNum, mealNum, menuSlot });
+        await upsertSelectionDirectAction({ weekLabel: selectedWeekLabel, subscriptionId: selectedActiveSub.id, day: selectedDayNum, mealNum, menuSlot });
       }
       onReload();
     });

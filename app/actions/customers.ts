@@ -79,7 +79,7 @@ export async function getCustomerDetailsAction(customerId: string): Promise<{
   // Schedule data
   const subIds = new Set(subscriptions.map((s) => s.id));
   const skips = allSkips.filter((sk) => subIds.has(sk.subscriptionId));
-  const allSelections = getAllSelections().filter((s) => s.customerId === customerId);
+  const allSelections = getAllSelections().filter((s) => subIds.has(s.subscriptionId));
   const allMenuItems = getAllMenuItems();
   const kitchenNotes = getNotesByCustomer(customerId);
   const dayAddresses = getAllOrderDayAddresses().filter((r) => subIds.has(r.subscriptionId));

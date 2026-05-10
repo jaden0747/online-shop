@@ -104,11 +104,11 @@ export function ShippingTable({
   const [manualAssign, setManualAssign] = useState<Map<string, number>>(new Map());
   const [manualOrder, setManualOrder] = useState<Map<number, string[]>>(new Map());
   const [ready, setReady] = useState(false);
-  // Map of customerId -> selected addressId
+  // Map of subscriptionId -> selected addressId
   const [selectedAddressIds, setSelectedAddressIds] = useState<Map<string, string>>(() => {
     const m = new Map<string, string>();
     for (const d of deliveries) {
-      if (d.effectiveAddressId) m.set(d.customerId, d.effectiveAddressId);
+      if (d.effectiveAddressId) m.set(d.subscriptionId, d.effectiveAddressId);
     }
     return m;
   });
@@ -148,7 +148,7 @@ export function ShippingTable({
 
   // Resolve effective address/zone/lat/lng for each delivery based on selection
   const effectiveDeliveries = useMemo(() => deliveries.map((d) => {
-    const selId = selectedAddressIds.get(d.customerId) ?? d.defaultAddressId;
+    const selId = selectedAddressIds.get(d.subscriptionId) ?? d.defaultAddressId;
     if (!selId || d.addresses.length === 0) return d;
     const selAddr = d.addresses.find((a) => a.id === selId);
     if (!selAddr) return d;
@@ -185,7 +185,7 @@ export function ShippingTable({
     // Apply manual cluster assignments from the Route page
     const assignments = base.assignments.slice();
     withCoords.forEach((d, i) => {
-      const override = manualAssign.get(d.customerId);
+      const override = manualAssign.get(d.subscriptionId);
       if (override !== undefined) assignments[i] = override;
     });
     return clustersFromAssignments(points, hub, assignments);
@@ -200,12 +200,12 @@ export function ShippingTable({
       const customOrder = manualOrder.get(ci);
       let stops: typeof effectiveDeliveries[number][];
       if (customOrder) {
-        const stopMap = new Map(algorithmStops.map((d) => [d.customerId, d]));
+        const stopMap = new Map(algorithmStops.map((d) => [d.subscriptionId, d]));
         stops = customOrder
           .map((id) => stopMap.get(id))
           .filter((d): d is typeof effectiveDeliveries[number] => d !== undefined);
         for (const d of algorithmStops) {
-          if (!customOrder.includes(d.customerId)) stops.push(d);
+          if (!customOrder.includes(d.subscriptionId)) stops.push(d);
         }
       } else {
         stops = algorithmStops;
@@ -359,7 +359,7 @@ export function ShippingTable({
       if (note) parts.push(note);
       parts.push(shortAddr(d.address));
       const n = globalNum++;
-      globalNumMap.set(d.customerId, n);
+      globalNumMap.set(d.subscriptionId, n);
       lines.push(`${n} | ${stopLabel}. ${d.name} | ${parts.join(" | ")}`);
     };
 
@@ -399,7 +399,7 @@ export function ShippingTable({
         if (permanentNote) parts.push(permanentNote);
         if (note) parts.push(note);
         parts.push(shortAddr(d.address));
-        lines.push(`${globalNumMap.get(d.customerId)}. ${d.name} | ${parts.join(" | ")}`);
+        lines.push(`${globalNumMap.get(d.subscriptionId)}. ${d.name} | ${parts.join(" | ")}`);
       }
     }
 
@@ -443,8 +443,8 @@ export function ShippingTable({
 
     const gnMap = new Map<string, number>();
     let gn = 1;
-    for (const [, rows] of sortedSh) for (const r of rows) gnMap.set(r.delivery.customerId, gn++);
-    for (const d of withoutCoords) gnMap.set(d.customerId, gn++);
+    for (const [, rows] of sortedSh) for (const r of rows) gnMap.set(r.delivery.subscriptionId, gn++);
+    for (const d of withoutCoords) gnMap.set(d.subscriptionId, gn++);
 
     let noA = 0, noB = 0;
     for (const d of allDels) {
@@ -456,10 +456,10 @@ export function ShippingTable({
     const mkRow = (d: typeof allDels[number], stopLabel: string, idx: number) => {
       const note = gNote(d); const perm = gPerm(d); const hasN = !!(note || perm);
       const meal = d.meals.length > 0 ? d.meals.map(fw).join(" + ") : "—";
-      const noteStr = [perm, note].filter(Boolean).map(esc).join(" · ");
+      const noteStr = ([perm, note] as (string | null)[]).filter((s): s is string => s !== null).map(esc).join(" · ");
       const rowBg = hasN ? noteBg : (idx % 2 === 0 ? rowAlt : bg);
       return `<tr style="background:${rowBg}">
-        <td style="padding:4px 6px;color:${fg};font-size:13px;font-weight:700;text-align:right;white-space:nowrap;width:28px">${gnMap.get(d.customerId)}</td>
+        <td style="padding:4px 6px;color:${fg};font-size:13px;font-weight:700;text-align:right;white-space:nowrap;width:28px">${gnMap.get(d.subscriptionId)}</td>
         <td style="padding:4px 5px;color:${muted};font-size:13px;font-weight:700;text-align:right;width:22px">${esc(stopLabel)}</td>
         <td style="padding:4px 8px;font-weight:700;white-space:nowrap;color:${fg}">${esc(d.name)}</td>
         <td style="padding:4px 8px;color:#4f46e5;font-weight:700;white-space:nowrap">${esc(meal)}</td>
@@ -496,9 +496,9 @@ export function ShippingTable({
       const noteRows = noted.map((d, i) => {
         const note = gNote(d); const perm = gPerm(d);
         const meal = d.meals.length > 0 ? d.meals.map(fw).join(" + ") : "—";
-        const noteStr = [perm, note].filter(Boolean).map(esc).join(" · ");
+        const noteStr = ([perm, note] as (string | null)[]).filter((s): s is string => s !== null).map(esc).join(" · ");
         return `<tr style="background:${i % 2 === 0 ? noteBg : bg}">
-          <td style="padding:4px 6px;color:${fg};font-size:13px;font-weight:700;text-align:right;width:28px">${gnMap.get(d.customerId)}</td>
+          <td style="padding:4px 6px;color:${fg};font-size:13px;font-weight:700;text-align:right;width:28px">${gnMap.get(d.subscriptionId)}</td>
           <td style="padding:4px 8px;font-weight:700;white-space:nowrap;color:${fg}">${esc(d.name)}</td>
           <td style="padding:4px 8px;color:#4f46e5;font-weight:700;white-space:nowrap">${esc(meal)}</td>
           <td style="padding:4px 8px;color:${noteFg};font-size:13px;font-weight:700">${noteStr}</td>
@@ -665,7 +665,7 @@ export function ShippingTable({
               const note = notes.find((n) => n.customerId === d.phone)?.note ?? null;
               const permanentNote = permanentNotes.find((n) => n.customerId === d.customerId)?.note ?? null;
               return (
-                <tr key={d.customerId} className="hover:bg-accent/50 transition-colors">
+                <tr key={d.subscriptionId} className="hover:bg-accent/50 transition-colors">
                   <td className="px-2 py-1.5 text-muted-foreground text-xs">{idx + 1}</td>
                   <td className="px-2 py-1.5">
                     {row.shipper !== null ? (
@@ -732,8 +732,8 @@ export function ShippingTable({
                   <td className="px-2 py-1.5 max-w-[200px]">
                     <AddressCell
                       delivery={d}
-                      selectedId={selectedAddressIds.get(d.customerId) ?? d.defaultAddressId}
-                      onChange={(id) => setSelectedAddressIds((prev) => new Map(prev).set(d.customerId, id))}
+                      selectedId={selectedAddressIds.get(d.subscriptionId) ?? d.defaultAddressId}
+                      onChange={(id) => setSelectedAddressIds((prev) => new Map(prev).set(d.subscriptionId, id))}
                     />
                   </td>
                 </tr>
@@ -744,7 +744,7 @@ export function ShippingTable({
               const note = notes.find((n) => n.customerId === d.phone)?.note ?? null;
               const permanentNote = permanentNotes.find((n) => n.customerId === d.customerId)?.note ?? null;
               return (
-                <tr key={d.customerId} className="hover:bg-accent/50 transition-colors bg-amber-50/30">
+                <tr key={d.subscriptionId} className="hover:bg-accent/50 transition-colors bg-amber-50/30">
                   <td className="px-2 py-1.5 text-muted-foreground text-xs">—</td>
                   <td className="px-2 py-1.5">
                     <span className="text-[10px] text-amber-700" title="No coordinates set">no coord</span>
@@ -798,8 +798,8 @@ export function ShippingTable({
                   <td className="px-2 py-1.5 max-w-[200px]">
                     <AddressCell
                       delivery={d}
-                      selectedId={selectedAddressIds.get(d.customerId) ?? d.defaultAddressId}
-                      onChange={(id) => setSelectedAddressIds((prev) => new Map(prev).set(d.customerId, id))}
+                      selectedId={selectedAddressIds.get(d.subscriptionId) ?? d.defaultAddressId}
+                      onChange={(id) => setSelectedAddressIds((prev) => new Map(prev).set(d.subscriptionId, id))}
                     />
                   </td>
                 </tr>

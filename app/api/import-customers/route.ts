@@ -156,6 +156,7 @@ export async function POST(req: NextRequest) {
             endDate: endDate.toISOString(),
             endDateNoSkip: endDate.toISOString(),
             cancelReason: null,
+            addressId: null,
           });
         }
       }
