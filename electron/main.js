@@ -73,7 +73,6 @@ function startNextServer() {
       DATA_DIR: dataDir,
       NODE_ENV: "production",
       PORT: String(PORT),
-      HOSTNAME: "127.0.0.1",
     },
     silent: true,
   });
@@ -136,7 +135,7 @@ async function createWindow() {
     } catch (err) {
       console.error("Failed to start Next.js server:", err);
     }
-    mainWindow.loadURL(`http://localhost:${PORT}`);
+    mainWindow.loadURL(`http://127.0.0.1:${PORT}`);
   }
 }
 
