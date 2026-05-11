@@ -1,6 +1,6 @@
 {
   "name": "webapp",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -53,6 +53,7 @@
     "vitest": "^4.1.5"
   },
   "build": {
+    "afterSign": "scripts/after-sign.js",
     "appId": "com.olihealthy.shoporganizer",
     "productName": "Shop Organizer",
     "asar": true,
