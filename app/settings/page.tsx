@@ -9,6 +9,7 @@ import { ImportCustomersForm } from "@/app/customers/import-customers-form";
 import { UpsertPricingForm } from "@/app/subscriptions/upsert-pricing-form";
 import { DeletePricingButton } from "@/app/subscriptions/delete-pricing-button";
 import { planTotalMeals } from "@/lib/utils/subscription";
+import { DataDirectoryPicker } from "@/components/data-directory-picker";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,18 @@ export default async function SettingsPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <h1 className="text-2xl font-bold">Settings</h1>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Data Directory</CardTitle>
+          <CardDescription>
+            Folder where customer, subscription, and menu data files are stored.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DataDirectoryPicker />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

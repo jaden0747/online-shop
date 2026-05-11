@@ -2,7 +2,9 @@ import * as XLSX from "xlsx";
 import path from "path";
 import fs from "fs";
 
-export const BASE_DATA_DIR = path.join(process.cwd(), "data");
+export const BASE_DATA_DIR = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.join(process.cwd(), "data");
 export const TESTING_FLAG = path.join(BASE_DATA_DIR, ".testing-mode");
 
 // Keep DATA_DIR as an alias for BASE_DATA_DIR for legacy imports

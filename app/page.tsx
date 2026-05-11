@@ -8,6 +8,8 @@ import { currentWeekLabel, currentWeekMonday } from "@/lib/utils/week";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardCharts } from "./dashboard-charts";
 import { CustomerNameButton } from "./customer-name-button";
+import { AppVersionBadge } from "@/components/app-version-badge";
+import { AppUpdateStatus } from "@/components/update-status";
 
 export const dynamic = "force-dynamic";
 
@@ -175,7 +177,12 @@ export default async function DashboardPage() {
         <h1 className="text-3xl font-heading font-semibold tracking-tight">Oli Healthy</h1>
       </div>
 
-      {/* ── Row 1: 4 KPI stat cards ── */}
+      {/* ── Version + update status ── */}
+      <div className="flex items-center gap-2">
+        <AppVersionBadge />
+        <AppUpdateStatus />
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Today's Deliveries */}
         <Card>

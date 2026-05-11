@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { exec } from "child_process";
 import path from "path";
 import fs from "fs";
+import { BASE_DATA_DIR } from "@/lib/data/excel";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = BASE_DATA_DIR;
 
 const ALLOWED_FILES = new Set([
   "customers.xlsx",
