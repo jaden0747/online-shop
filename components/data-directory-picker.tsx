@@ -9,6 +9,7 @@ export function DataDirectoryPicker() {
   const [isElectron, setIsElectron] = useState(false);
   const [pending, setPending] = useState(false);
   const [restartPrompt, setRestartPrompt] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!window.electronAPI) return;
@@ -26,10 +27,13 @@ export function DataDirectoryPicker() {
 
   async function handleSelect() {
     setPending(true);
+    setError(null);
     try {
-      const selected = await window.electronAPI!.selectDataDirectory();
-      if (selected) {
-        setCurrentDir(selected);
+      const result = await window.electronAPI!.selectDataDirectory();
+      if (result && typeof result === "object" && "error" in result) {
+        setError(result.error as string);
+      } else if (result) {
+        setCurrentDir(result as string);
         setRestartPrompt(true);
       }
     } finally {
@@ -69,6 +73,9 @@ export function DataDirectoryPicker() {
         >
           Restart the app for the new directory to take effect.
         </p>
+      )}
+      {error && (
+        <p className="text-xs text-red-500">{error}</p>
       )}
     </div>
   );

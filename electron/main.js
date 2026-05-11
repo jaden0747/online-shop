@@ -44,12 +44,28 @@ function getDataDir() {
 }
 
 function ensureDataDir(dataDir) {
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+  try {
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    const testDir = path.join(dataDir, "test");
+    if (!fs.existsSync(testDir)) {
+      fs.mkdirSync(testDir, { recursive: true });
+    }
+  } catch (err) {
+    console.error("[data-dir] ensureDataDir failed, server will still start:", err.message);
   }
-  const testDir = path.join(dataDir, "test");
-  if (!fs.existsSync(testDir)) {
-    fs.mkdirSync(testDir, { recursive: true });
+}
+
+function isDirWritable(dirPath) {
+  try {
+    fs.mkdirSync(dirPath, { recursive: true });
+    const probe = path.join(dirPath, ".write-check");
+    fs.writeFileSync(probe, "");
+    fs.unlinkSync(probe);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -171,6 +187,9 @@ ipcMain.handle("select-data-directory", async () => {
   });
   if (result.canceled || result.filePaths.length === 0) return null;
   const selected = result.filePaths[0];
+  if (!isDirWritable(selected)) {
+    return { error: "Directory is not writable. Choose a different folder." };
+  }
   const config = readConfig();
   config.dataDir = selected;
   writeConfig(config);
