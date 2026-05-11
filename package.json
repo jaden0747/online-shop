@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "electron:dev": "electron .",
-    "electron:build": "rm -rf .next && next build && cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/ && electron-builder --mac",
+    "electron:build": "rm -rf .next && next build && cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/ && cp node_modules/next/dist/compiled/next-server/*.runtime.prod.js .next/standalone/node_modules/next/dist/compiled/next-server/ && electron-builder --mac",
     "release": "bash scripts/release.sh"
   },
   "dependencies": {
