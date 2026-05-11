@@ -5,9 +5,18 @@ const { fork } = require("child_process");
 
 let mainWindow;
 let serverProcess;
+let _autoUpdater = null;
+let updateCheckInProgress = false;
 
 const PORT = 3099;
 const isDev = !app.isPackaged;
+
+function getAutoUpdater() {
+  if (!_autoUpdater) {
+    _autoUpdater = require("electron-updater").autoUpdater;
+  }
+  return _autoUpdater;
+}
 
 function getConfigPath() {
   return path.join(app.getPath("userData"), "app-config.json");
@@ -44,20 +53,27 @@ function ensureDataDir(dataDir) {
   }
 }
 
-function startNextServer() {
+function getStandaloneDir() {
   const appRoot = app.getAppPath();
+  // When asar is used, asarUnpack files live in app.asar.unpacked alongside app.asar
+  const unpackedRoot = appRoot.replace("app.asar", "app.asar.unpacked");
+  return path.join(unpackedRoot, ".next", "standalone");
+}
+
+function startNextServer() {
+  const standaloneDir = getStandaloneDir();
+  const serverScript = path.join(standaloneDir, "server.js");
   const dataDir = getDataDir();
   ensureDataDir(dataDir);
 
-  const nextBin = path.join(appRoot, "node_modules", "next", "dist", "bin", "next");
-
-  serverProcess = fork(nextBin, ["start", "-p", String(PORT)], {
-    cwd: appRoot,
+  serverProcess = fork(serverScript, [], {
+    cwd: standaloneDir,
     env: {
       ...process.env,
       DATA_DIR: dataDir,
       NODE_ENV: "production",
       PORT: String(PORT),
+      HOSTNAME: "127.0.0.1",
     },
     silent: true,
   });
@@ -135,14 +151,13 @@ ipcMain.handle("check-for-updates", async () => {
     sendUpdateStatus({ type: "not-available" });
     return;
   }
-  const { autoUpdater } = require("electron-updater");
-  autoUpdater.checkForUpdates();
+  await triggerUpdateCheck();
 });
 
 ipcMain.handle("install-update", () => {
   if (isDev) return;
-  const { autoUpdater } = require("electron-updater");
-  autoUpdater.quitAndInstall();
+  killServer();
+  getAutoUpdater().quitAndInstall(true, true);
 });
 
 ipcMain.handle("get-data-directory", () => {
@@ -165,32 +180,46 @@ ipcMain.handle("select-data-directory", async () => {
 
 // ── App lifecycle ────────────────────────────────────────────────────────────
 
+async function triggerUpdateCheck() {
+  if (updateCheckInProgress) return;
+  updateCheckInProgress = true;
+  try {
+    await getAutoUpdater().checkForUpdates();
+  } catch (err) {
+    sendUpdateStatus({ type: "error", message: err.message });
+  } finally {
+    updateCheckInProgress = false;
+  }
+}
+
+function setupAutoUpdater() {
+  const updater = getAutoUpdater();
+  updater.on("checking-for-update", () =>
+    sendUpdateStatus({ type: "checking" })
+  );
+  updater.on("update-available", (info) =>
+    sendUpdateStatus({ type: "available", version: info.version })
+  );
+  updater.on("update-not-available", () =>
+    sendUpdateStatus({ type: "not-available" })
+  );
+  updater.on("download-progress", (progress) =>
+    sendUpdateStatus({ type: "downloading", percent: Math.round(progress.percent) })
+  );
+  updater.on("update-downloaded", (info) =>
+    sendUpdateStatus({ type: "downloaded", version: info.version })
+  );
+  updater.on("error", (err) =>
+    sendUpdateStatus({ type: "error", message: err.message })
+  );
+}
+
 app.whenReady().then(() => {
   createWindow();
 
   if (!isDev) {
-    const { autoUpdater } = require("electron-updater");
-
-    autoUpdater.on("checking-for-update", () =>
-      sendUpdateStatus({ type: "checking" })
-    );
-    autoUpdater.on("update-available", (info) =>
-      sendUpdateStatus({ type: "available", version: info.version })
-    );
-    autoUpdater.on("update-not-available", () =>
-      sendUpdateStatus({ type: "not-available" })
-    );
-    autoUpdater.on("download-progress", (progress) =>
-      sendUpdateStatus({ type: "downloading", percent: Math.round(progress.percent) })
-    );
-    autoUpdater.on("update-downloaded", (info) =>
-      sendUpdateStatus({ type: "downloaded", version: info.version })
-    );
-    autoUpdater.on("error", (err) =>
-      sendUpdateStatus({ type: "error", message: err.message })
-    );
-
-    autoUpdater.checkForUpdates();
+    setupAutoUpdater();
+    triggerUpdateCheck();
   }
 });
 
