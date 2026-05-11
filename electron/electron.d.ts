@@ -11,7 +11,7 @@ export interface ElectronAPI {
   checkForUpdates: () => Promise<void>;
   installUpdate: () => Promise<void>;
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
-  selectDataDirectory: () => Promise<string | null>;
+  selectDataDirectory: () => Promise<string | { error: string } | null>;
   getDataDirectory: () => Promise<string>;
 }
 

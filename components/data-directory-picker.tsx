@@ -31,9 +31,9 @@ export function DataDirectoryPicker() {
     try {
       const result = await window.electronAPI!.selectDataDirectory();
       if (result && typeof result === "object" && "error" in result) {
-        setError(result.error as string);
+        setError(result.error);
       } else if (result) {
-        setCurrentDir(result as string);
+        setCurrentDir(result);
         setRestartPrompt(true);
       }
     } finally {
