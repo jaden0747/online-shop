@@ -173,7 +173,6 @@ async function createWindow() {
       console.error("Failed to start Next.js server:", err);
     }
     mainWindow.loadURL(`http://127.0.0.1:${PORT}`);
-    mainWindow.webContents.openDevTools({ mode: "detach" });
   }
 }
 

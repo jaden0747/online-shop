@@ -62,6 +62,7 @@ rm -rf .next
 npx next build
 cp -r public .next/standalone/
 cp -r .next/static .next/standalone/.next/
+cp node_modules/next/dist/compiled/next-server/*.runtime.prod.js .next/standalone/node_modules/next/dist/compiled/next-server/
 
 echo "==> Packaging and publishing to GitHub..."
 npx electron-builder --mac --publish always
