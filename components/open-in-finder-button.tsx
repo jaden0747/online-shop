@@ -11,6 +11,10 @@ export function OpenInFinderButton({ file, label }: { file: string; label?: stri
   function handleClick() {
     startTransition(async () => {
       setError(null);
+      if (window.electronAPI?.openDataFolder) {
+        await window.electronAPI.openDataFolder();
+        return;
+      }
       const res = await fetch("/api/open-data-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

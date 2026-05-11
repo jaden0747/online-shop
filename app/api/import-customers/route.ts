@@ -15,7 +15,7 @@ import { addWorkingDays } from "@/lib/utils/subscription";
 import { revalidatePath } from "next/cache";
 
 const VALID_PLANS = ["trial", "weekly", "monthly"];
-const VALID_GOALS = ["cutting", "maintenance", "bulking"];
+const VALID_GOALS = ["cutting", "maintenance", "bulking", "keto"];
 
 /** Lower-case, collapse spaces/slashes/dots into underscores, strip trailing underscores. */
 function normalizeKey(k: string): string {

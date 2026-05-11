@@ -1,6 +1,7 @@
 import { getAllSubscriptions, getAllSkips, getAllExtras } from "@/lib/data/subscriptions";
 import { getAllCustomers, getAllAddresses } from "@/lib/data/customers";
 import { getAllPricing } from "@/lib/data/pricing";
+import { getSettings, getMealPrices } from "@/lib/data/settings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,7 +16,7 @@ import { CustomerOverlayTrigger } from "@/components/customer-overlay-trigger";
 export const dynamic = "force-dynamic";
 
 const PLANS = ["trial", "weekly", "monthly"];
-const GOALS = ["cutting", "maintenance", "bulking"];
+const GOALS = ["cutting", "maintenance", "bulking", "keto"];
 const MEALS_PER_DAY = [1, 2];
 
 function EndDateCell({ endDate }: { endDate: string }) {
@@ -67,6 +68,7 @@ export default async function SubscriptionsPage() {
   const skips = getAllSkips();
   const pricingEntries = getAllPricing();
   const allExtras = getAllExtras();
+  const settings = getSettings();
 
   const addressesByCustomer = new Map<string, typeof allAddresses>();
   for (const a of allAddresses) {
@@ -109,7 +111,7 @@ export default async function SubscriptionsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <NewSubscriptionDialog customers={customers} pricing={pricingEntries} allAddresses={allAddresses} />
+          <NewSubscriptionDialog customers={customers} pricing={pricingEntries} allAddresses={allAddresses} mealPrices={getMealPrices(settings)} />
           <OpenInFinderButton file="subscriptions.xlsx" />
         </div>
       </div>

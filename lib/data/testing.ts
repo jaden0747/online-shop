@@ -352,7 +352,7 @@ function seedScenario(id: ScenarioId) {
     writeRows("customers.xlsx", "Customers", customers);
     writeRows("addresses.xlsx", "Addresses", makeAddresses(customers));
 
-    const goals: Array<"cutting" | "maintenance" | "bulking"> = ["cutting", "maintenance", "bulking"];
+    const goals: Array<"cutting" | "maintenance" | "bulking" | "keto"> = ["cutting", "maintenance", "bulking", "keto"];
     const plans: Array<"weekly" | "monthly"> = ["weekly", "monthly"];
 
     // 30 active subscriptions (customers 01–30)

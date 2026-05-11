@@ -1,4 +1,4 @@
-import { getSettings } from "@/lib/data/settings";
+import { getSettings, getMealPrices } from "@/lib/data/settings";
 import { isTestingMode } from "@/lib/data/testing";
 import { getAllPricing } from "@/lib/data/pricing";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -10,11 +10,12 @@ import { UpsertPricingForm } from "@/app/subscriptions/upsert-pricing-form";
 import { DeletePricingButton } from "@/app/subscriptions/delete-pricing-button";
 import { planTotalMeals } from "@/lib/utils/subscription";
 import { DataDirectoryPicker } from "@/components/data-directory-picker";
+import { MealPriceForm } from "./meal-price-form";
 
 export const dynamic = "force-dynamic";
 
 const PLANS = ["trial", "weekly", "monthly"];
-const GOALS = ["cutting", "maintenance", "bulking"];
+const GOALS = ["cutting", "maintenance", "bulking", "keto"];
 const MEALS_PER_DAY = [1, 2];
 
 export default async function SettingsPage() {
@@ -73,6 +74,18 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <ImportCustomersForm />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Meal Price</CardTitle>
+          <CardDescription>
+            Default price per meal, used as the base for trial plan pricing.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <MealPriceForm mealPrices={getMealPrices(settings)} />
         </CardContent>
       </Card>
 

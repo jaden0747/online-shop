@@ -111,8 +111,8 @@ export function MenuSlot({
                   <Input
                     id="goals"
                     name="goals"
-                    defaultValue={item?.goals ?? "cutting, maintenance, bulking"}
-                    placeholder="cutting, maintenance, bulking"
+                    defaultValue={item?.goals ?? "cutting, maintenance, bulking, keto"}
+                    placeholder="cutting, maintenance, bulking, keto"
                     required
                   />
                 </div>

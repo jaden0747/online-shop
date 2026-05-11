@@ -11,4 +11,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   selectDataDirectory: () => ipcRenderer.invoke("select-data-directory"),
   getDataDirectory: () => ipcRenderer.invoke("get-data-directory"),
+  openDataFolder: () => ipcRenderer.invoke("open-data-folder"),
 });

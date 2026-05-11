@@ -30,10 +30,12 @@ export function NewSubscriptionDialog({
   customers,
   pricing,
   allAddresses,
+  mealPrices = {},
 }: {
   customers: Customer[];
   pricing: PricingEntry[];
   allAddresses: AddressEntry[];
+  mealPrices?: Record<string, number>;
 }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
@@ -60,13 +62,18 @@ export function NewSubscriptionDialog({
   const customerAddresses = allAddresses.filter((a) => a.customerId === customerId);
 
   useEffect(() => {
-    if (plan === "trial") return;
+    if (plan === "trial") {
+      const mp = mealPrices[goal] ?? 0;
+      if (mp > 0) setSubscriptionPrice(mp * trialDays * parseInt(mealsPerDay, 10));
+      else setSubscriptionPrice(0);
+      return;
+    }
     const match = pricing.find(
       (p) => p.plan === plan && p.goal === goal && p.mealsPerDay === parseInt(mealsPerDay, 10)
     );
     if (match) setSubscriptionPrice(match.totalPrice);
     else setSubscriptionPrice(0);
-  }, [plan, goal, mealsPerDay, pricing]);
+  }, [plan, goal, mealsPerDay, pricing, mealPrices, trialDays]);
 
   useEffect(() => {
     if (open) {
@@ -205,6 +212,7 @@ export function NewSubscriptionDialog({
                 <SelectItem value="cutting">Cutting</SelectItem>
                 <SelectItem value="maintenance">Maintenance</SelectItem>
                 <SelectItem value="bulking">Bulking</SelectItem>
+                <SelectItem value="keto">Keto</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { fork } = require("child_process");
@@ -173,6 +173,7 @@ async function createWindow() {
       console.error("Failed to start Next.js server:", err);
     }
     mainWindow.loadURL(`http://127.0.0.1:${PORT}`);
+    mainWindow.webContents.openDevTools({ mode: "detach" });
   }
 }
 
@@ -198,6 +199,10 @@ ipcMain.handle("install-update", () => {
 
 ipcMain.handle("get-data-directory", () => {
   return getDataDir();
+});
+
+ipcMain.handle("open-data-folder", () => {
+  shell.openPath(getDataDir());
 });
 
 ipcMain.handle("select-data-directory", async () => {

@@ -10,6 +10,7 @@ import { DashboardCharts } from "./dashboard-charts";
 import { CustomerNameButton } from "./customer-name-button";
 import { AppVersionBadge } from "@/components/app-version-badge";
 import { AppUpdateStatus } from "@/components/update-status";
+import { OpenInFinderButton } from "@/components/open-in-finder-button";
 
 export const dynamic = "force-dynamic";
 
@@ -181,6 +182,7 @@ export default async function DashboardPage() {
       <div className="flex items-center gap-2">
         <AppVersionBadge />
         <AppUpdateStatus />
+        <OpenInFinderButton file="customers.xlsx" label="Open Data Folder" />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

@@ -50,6 +50,10 @@ export interface SubscriptionExtra {
 export interface Settings {
   hubLat: number;
   hubLng: number;
+  mealPriceCutting: number;
+  mealPriceMaintenance: number;
+  mealPriceBulking: number;
+  mealPriceKeto: number;
 }
 
 export interface MealSkip {

@@ -13,6 +13,7 @@ export interface ElectronAPI {
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
   selectDataDirectory: () => Promise<string | { error: string } | null>;
   getDataDirectory: () => Promise<string>;
+  openDataFolder: () => Promise<void>;
 }
 
 declare global {

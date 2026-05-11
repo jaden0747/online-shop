@@ -46,6 +46,7 @@ type Details = {
   kitchenNotes: KitchenNote[];
   dayAddresses: OrderDayAddress[];
   hub: { lat: number; lng: number };
+  mealPrices: Record<string, number>;
 };
 
 // ── CoordsEditor ────────────────────────────────────────────────────────────
@@ -123,7 +124,7 @@ function CoordsEditor({
 }
 
 // ── SubForm (create + edit) ──────────────────────────────────────────────────
-const GOALS = ["cutting", "maintenance", "bulking"];
+const GOALS = ["cutting", "maintenance", "bulking", "keto"];
 const PLANS = ["trial", "weekly", "monthly"];
 
 function SubForm({
@@ -131,6 +132,7 @@ function SubForm({
   subId,
   customerId,
   pricing,
+  mealPrices = {},
   initial,
   skips = [],
   onSaved,
@@ -140,6 +142,7 @@ function SubForm({
   subId?: string;
   customerId: string;
   pricing: Pricing[];
+  mealPrices?: Record<string, number>;
   initial?: Subscription;
   skips?: MealSkip[];
   onSaved: () => void;
@@ -170,9 +173,13 @@ function SubForm({
   useEffect(() => {
     if (mode === "edit" && !didMount.current) { didMount.current = true; return; }
     didMount.current = true;
-    const match = pricing.find((p) => p.plan === plan && p.goal === goal && p.mealsPerDay === meals);
-    if (match && mode === "create") setSubPrice(String(match.totalPrice));
-  }, [plan, goal, meals, pricing, mode]);
+    if (plan === "trial" && (mealPrices[goal] ?? 0) > 0) {
+      setSubPrice(String((mealPrices[goal] ?? 0) * (trialDays ?? 3) * meals));
+    } else {
+      const match = pricing.find((p) => p.plan === plan && p.goal === goal && p.mealsPerDay === meals);
+      if (match && mode === "create") setSubPrice(String(match.totalPrice));
+    }
+  }, [plan, goal, meals, pricing, mode, mealPrices, trialDays]);
 
   // Auto-compute end date when plan/startDate/trialDays/skips change (only if auto mode)
   useEffect(() => {
@@ -1175,14 +1182,14 @@ export function CustomerOverlay({
                     )}
                   </div>
                   {showAddSub && (
-                    <SubForm mode="create" customerId={currentId} pricing={details.pricing}
+                    <SubForm mode="create" customerId={currentId} pricing={details.pricing} mealPrices={details.mealPrices}
                       onSaved={() => { setShowAddSub(false); reload(); }}
                       onCancel={() => setShowAddSub(false)} />
                   )}
                   {!showAddSub && editingSubId && (() => {
                     const editingSub = details.subscriptions.find(s => s.id === editingSubId);
                     return editingSub ? (
-                      <SubForm mode="edit" subId={editingSub.id} customerId={currentId} pricing={details.pricing} initial={editingSub}
+                      <SubForm mode="edit" subId={editingSub.id} customerId={currentId} pricing={details.pricing} mealPrices={details.mealPrices} initial={editingSub}
                         skips={details.skips.filter(s => s.subscriptionId === editingSub.id)}
                         onSaved={() => { setEditingSubId(null); reload(); }}
                         onCancel={() => setEditingSubId(null)} />
