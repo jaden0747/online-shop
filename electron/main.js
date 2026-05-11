@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { fork } = require("child_process");
+const http = require("http");
 
 let mainWindow;
 let serverProcess;
@@ -67,6 +68,20 @@ function isDirWritable(dirPath) {
   } catch {
     return false;
   }
+}
+
+function waitForDevServer(url, timeout = 60000) {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeout;
+    function poll() {
+      http.get(url, (res) => { resolve(); res.resume(); })
+        .on("error", () => {
+          if (Date.now() > deadline) return reject(new Error("Dev server not ready within 60s"));
+          setTimeout(poll, 500);
+        });
+    }
+    poll();
+  });
 }
 
 function getStandaloneDir() {
@@ -143,6 +158,11 @@ async function createWindow() {
   });
 
   if (isDev) {
+    try {
+      await waitForDevServer("http://localhost:3000");
+    } catch (err) {
+      console.error("Dev server did not start:", err.message);
+    }
     mainWindow.loadURL("http://localhost:3000");
     mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {

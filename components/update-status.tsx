@@ -8,16 +8,17 @@ type Status = UpdateStatus | null;
 export function AppUpdateStatus() {
   const [status, setStatus] = useState<Status>(null);
   const [installing, setInstalling] = useState(false);
+  const [isElectron, setIsElectron] = useState(false);
 
   useEffect(() => {
     if (!window.electronAPI) return;
-
+    setIsElectron(true);
     const unsub = window.electronAPI.onUpdateStatus(setStatus);
     window.electronAPI.checkForUpdates();
     return unsub;
   }, []);
 
-  if (!window.electronAPI || !status) return null;
+  if (!isElectron || !status) return null;
 
   if (status.type === "checking") {
     return (
