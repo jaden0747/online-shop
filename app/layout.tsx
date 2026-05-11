@@ -14,6 +14,7 @@ const fraunces = Fraunces({ variable: "--font-heading", subsets: ["latin"], disp
 export const metadata: Metadata = {
   title: "Oli Healthy — Operations",
   description: "Internal operations dashboard for Oli Healthy meal subscriptions",
+  icons: { icon: "/logo.jpg" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

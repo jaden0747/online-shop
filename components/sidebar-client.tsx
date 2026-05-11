@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Home, Users, UtensilsCrossed, Truck, MapPin, Map, Settings2, FlaskConical } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -25,10 +26,10 @@ export function SidebarClient({ testingMode }: { testingMode: boolean }) {
     <header className="shrink-0 border-b bg-sidebar flex items-center px-3 h-12 gap-1 overflow-x-auto">
       <Link
         href="/"
-        className="shrink-0 font-bold text-base tracking-tight px-2 mr-1"
+        className="shrink-0 px-2 mr-1"
         title="Oli Healthy"
       >
-        Oli
+        <Image src="/logo.jpg" alt="Oli Healthy" width={32} height={32} className="rounded" />
       </Link>
       <nav className="flex items-center gap-0.5">
         {nav.map(({ href, label, icon: Icon }) => {
