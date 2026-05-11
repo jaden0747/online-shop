@@ -1,6 +1,6 @@
 {
   "name": "webapp",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "electron:dev": "electron .",
-    "electron:build": "rm -rf .next && next build && cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/ && electron-builder --mac"
+    "electron:build": "rm -rf .next && next build && cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/ && electron-builder --mac",
+    "release": "bash scripts/release.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
