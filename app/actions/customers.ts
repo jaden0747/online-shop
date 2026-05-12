@@ -20,7 +20,8 @@ import { getNotesByCustomer } from "@/lib/data/notes";
 import { getAllOrderDayAddresses } from "@/lib/data/order-day-addresses";
 import { getSettings, getMealPrices } from "@/lib/data/settings";
 import { getAllPayments } from "@/lib/data/payments";
-import type { Customer, CustomerAddress, Subscription, SubscriptionExtra, Pricing, MealSkip, MealSelection, MenuItem, KitchenNote, OrderDayAddress, Payment } from "@/lib/data/types";
+import { getCreditTransactionsByCustomer } from "@/lib/data/credits";
+import type { Customer, CustomerAddress, Subscription, SubscriptionExtra, Pricing, MealSkip, MealSelection, MenuItem, KitchenNote, OrderDayAddress, Payment, CreditTransaction } from "@/lib/data/types";
 
 export async function createCustomerAction(formData: FormData) {
   const phone = formData.get("phone") as string;
@@ -94,6 +95,7 @@ export async function getCustomerDetailsAction(customerId: string): Promise<{
   mealPrices: Record<string, number>;
   payments: Payment[];
   extras: SubscriptionExtra[];
+  creditTransactions: CreditTransaction[];
 }> {
   const customer = getCustomerById(customerId);
   const addresses = getAllAddresses().filter((a) => a.customerId === customerId);
@@ -119,8 +121,9 @@ export async function getCustomerDetailsAction(customerId: string): Promise<{
   const allPayments = getAllPayments();
   const payments = allPayments.filter((p) => subIds.has(p.subscriptionId));
   const extras = getAllExtras().filter((e) => subIds.has(e.subscriptionId));
+  const creditTransactions = getCreditTransactionsByCustomer(customerId);
 
-  return { customer, addresses, subscriptions, skipCounts, totalSpend, pricing, skips, allSelections, allMenuItems, kitchenNotes, dayAddresses, hub: { lat: settings.hubLat, lng: settings.hubLng }, mealPrices: getMealPrices(settings), payments, extras };
+  return { customer, addresses, subscriptions, skipCounts, totalSpend, pricing, skips, allSelections, allMenuItems, kitchenNotes, dayAddresses, hub: { lat: settings.hubLat, lng: settings.hubLng }, mealPrices: getMealPrices(settings), payments, extras, creditTransactions };
 }
 
 export async function updateCustomerNoteAction(id: string, notes: string | null) {

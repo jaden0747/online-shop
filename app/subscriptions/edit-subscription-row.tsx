@@ -428,6 +428,7 @@ export function EditSubscriptionRow({
               <p className="text-xs font-medium text-destructive">Cancel Subscription</p>
               <CancelSubscriptionForm
                 sub={sub}
+                customerId={sub.customerId}
                 skips={skips}
                 payments={payments}
                 onDone={() => { setOpen(false); router.refresh(); }}

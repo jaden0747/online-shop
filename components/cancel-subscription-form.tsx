@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { updateSubscriptionStatusAction } from "@/app/actions/subscriptions";
 import { createPaymentAction } from "@/app/actions/payments";
+import { addCreditAction } from "@/app/actions/credits";
 import { suggestedRefund } from "@/lib/utils/subscription";
 import type { MealSkip, Payment } from "@/lib/data/types";
 
@@ -27,6 +28,7 @@ type Sub = {
 
 interface CancelSubscriptionFormProps {
   sub: Sub;
+  customerId: string;
   skips: MealSkip[];
   payments: Payment[];
   /** Called after successful cancellation so the parent can close/refresh */
@@ -37,6 +39,7 @@ interface CancelSubscriptionFormProps {
 
 export function CancelSubscriptionForm({
   sub,
+  customerId,
   skips,
   payments,
   onDone,
@@ -49,6 +52,7 @@ export function CancelSubscriptionForm({
   const [refundMethod, setRefundMethod] = useState<Payment["method"]>("cash");
   const [refundDate, setRefundDate] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
+  const [keepAsCredit, setKeepAsCredit] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const parsedAmt = parseFloat(refundAmt) || 0;
@@ -58,14 +62,24 @@ export function CancelSubscriptionForm({
     startTransition(async () => {
       await updateSubscriptionStatusAction(sub.id, "cancelled", reason.trim() || undefined);
       if (parsedAmt > 0) {
-        await createPaymentAction({
-          subscriptionId: sub.id,
-          type: "refund",
-          amount: parsedAmt,
-          paidAt: refundDate,
-          method: refundMethod,
-          note: note.trim() || "Cancellation refund",
-        });
+        if (keepAsCredit) {
+          await addCreditAction({
+            customerId,
+            amount: parsedAmt,
+            type: "refund_credit",
+            note: note.trim() || "Cancellation refund kept as credit",
+            subscriptionId: sub.id,
+          });
+        } else {
+          await createPaymentAction({
+            subscriptionId: sub.id,
+            type: "refund",
+            amount: parsedAmt,
+            paidAt: refundDate,
+            method: refundMethod,
+            note: note.trim() || "Cancellation refund",
+          });
+        }
       }
       onDone();
     });
@@ -139,8 +153,24 @@ export function CancelSubscriptionForm({
         )}
       </div>
 
-      {/* Refund method + date — only shown when refund > 0 */}
+      {/* Keep as credit toggle */}
       {parsedAmt > 0 && (
+        <div className="flex items-center gap-2">
+          <input
+            id="keep-as-credit"
+            type="checkbox"
+            className="h-3.5 w-3.5 rounded border-input accent-primary"
+            checked={keepAsCredit}
+            onChange={(e) => setKeepAsCredit(e.target.checked)}
+          />
+          <Label htmlFor="keep-as-credit" className="text-xs cursor-pointer">
+            Convert refund to credit (instead of paying out)
+          </Label>
+        </div>
+      )}
+
+      {/* Refund method + date — only shown when refund > 0 and NOT keeping as credit */}
+      {parsedAmt > 0 && !keepAsCredit && (
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
             <Label className="text-xs">Method</Label>
@@ -176,7 +206,7 @@ export function CancelSubscriptionForm({
         <Label className="text-xs">Note (optional)</Label>
         <Input
           className="text-xs h-7"
-          placeholder="Note for this refund"
+          placeholder={keepAsCredit ? "Note for credit entry" : "Note for this refund"}
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
@@ -204,3 +234,4 @@ export function CancelSubscriptionForm({
     </div>
   );
 }
+

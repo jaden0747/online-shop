@@ -13,7 +13,7 @@ import {
 } from "@/lib/data/subscriptions";
 import { addWorkingDays } from "@/lib/utils/subscription";
 
-export async function createSubscriptionAction(formData: FormData) {
+export async function createSubscriptionAction(formData: FormData): Promise<{ id: string }> {
   const customerId = formData.get("customerId") as string;
   const plan = formData.get("plan") as string;
   const mealsPerDay = parseInt(formData.get("mealsPerDay") as string, 10);
@@ -38,7 +38,7 @@ export async function createSubscriptionAction(formData: FormData) {
   const addressIdRaw = formData.get("addressId") as string | null;
   const addressId = addressIdRaw && addressIdRaw !== "none" ? addressIdRaw : null;
 
-  createSubscription({
+  const sub = createSubscription({
     customerId,
     plan,
     goal: formData.get("goal") as string,
@@ -56,6 +56,7 @@ export async function createSubscriptionAction(formData: FormData) {
   });
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
+  return { id: sub.id };
 }
 
 export async function updateSubscriptionStatusAction(
@@ -107,16 +108,19 @@ export async function createExtraAction(formData: FormData) {
   const note = (formData.get("note") as string) || null;
   createExtra({ subscriptionId, amount, note });
   revalidatePath("/subscriptions");
+  revalidatePath("/customers");
 }
 
 export async function updateExtraAction(id: string, data: { amount: number; note: string | null }) {
   updateExtra(id, data);
   revalidatePath("/subscriptions");
+  revalidatePath("/customers");
 }
 
 export async function deleteExtraAction(id: string) {
   deleteExtra(id);
   revalidatePath("/subscriptions");
+  revalidatePath("/customers");
 }
 
 export async function extendSubscriptionEndAction(id: string) {

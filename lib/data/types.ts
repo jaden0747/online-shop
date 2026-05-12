@@ -123,7 +123,7 @@ export interface Payment {
   type: "payment" | "refund";
   amount: number; // always positive; sign comes from `type`
   paidAt: string; // ISO string
-  method: "cash" | "transfer" | "momo" | "other";
+  method: "cash" | "transfer" | "momo" | "other" | "credit";
   note: string | null;
   createdAt: string; // ISO string
 }
@@ -152,4 +152,14 @@ export interface WeeklyOps {
   wastedMeals: number;
   note: string | null;
   updatedAt: string; // ISO string
+}
+
+export interface CreditTransaction {
+  id: string;
+  customerId: string; // = customer phone
+  type: "refund_credit" | "manual_topup" | "credit_used" | "adjustment";
+  amount: number; // always positive — sign determined by type
+  subscriptionId: string | null; // linked sub when credit originated from/applied to a sub
+  note: string;
+  createdAt: string; // ISO string
 }

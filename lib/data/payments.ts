@@ -14,7 +14,7 @@ function parsePayment(raw: Record<string, unknown>): Payment {
     type: (toStr(raw.type) || "payment") as Payment["type"],
     amount: toNum(raw.amount),
     paidAt: parseExcelDate(raw.paidAt as string | number) ?? new Date().toISOString(),
-    method: (toStr(raw.method) || "cash") as Payment["method"],
+    method: (toStr(raw.method) || "cash") as Payment["method"], // accepts "credit" from Excel
     note: toStrOrNull(raw.note),
     createdAt: toStr(raw.createdAt) || new Date().toISOString(),
   };

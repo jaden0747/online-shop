@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createPaymentAction, deletePaymentAction } from "@/app/actions/payments";
+import { applyCreditToSubscriptionAction, revertCreditPaymentAction } from "@/app/actions/credits";
+import { createExtraAction, deleteExtraAction } from "@/app/actions/subscriptions";
 import { paymentsTotalForSub, subscriptionPaymentStatus } from "@/lib/utils/payments";
 import { daysRemaining, formatDate } from "@/lib/utils/subscription";
 import { EditSubscriptionRow } from "./edit-subscription-row";
@@ -69,6 +71,7 @@ export function ActiveSubscriptionTable({
   allSkips,
   pricingEntries,
   addressesByCustomer,
+  creditBalances,
 }: {
   subscriptions: SubRow[];
   allPayments: Payment[];
@@ -76,6 +79,7 @@ export function ActiveSubscriptionTable({
   allSkips: MealSkip[];
   pricingEntries: PricingEntry[];
   addressesByCustomer: Record<string, CustomerAddress[]>;
+  creditBalances: Map<string, number>;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -91,13 +95,14 @@ export function ActiveSubscriptionTable({
           <th className="text-left px-4 py-2 font-medium">Skips</th>
           <th className="text-left px-4 py-2 font-medium">Price</th>
           <th className="text-left px-4 py-2 font-medium">Payment</th>
+          <th className="text-left px-4 py-2 font-medium">Credit</th>
           <th className="w-10" />
         </tr>
       </thead>
       <tbody className="divide-y">
         {subscriptions.length === 0 && (
           <tr>
-            <td colSpan={9} className="px-4 py-6 text-center text-muted-foreground">
+            <td colSpan={10} className="px-4 py-6 text-center text-muted-foreground">
               No active subscriptions.
             </td>
           </tr>
@@ -119,7 +124,8 @@ export function ActiveSubscriptionTable({
               pricingEntries={pricingEntries}
               customerAddresses={addressesByCustomer[sub.customerId] ?? []}
               extrasTotal={subExtrasTotal}
-              colSpan={9}
+              customerCredit={creditBalances.get(sub.customerId) ?? 0}
+              colSpan={10}
               showEndDate
             />
           );
@@ -135,12 +141,14 @@ export function InactiveSubscriptionTable({
   allExtras,
   allSkips,
   pricingEntries,
+  creditBalances,
 }: {
   subscriptions: SubRow[];
   allPayments: Payment[];
   allExtras: SubscriptionExtra[];
   allSkips: MealSkip[];
   pricingEntries: PricingEntry[];
+  creditBalances: Map<string, number>;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -155,6 +163,7 @@ export function InactiveSubscriptionTable({
           <th className="text-left px-4 py-2 font-medium">Skips</th>
           <th className="text-left px-4 py-2 font-medium">Price</th>
           <th className="text-left px-4 py-2 font-medium">Payment</th>
+          <th className="text-left px-4 py-2 font-medium">Credit</th>
           <th className="text-left px-4 py-2 font-medium">Status</th>
           <th className="w-10" />
         </tr>
@@ -162,7 +171,7 @@ export function InactiveSubscriptionTable({
       <tbody className="divide-y">
         {subscriptions.length === 0 && (
           <tr>
-            <td colSpan={9} className="px-4 py-6 text-center text-muted-foreground">
+            <td colSpan={10} className="px-4 py-6 text-center text-muted-foreground">
               No inactive subscriptions.
             </td>
           </tr>
@@ -184,7 +193,8 @@ export function InactiveSubscriptionTable({
               pricingEntries={pricingEntries}
               customerAddresses={[]}
               extrasTotal={subExtrasTotal}
-              colSpan={9}
+              customerCredit={creditBalances.get(sub.customerId) ?? 0}
+              colSpan={10}
               showEndDate={false}
             />
           );
@@ -205,6 +215,7 @@ function ExpandableRow({
   pricingEntries,
   customerAddresses,
   extrasTotal,
+  customerCredit,
   colSpan,
   showEndDate,
 }: {
@@ -218,6 +229,7 @@ function ExpandableRow({
   pricingEntries: PricingEntry[];
   customerAddresses: CustomerAddress[];
   extrasTotal: number;
+  customerCredit: number;
   colSpan: number;
   showEndDate: boolean;
 }) {
@@ -309,6 +321,13 @@ function ExpandableRow({
             )}
           </div>
         </td>
+        <td className="px-4 py-2">
+          {customerCredit > 0 ? (
+            <span className="text-xs font-medium text-emerald-600">₫{customerCredit.toLocaleString()}</span>
+          ) : (
+            <span className="text-xs text-muted-foreground/40">—</span>
+          )}
+        </td>
         {!showEndDate && (
           <td className="px-4 py-2">
             <Badge variant={derivedStatus === "upcoming" ? "secondary" : "outline"}>
@@ -333,11 +352,13 @@ function ExpandableRow({
             <PaymentExpandedPanel
               sub={sub}
               payments={subPayments}
+              extras={subExtras}
               totalDue={totalDue}
               paid={paid}
               refunded={refunded}
               net={net}
               balance={balance}
+              customerCredit={customerCredit}
             />
           </td>
         </tr>
@@ -349,19 +370,23 @@ function ExpandableRow({
 function PaymentExpandedPanel({
   sub,
   payments,
+  extras,
   totalDue,
   paid,
   refunded,
   net,
   balance,
+  customerCredit,
 }: {
   sub: SubRow;
   payments: Payment[];
+  extras: SubscriptionExtra[];
   totalDue: number;
   paid: number;
   refunded: number;
   net: number;
   balance: number;
+  customerCredit: number;
 }) {
   const router = useRouter();
   const [saving, startSave] = useTransition();
@@ -378,6 +403,8 @@ function PaymentExpandedPanel({
     method: "cash",
     note: "",
   });
+  const [creditAmount, setCreditAmount] = useState(String(Math.min(customerCredit, Math.max(0, balance))));
+  const [creditWarning, setCreditWarning] = useState<string | null>(null);
 
   function handleRecord() {
     const amt = parseFloat(form.amount);
@@ -399,6 +426,53 @@ function PaymentExpandedPanel({
   function handleDelete(id: string) {
     startSave(async () => {
       await deletePaymentAction(id);
+      router.refresh();
+    });
+  }
+
+  function handleApplyCredit() {
+    const amt = parseFloat(creditAmount);
+    if (!amt || amt <= 0) return;
+    startSave(async () => {
+      const { warning } = await applyCreditToSubscriptionAction({
+        customerId: sub.customerId,
+        subscriptionId: sub.id,
+        amount: amt,
+        note: "Credit applied",
+      });
+      setCreditWarning(warning);
+      router.refresh();
+    });
+  }
+
+  function handleRevertCredit(paymentId: string) {
+    startSave(async () => {
+      await revertCreditPaymentAction(paymentId, sub.customerId);
+      router.refresh();
+    });
+  }
+
+  const [extraNote, setExtraNote] = useState("");
+  const [extraAmount, setExtraAmount] = useState("");
+
+  function handleAddExtra() {
+    const amount = parseFloat(extraAmount);
+    if (!amount) return;
+    startSave(async () => {
+      const fd = new FormData();
+      fd.set("subscriptionId", sub.id);
+      fd.set("amount", String(amount));
+      fd.set("note", extraNote.trim());
+      await createExtraAction(fd);
+      setExtraNote("");
+      setExtraAmount("");
+      router.refresh();
+    });
+  }
+
+  function handleDeleteExtra(id: string) {
+    startSave(async () => {
+      await deleteExtraAction(id);
       router.refresh();
     });
   }
@@ -439,22 +513,95 @@ function PaymentExpandedPanel({
               <span className={`font-medium ${p.type === "refund" ? "text-yellow-600" : "text-green-700"}`}>
                 {p.type === "refund" ? "−" : "+"}₫{p.amount.toLocaleString()}
               </span>
-              <span className="text-muted-foreground">{p.type}</span>
-              {p.method !== "other" && <span className="text-muted-foreground">· {p.method}</span>}
+              {p.method === "credit" ? (
+                <span className="px-1.5 py-px rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 text-[10px] font-medium">credit</span>
+              ) : (
+                <>
+                  <span className="text-muted-foreground">{p.type}</span>
+                  {p.method !== "other" && <span className="text-muted-foreground">· {p.method}</span>}
+                </>
+              )}
               <span className="text-muted-foreground">{p.paidAt.slice(0, 10)}</span>
-              {p.note && <span className="text-muted-foreground truncate max-w-[200px]">{p.note}</span>}
-              <button
-                type="button"
-                onClick={() => handleDelete(p.id)}
-                disabled={saving}
-                className="ml-auto h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 disabled:opacity-50"
-              >
-                <X size={12} />
-              </button>
+              {p.note && p.method !== "credit" && <span className="text-muted-foreground truncate max-w-[200px]">{p.note}</span>}
+              {p.method === "credit" ? (
+                <button
+                  type="button"
+                  title="Undo credit payment"
+                  onClick={() => handleRevertCredit(p.id)}
+                  disabled={saving}
+                  className="ml-auto h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-amber-600 opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                >
+                  ↩
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleDelete(p.id)}
+                  disabled={saving}
+                  className="ml-auto h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                >
+                  <X size={12} />
+                </button>
+              )}
             </div>
           ))}
         </div>
       )}
+
+      {/* Extras / Addons */}
+      <div className="border-t pt-2 space-y-1.5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-medium text-muted-foreground">Extras / Addons</span>
+          {extras.length > 0 && (
+            <span className="text-amber-600 font-medium">
+              +₫{extras.reduce((s, e) => s + e.amount, 0).toLocaleString()}
+            </span>
+          )}
+        </div>
+        {extras.length > 0 && (
+          <div className="space-y-0.5">
+            {extras.map((e) => (
+              <div key={e.id} className="flex items-center gap-2 text-xs group">
+                <span className="font-medium text-amber-600">+₫{e.amount.toLocaleString()}</span>
+                {e.note && <span className="text-muted-foreground flex-1 truncate">{e.note}</span>}
+                <button
+                  type="button"
+                  onClick={() => handleDeleteExtra(e.id)}
+                  disabled={saving}
+                  className="ml-auto h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            className={`${inp} flex-1 min-w-[120px]`}
+            type="text"
+            placeholder="Note (e.g. extra protein)"
+            value={extraNote}
+            onChange={(e) => setExtraNote(e.target.value)}
+          />
+          <input
+            className={`${inp} w-28`}
+            type="number"
+            step="1000"
+            placeholder="₫ Amount"
+            value={extraAmount}
+            onChange={(e) => setExtraAmount(e.target.value)}
+          />
+          <button
+            type="button"
+            onClick={handleAddExtra}
+            disabled={saving || !extraAmount}
+            className="px-3 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+          >
+            Add Extra
+          </button>
+        </div>
+      </div>
 
       {/* Record form */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -478,6 +625,22 @@ function PaymentExpandedPanel({
           Record
         </button>
       </div>
+
+      {/* Apply credit */}
+      {customerCredit > 0 && balance > 0 && (
+        <div className="flex items-center gap-2 flex-wrap pt-1 border-t">
+          <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+            ₫{customerCredit.toLocaleString()} credit available
+          </span>
+          <input className={`${inp} w-28`} type="number" step="1000" placeholder="Apply amount" value={creditAmount}
+            onChange={(e) => setCreditAmount(e.target.value)} />
+          <button type="button" onClick={handleApplyCredit} disabled={saving || !creditAmount}
+            className="px-3 py-1 text-xs rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
+            Apply Credit
+          </button>
+          {creditWarning && <span className="text-amber-600 text-[10px]">{creditWarning}</span>}
+        </div>
+      )}
     </div>
   );
 }

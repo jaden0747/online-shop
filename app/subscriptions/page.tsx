@@ -3,7 +3,9 @@ import { getAllCustomers, getAllAddresses } from "@/lib/data/customers";
 import { getAllPricing } from "@/lib/data/pricing";
 import { getSettings, getMealPrices } from "@/lib/data/settings";
 import { getAllPayments } from "@/lib/data/payments";
+import { getAllCreditTransactions } from "@/lib/data/credits";
 import { subscriptionPaymentStatus } from "@/lib/utils/payments";
+import { allCustomerCreditBalances } from "@/lib/utils/credits";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -35,6 +37,8 @@ export default async function SubscriptionsPage({
   const pricingEntries = getAllPricing();
   const allExtras = getAllExtras();
   const allPayments = getAllPayments();
+  const allCreditTransactions = getAllCreditTransactions();
+  const creditBalances = allCustomerCreditBalances(allCreditTransactions);
   const settings = getSettings();
 
   const sp = await searchParams;
@@ -150,6 +154,7 @@ export default async function SubscriptionsPage({
                   allSkips={skips}
                   pricingEntries={pricingEntries}
                   addressesByCustomer={addressesByCustomer}
+                  creditBalances={creditBalances}
                 />
               </div>
             </CardContent>
@@ -166,6 +171,7 @@ export default async function SubscriptionsPage({
                   allExtras={allExtras}
                   allSkips={skips}
                   pricingEntries={pricingEntries}
+                  creditBalances={creditBalances}
                 />
               </div>
             </CardContent>

@@ -22,18 +22,21 @@ import {
   createSubscriptionAction,
   updateSubscriptionAction,
   deleteSubscriptionAction,
+  createExtraAction,
+  deleteExtraAction,
 } from "@/app/actions/subscriptions";
 import { skipDayAndExtendAction, unskipDayAndShortenAction } from "@/app/actions/skips";
 import { upsertSelectionDirectAction, deleteSelectionDirectAction } from "@/app/actions/selections";
 import { upsertKitchenNoteAction } from "@/app/actions/notes";
 import { upsertDayAddressAction, deleteDayAddressAction } from "@/app/actions/order-day-addresses";
 import { createPaymentAction, deletePaymentAction } from "@/app/actions/payments";
+import { addCreditAction, useCreditAction, deleteCreditTransactionAction, applyCreditToSubscriptionAction, revertCreditPaymentAction } from "@/app/actions/credits";
 import dynamic from "next/dynamic";
 const CustomerMinimap = dynamic(
   () => import("./customer-minimap").then((m) => m.CustomerMinimap),
   { ssr: false }
 );
-import type { Customer, CustomerAddress, Subscription, SubscriptionExtra, Pricing, MealSkip, MealSelection, MenuItem, KitchenNote, OrderDayAddress, Payment } from "@/lib/data/types";
+import type { Customer, CustomerAddress, Subscription, SubscriptionExtra, Pricing, MealSkip, MealSelection, MenuItem, KitchenNote, OrderDayAddress, Payment, CreditTransaction } from "@/lib/data/types";
 import { subscriptionStatus, daysRemaining, planTotalMeals, addWorkingDays, isSubscriptionLive } from "@/lib/utils/subscription";
 import { subscriptionPaymentStatus, paymentsTotalForSub } from "@/lib/utils/payments";
 import { weekLabelForDate } from "@/lib/utils/week";
@@ -56,7 +59,160 @@ type Details = {
   mealPrices: Record<string, number>;
   payments: Payment[];
   extras: SubscriptionExtra[];
+  creditTransactions: CreditTransaction[];
 };
+
+// ── CreditPanel ──────────────────────────────────────────────────────────────
+function CreditPanel({
+  customerId,
+  creditTransactions,
+  subscriptions,
+  onReload,
+}: {
+  customerId: string;
+  creditTransactions: CreditTransaction[];
+  subscriptions: Subscription[];
+  onReload: () => void;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addAmount, setAddAmount] = useState("");
+  const [addNote, setAddNote] = useState("");
+  const [deleteWarning, setDeleteWarning] = useState<string | null>(null);
+
+  const balance = creditTransactions.reduce((acc, t) => {
+    if (t.type === "refund_credit" || t.type === "manual_topup" || t.type === "adjustment") return acc + t.amount;
+    if (t.type === "credit_used") return acc - t.amount;
+    return acc;
+  }, 0);
+
+  const sorted = [...creditTransactions].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  const TYPE_LABELS: Record<CreditTransaction["type"], string> = {
+    refund_credit: "Refund → Credit",
+    manual_topup: "Manual top-up",
+    credit_used: "Used",
+    adjustment: "Adjustment",
+  };
+
+  function handleAdd() {
+    const amount = parseFloat(addAmount);
+    if (!amount || amount <= 0) return;
+    startTransition(async () => {
+      await addCreditAction({ customerId, amount, type: "manual_topup", note: addNote.trim() || "Manual credit" });
+      setAddAmount("");
+      setAddNote("");
+      setShowAddForm(false);
+      onReload();
+    });
+  }
+
+  function handleDelete(id: string) {
+    startTransition(async () => {
+      const { warning } = await deleteCreditTransactionAction(id, customerId);
+      if (warning) setDeleteWarning(warning);
+      else setDeleteWarning(null);
+      onReload();
+    });
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Credit Balance</p>
+        {!showAddForm && (
+          <button type="button" onClick={() => setShowAddForm(true)}
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+            <Plus size={11} /> Add
+          </button>
+        )}
+      </div>
+
+      {/* Balance display */}
+      <div className={[
+        "rounded-lg p-2.5 text-center",
+        balance > 0 ? "bg-emerald-50 dark:bg-emerald-950/30" : "bg-muted/40",
+      ].join(" ")}>
+        <p className={["text-lg font-bold", balance > 0 ? "text-emerald-600" : "text-muted-foreground"].join(" ")}>
+          ₫{balance.toLocaleString()}
+        </p>
+        <p className="text-[10px] text-muted-foreground">available credit</p>
+      </div>
+
+      {deleteWarning && (
+        <p className="text-amber-600 text-[10px] bg-amber-50 dark:bg-amber-950/30 rounded px-2 py-1">{deleteWarning}</p>
+      )}
+
+      {/* Add credit form */}
+      {showAddForm && (
+        <div className="border rounded-lg p-2 space-y-1">
+          <input
+            autoFocus
+            type="number"
+            min={0}
+            step={1000}
+            placeholder="Amount (₫)"
+            className="w-full bg-transparent border-b border-input outline-none focus:border-ring text-xs pb-0.5"
+            value={addAmount}
+            onChange={(e) => setAddAmount(e.target.value)}
+          />
+          <input
+            type="text"
+            placeholder="Note (optional)"
+            className="w-full bg-transparent border-b border-input outline-none focus:border-ring text-xs pb-0.5"
+            value={addNote}
+            onChange={(e) => setAddNote(e.target.value)}
+          />
+          <div className="flex gap-1.5 pt-0.5">
+            <button type="button" onClick={handleAdd} disabled={isPending || !addAmount}
+              className="flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+              <Check size={10} /> Add
+            </button>
+            <button type="button" onClick={() => { setShowAddForm(false); setAddAmount(""); setAddNote(""); }}
+              className="flex items-center gap-1 px-2 py-0.5 text-xs rounded border hover:bg-accent">
+              <X size={10} /> Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Transaction history */}
+      {sorted.length === 0 ? (
+        <p className="text-xs text-muted-foreground/50">No credit transactions.</p>
+      ) : (
+        <ul className="space-y-0.5 max-h-[140px] overflow-y-auto pr-1">
+          {sorted.map((tx) => (
+            <li key={tx.id} className="flex items-start justify-between gap-1 text-[11px] group">
+              <div className="min-w-0">
+                <span className={[
+                  "font-medium",
+                  tx.type === "credit_used" ? "text-red-600" : "text-emerald-600",
+                ].join(" ")}>
+                  {tx.type === "credit_used" ? "-" : "+"}₫{tx.amount.toLocaleString()}
+                </span>
+                <span className="text-muted-foreground ml-1">{TYPE_LABELS[tx.type]}</span>
+                {tx.note && <span className="text-muted-foreground/60 ml-1">· {tx.note}</span>}
+                <span className="text-muted-foreground/40 ml-1">
+                  {new Date(tx.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleDelete(tx.id)}
+                disabled={isPending}
+                className="h-4 w-4 shrink-0 flex items-center justify-center rounded text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 disabled:opacity-50 transition-opacity"
+              >
+                <X size={9} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 // ── CoordsEditor ────────────────────────────────────────────────────────────
 function CoordsEditor({
@@ -144,6 +300,7 @@ function SubForm({
   mealPrices = {},
   initial,
   skips = [],
+  creditBalance: customerCreditBalance = 0,
   onSaved,
   onCancel,
 }: {
@@ -154,6 +311,7 @@ function SubForm({
   mealPrices?: Record<string, number>;
   initial?: Subscription;
   skips?: MealSkip[];
+  creditBalance?: number;
   onSaved: () => void;
   onCancel: () => void;
 }) {
@@ -174,6 +332,10 @@ function SubForm({
   const [shipPrice, setShipPrice] = useState(initial ? String(initial.shippingPrice) : "");
   const [discount, setDiscount] = useState(initial ? String(initial.discount ?? 0) : "0");
   const [autoRenewal, setAutoRenewal] = useState(mode === "create");
+
+  // Credit application (create mode only)
+  const [applyCredit, setApplyCredit] = useState(false);
+  const [creditApplyAmt, setCreditApplyAmt] = useState("");
 
   const [saving, startSave] = useTransition();
 
@@ -215,7 +377,21 @@ function SubForm({
       fd.set("startDate", startDate);
       if (!autoRenewal && endDate) fd.set("endDate", endDate);
       if (plan === "trial") fd.set("trialDays", String(trialDays));
-      startSave(async () => { await createSubscriptionAction(fd); onSaved(); });
+      startSave(async () => {
+        const { id: newSubId } = await createSubscriptionAction(fd);
+        if (applyCredit) {
+          const creditAmt = parseFloat(creditApplyAmt) || 0;
+          if (creditAmt > 0) {
+            await applyCreditToSubscriptionAction({
+              customerId,
+              subscriptionId: newSubId,
+              amount: creditAmt,
+              note: "Credit applied at subscription creation",
+            });
+          }
+        }
+        onSaved();
+      });
     } else {
       if (!subId) return;
       // If user manually set endDate (no auto), treat it as the new base (no skip extensions)
@@ -241,6 +417,10 @@ const totalMeals = planTotalMeals(plan) * meals;
 const totalPrice = (parseFloat(subPrice) || 0) + (parseFloat(shipPrice) || 0) - (parseFloat(discount) || 0);
 const sel = "w-full border rounded px-1 py-0.5 text-xs bg-background outline-none focus:ring-1 focus:ring-ring";
 const inp = "w-full border rounded px-1 py-0.5 text-xs bg-background outline-none focus:ring-1 focus:ring-ring";
+
+// Sync default credit amount when totalPrice or credit balance changes
+// (only when checkbox is first checked)
+const defaultCreditAmt = String(Math.min(customerCreditBalance, Math.max(0, totalPrice)));
 
   return (
     <div className="border rounded-lg p-2 space-y-1 bg-muted/20 text-xs">
@@ -300,6 +480,41 @@ const inp = "w-full border rounded px-1 py-0.5 text-xs bg-background outline-non
           <span className="text-[10px] text-muted-foreground">Auto end date</span>
         </label>
       </div>
+      {/* Inline credit step — create mode only, when customer has credit */}
+      {mode === "create" && customerCreditBalance > 0 && (
+        <div className="border-t pt-1 space-y-0.5">
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input
+              type="checkbox"
+              className="h-3 w-3 accent-emerald-600"
+              checked={applyCredit}
+              onChange={(e) => {
+                setApplyCredit(e.target.checked);
+                if (e.target.checked && !creditApplyAmt) setCreditApplyAmt(defaultCreditAmt);
+              }}
+            />
+            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
+              Apply credit (₫{customerCreditBalance.toLocaleString()} available)
+            </span>
+          </label>
+          {applyCredit && (
+            <div className="flex items-center gap-1 pl-4">
+              <span className="text-[10px] text-muted-foreground shrink-0">Amount</span>
+              <input
+                className={inp + " max-w-[100px]"}
+                type="number"
+                step="1000"
+                min={0}
+                value={creditApplyAmt}
+                onChange={(e) => setCreditApplyAmt(e.target.value)}
+              />
+              {parseFloat(creditApplyAmt) > customerCreditBalance && (
+                <span className="text-amber-600 text-[10px]">exceeds balance</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-muted-foreground">
           {totalMeals} meals · ₫{totalPrice.toLocaleString()}
@@ -324,6 +539,118 @@ function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// ── ExtrasPanel ──────────────────────────────────────────────────────────────
+function ExtrasPanel({
+  sub,
+  extras,
+  onReload,
+}: {
+  sub: Subscription;
+  extras: SubscriptionExtra[];
+  onReload: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, startSave] = useTransition();
+  const [noteInput, setNoteInput] = useState("");
+  const [amountInput, setAmountInput] = useState("");
+
+  const total = extras.reduce((s, e) => s + e.amount, 0);
+  const inp = "border rounded px-1 py-0.5 text-xs bg-background outline-none focus:ring-1 focus:ring-ring";
+
+  function handleAdd() {
+    const amount = parseFloat(amountInput);
+    if (!amount) return;
+    startSave(async () => {
+      const fd = new FormData();
+      fd.set("subscriptionId", sub.id);
+      fd.set("amount", String(amount));
+      fd.set("note", noteInput.trim());
+      await createExtraAction(fd);
+      setNoteInput("");
+      setAmountInput("");
+      onReload();
+    });
+  }
+
+  function handleDelete(id: string) {
+    startSave(async () => {
+      await deleteExtraAction(id);
+      onReload();
+    });
+  }
+
+  return (
+    <div className="mt-0.5 border-t border-dashed pt-0.5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground w-full text-left"
+      >
+        <span className="font-medium">Extras / Addons</span>
+        {total > 0 && (
+          <span className="text-amber-600 font-medium">+₫{total.toLocaleString()}</span>
+        )}
+        <span className="ml-auto">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="mt-1 space-y-1">
+          {/* Existing extras */}
+          {extras.length === 0 ? (
+            <p className="text-[10px] text-muted-foreground/50">No extras yet.</p>
+          ) : (
+            <ul className="space-y-0.5">
+              {extras.map((e) => (
+                <li key={e.id} className="flex items-center gap-1 text-[10px] group">
+                  <span className="font-medium text-amber-600">+₫{e.amount.toLocaleString()}</span>
+                  {e.note && (
+                    <span className="text-muted-foreground flex-1 truncate">{e.note}</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(e.id)}
+                    disabled={saving}
+                    className="ml-auto h-4 w-4 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                  >
+                    <X size={9} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Add extra form */}
+          <div className="flex items-center gap-1 pt-0.5">
+            <input
+              className={`${inp} flex-1`}
+              type="text"
+              placeholder="Note (e.g. extra protein)"
+              value={noteInput}
+              onChange={(e) => setNoteInput(e.target.value)}
+            />
+            <input
+              className={`${inp} w-24`}
+              type="number"
+              step="1000"
+              placeholder="₫ Amount"
+              value={amountInput}
+              onChange={(e) => setAmountInput(e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={saving || !amountInput}
+              className="px-2 py-0.5 text-[10px] rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── PaymentPanel ─────────────────────────────────────────────────────────────
 const PAYMENT_METHODS: Payment["method"][] = ["cash", "transfer", "momo", "other"];
 
@@ -345,11 +672,15 @@ function PaymentPanel({
   sub,
   payments,
   extras,
+  customerCredit = 0,
+  customerId,
   onReload,
 }: {
   sub: Subscription;
   payments: Payment[];
   extras: SubscriptionExtra[];
+  customerCredit?: number;
+  customerId: string;
   onReload: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -367,6 +698,9 @@ function PaymentPanel({
     method: "cash",
     note: "",
   });
+  const [showApplyCredit, setShowApplyCredit] = useState(false);
+  const [creditApplyAmt, setCreditApplyAmt] = useState("");
+  const [creditWarning, setCreditWarning] = useState<string | null>(null);
 
   const subPayments = payments.filter((p) => p.subscriptionId === sub.id);
   const { paid, refunded, net } = paymentsTotalForSub(payments, sub.id);
@@ -398,6 +732,30 @@ function PaymentPanel({
   function handleDelete(id: string) {
     startSave(async () => {
       await deletePaymentAction(id);
+      onReload();
+    });
+  }
+
+  function handleApplyCredit() {
+    const amt = parseFloat(creditApplyAmt);
+    if (!amt || amt <= 0) return;
+    startSave(async () => {
+      const { warning } = await applyCreditToSubscriptionAction({
+        customerId,
+        subscriptionId: sub.id,
+        amount: amt,
+        note: "Credit applied",
+      });
+      setCreditWarning(warning);
+      setShowApplyCredit(false);
+      setCreditApplyAmt("");
+      onReload();
+    });
+  }
+
+  function handleRevertCredit(paymentId: string) {
+    startSave(async () => {
+      await revertCreditPaymentAction(paymentId, customerId);
       onReload();
     });
   }
@@ -447,23 +805,78 @@ function PaymentPanel({
                   <span className={p.type === "refund" ? "text-yellow-600" : "text-green-700"}>
                     {p.type === "refund" ? "-" : "+"}₫{p.amount.toLocaleString()}
                   </span>
-                  <span className="text-muted-foreground">{p.method}</span>
+                  {p.method === "credit" ? (
+                    <span className="px-1 py-px rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 text-[9px] font-medium">credit</span>
+                  ) : (
+                    <span className="text-muted-foreground">{p.method}</span>
+                  )}
                   <span className="text-muted-foreground">{p.paidAt.slice(0, 10)}</span>
-                  {p.note && <span className="text-muted-foreground truncate">{p.note}</span>}
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(p.id)}
-                    disabled={saving}
-                    className="ml-auto h-4 w-4 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 disabled:opacity-50"
-                  >
-                    <X size={9} />
-                  </button>
+                  {p.note && p.method !== "credit" && <span className="text-muted-foreground truncate">{p.note}</span>}
+                  {p.method === "credit" ? (
+                    <button
+                      type="button"
+                      title="Undo credit payment"
+                      onClick={() => handleRevertCredit(p.id)}
+                      disabled={saving}
+                      className="ml-auto h-4 w-4 flex items-center justify-center rounded text-muted-foreground hover:text-amber-600 opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                    >
+                      ↩
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(p.id)}
+                      disabled={saving}
+                      className="ml-auto h-4 w-4 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                    >
+                      <X size={9} />
+                    </button>
+                  )}
                 </li>
               ))}
               {refunded > 0 && (
                 <li className="text-[10px] text-yellow-600">Refunded: ₫{refunded.toLocaleString()}</li>
               )}
             </ul>
+          )}
+
+          {/* Apply Credit section */}
+          {customerCredit > 0 && balance > 0 && (
+            <div className="border-t border-dashed pt-1">
+              {!showApplyCredit ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreditApplyAmt(String(Math.min(customerCredit, balance)));
+                    setShowApplyCredit(true);
+                  }}
+                  className="text-[10px] text-emerald-700 dark:text-emerald-400 hover:underline"
+                >
+                  ₫{customerCredit.toLocaleString()} credit available — Apply
+                </button>
+              ) : (
+                <div className="flex items-center gap-1 flex-wrap">
+                  <input
+                    autoFocus
+                    className={`${inp} w-24`}
+                    type="number"
+                    step="1000"
+                    placeholder="Amount"
+                    value={creditApplyAmt}
+                    onChange={(e) => setCreditApplyAmt(e.target.value)}
+                  />
+                  <button type="button" onClick={handleApplyCredit} disabled={saving || !creditApplyAmt}
+                    className="px-2 py-0.5 text-[10px] rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
+                    Apply
+                  </button>
+                  <button type="button" onClick={() => { setShowApplyCredit(false); setCreditWarning(null); }}
+                    className="px-2 py-0.5 text-[10px] rounded border hover:bg-accent">
+                    Cancel
+                  </button>
+                  {creditWarning && <span className="text-amber-600 text-[10px]">{creditWarning}</span>}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Record form */}
@@ -1355,11 +1768,19 @@ export function CustomerOverlay({
                       </button>
                     )}
                   </div>
-                  {showAddSub && (
-                    <SubForm mode="create" customerId={currentId} pricing={details.pricing} mealPrices={details.mealPrices}
-                      onSaved={() => { setShowAddSub(false); reload(); }}
-                      onCancel={() => setShowAddSub(false)} />
-                  )}
+                  {showAddSub && (() => {
+                    const creditBal = details.creditTransactions.reduce((acc, t) => {
+                      if (t.type === "refund_credit" || t.type === "manual_topup" || t.type === "adjustment") return acc + t.amount;
+                      if (t.type === "credit_used") return acc - t.amount;
+                      return acc;
+                    }, 0);
+                    return (
+                      <SubForm mode="create" customerId={currentId} pricing={details.pricing} mealPrices={details.mealPrices}
+                        creditBalance={creditBal}
+                        onSaved={() => { setShowAddSub(false); reload(); }}
+                        onCancel={() => setShowAddSub(false)} />
+                    );
+                  })()}
                   {!showAddSub && editingSubId && (() => {
                     const editingSub = details.subscriptions.find(s => s.id === editingSubId);
                     return editingSub ? (
@@ -1450,6 +1871,7 @@ export function CustomerOverlay({
                                 <div className="pt-0.5">
                                   <CancelSubscriptionForm
                                     sub={sub}
+                                    customerId={currentId}
                                     skips={details.skips.filter((s) => s.subscriptionId === sub.id)}
                                     payments={details.payments.filter((p) => p.subscriptionId === sub.id)}
                                     onDone={() => { setCancellingId(null); reload(); }}
@@ -1457,7 +1879,12 @@ export function CustomerOverlay({
                                   />
                                 </div>
                               )}
-                              <PaymentPanel sub={sub} payments={details.payments} extras={details.extras} onReload={reload} />
+                              <ExtrasPanel
+                                sub={sub}
+                                extras={details.extras.filter((e) => e.subscriptionId === sub.id)}
+                                onReload={reload}
+                              />
+                              <PaymentPanel sub={sub} payments={details.payments} extras={details.extras} customerId={currentId} customerCredit={details.creditTransactions.reduce((acc, t) => { if (t.type === "refund_credit" || t.type === "manual_topup" || t.type === "adjustment") return acc + t.amount; if (t.type === "credit_used") return acc - t.amount; return acc; }, 0)} onReload={reload} />
                              </>
                          </li>
                       );
@@ -1465,6 +1892,14 @@ export function CustomerOverlay({
                   </ul>
                   </div>
                 </div>
+
+                {/* Credit balance */}
+                <CreditPanel
+                  customerId={currentId}
+                  creditTransactions={details.creditTransactions}
+                  subscriptions={details.subscriptions}
+                  onReload={reload}
+                />
               </div>
 
               {/* Minimap removed from here - now in SchedulePanel */}
