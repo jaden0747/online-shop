@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { getAllCustomers } from "@/lib/data/customers";
-import { getAllSubscriptions } from "@/lib/data/subscriptions";
+import { getAllSubscriptions, getAllExtras } from "@/lib/data/subscriptions";
 import { getSelectionsByWeek } from "@/lib/data/selections";
 import { getMenuItemsByWeek } from "@/lib/data/menu";
+import { getAllPayments } from "@/lib/data/payments";
+import { getCostItemsByWeek } from "@/lib/data/cost-items";
+import { getWeeklyOpsByLabel } from "@/lib/data/operations";
 import { isSubscriptionLive, daysRemaining, isTodayWeekday } from "@/lib/utils/subscription";
 import { currentWeekLabel, currentWeekMonday } from "@/lib/utils/week";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -157,6 +160,30 @@ export default async function DashboardPage() {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 7);
 
+  // ── Financial metrics ────────────────────────────────────────────────────────
+  const allPayments = getAllPayments();
+  const allExtras = getAllExtras();
+  const weekCostItems = getCostItemsByWeek(weekLabel);
+  const weekOps = getWeeklyOpsByLabel(weekLabel);
+
+  // Revenue: net payments for subscriptions that are live this week
+  const thisWeekSubIdsArr = Array.from(thisWeekSubIds);
+  const weekPayments = allPayments.filter((p) => thisWeekSubIdsArr.includes(p.subscriptionId));
+  const weekRevenue = weekPayments.reduce((s, p) => s + (p.type === "payment" ? p.amount : -p.amount), 0);
+
+  // Total costs this week
+  const weekTotalCost = weekCostItems.reduce((s, i) => s + i.amount, 0);
+
+  // Cost per meal
+  const mealsPrepared = weekOps?.mealsPrepared ?? 0;
+  const costPerMeal = mealsPrepared > 0 ? Math.round(weekTotalCost / mealsPrepared) : 0;
+
+  // Gross margin
+  const grossMargin = weekRevenue > 0 ? Math.round(((weekRevenue - weekTotalCost) / weekRevenue) * 100) : null;
+
+  // Waste rate
+  const wasteRate = mealsPrepared > 0 ? ((weekOps?.wastedMeals ?? 0) / mealsPrepared * 100).toFixed(1) : null;
+
   // Customer name lookup
   const customerMap = new Map(customers.map((c) => [c.id, c]));
 
@@ -237,6 +264,65 @@ export default async function DashboardPage() {
             ) : (
               <p className="text-muted-foreground text-sm">No selections yet</p>
             )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Row 1b: Financial summary (this week) ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Card>
+          <CardHeader className="pb-1 pt-4 px-4">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Revenue This Week</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <p className="text-2xl font-bold">
+              {weekRevenue > 0 ? `₫${(weekRevenue / 1000).toFixed(0)}k` : "—"}
+            </p>
+            <Link href="/costs" className="text-xs text-muted-foreground hover:underline underline-offset-2 mt-1 inline-block">
+              View Costs →
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-1 pt-4 px-4">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Cost / Meal</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <p className="text-2xl font-bold">
+              {costPerMeal > 0 ? `₫${costPerMeal.toLocaleString()}` : "—"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {weekTotalCost > 0 ? `₫${(weekTotalCost / 1000).toFixed(0)}k total` : "No cost data"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-1 pt-4 px-4">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Gross Margin</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <p className={`text-2xl font-bold ${grossMargin !== null && grossMargin < 20 ? "text-red-600" : grossMargin !== null && grossMargin < 40 ? "text-yellow-600" : ""}`}>
+              {grossMargin !== null ? `${grossMargin}%` : "—"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {weekRevenue > 0 && weekTotalCost > 0 ? `₫${((weekRevenue - weekTotalCost) / 1000).toFixed(0)}k profit` : "No data"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-1 pt-4 px-4">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Waste Rate</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <p className={`text-2xl font-bold ${wasteRate !== null && parseFloat(wasteRate) > 5 ? "text-red-600" : ""}`}>
+              {wasteRate !== null ? `${wasteRate}%` : "—"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {mealsPrepared > 0 ? `${mealsPrepared} prepared` : "No ops data"}
+            </p>
           </CardContent>
         </Card>
       </div>

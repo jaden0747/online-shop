@@ -30,3 +30,15 @@ export async function updateMealPriceAction(formData: FormData) {
   revalidatePath("/settings");
   revalidatePath("/subscriptions");
 }
+
+export async function updateFormulaSettingsAction(data: {
+  basePricePerMeal: number;
+  goalMultiplierCutting: number;
+  goalMultiplierMaintenance: number;
+  goalMultiplierBulking: number;
+  goalMultiplierKeto: number;
+}): Promise<void> {
+  const current = getSettings();
+  saveSettings({ ...current, ...data });
+  revalidatePath("/settings");
+}

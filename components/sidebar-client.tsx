@@ -3,13 +3,16 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Home, Users, UtensilsCrossed, Truck, MapPin, Map, Settings2, FlaskConical } from "lucide-react";
+import { Home, Users, UtensilsCrossed, Truck, MapPin, Map, Settings2, FlaskConical, CreditCard, DollarSign, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const baseNav = [
   { href: "/", label: "Dashboard", icon: Home },
   { href: "/customers", label: "Customers", icon: Users },
+  { href: "/subscriptions", label: "Subscriptions", icon: CreditCard },
   { href: "/menu", label: "Menu", icon: UtensilsCrossed },
+  { href: "/costs", label: "Costs", icon: DollarSign },
+  { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/shipping", label: "Shipping", icon: Truck },
   { href: "/route", label: "Route", icon: MapPin },
   { href: "/coverage", label: "Coverage Map", icon: Map },

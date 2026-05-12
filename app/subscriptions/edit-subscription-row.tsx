@@ -21,13 +21,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { addWorkingDays } from "@/lib/utils/subscription";
+import { CancelSubscriptionForm } from "@/components/cancel-subscription-form";
 import { Pencil, Trash2, Plus } from "lucide-react";
+import type { MealSkip, Payment } from "@/lib/data/types";
 
 type Sub = {
   id: string;
   customerId: string;
   plan: string;
   goal: string;
+  status: string;
   mealsPerDay: number;
   subscriptionPrice: number;
   shippingPrice: number;
@@ -60,14 +63,19 @@ export function EditSubscriptionRow({
   pricing,
   extras,
   customerAddresses = [],
+  skips = [],
+  payments = [],
 }: {
   sub: Sub;
   pricing: PricingEntry[];
   extras: Extra[];
   customerAddresses?: CustomerAddress[];
+  skips?: MealSkip[];
+  payments?: Payment[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [showCancel, setShowCancel] = useState(false);
   const [plan, setPlan] = useState(sub.plan);
   const [goal, setGoal] = useState(sub.goal);
   const [mealsPerDay, setMealsPerDay] = useState(String(sub.mealsPerDay));
@@ -114,6 +122,7 @@ export function EditSubscriptionRow({
       setEndDateStr(new Date(sub.endDate).toISOString().split("T")[0]);
       setAddressId(sub.addressId ?? "none");
       setPendingExtras([]);
+      setShowCancel(false);
     }
   }, [open, sub]);
 
@@ -165,9 +174,13 @@ export function EditSubscriptionRow({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="icon" variant="ghost" className="h-7 w-7" />}>
-        <Pencil size={13} />
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button size="icon" variant="ghost" className="h-7 w-7">
+            <Pencil size={13} />
+          </Button>
+        }
+      />
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Subscription</DialogTitle>
@@ -395,6 +408,33 @@ export function EditSubscriptionRow({
               Cancel
             </Button>
           </div>
+
+          {/* Cancel subscription section */}
+          {sub.status !== "cancelled" && !showCancel && (
+            <div className="border-t pt-3">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full text-destructive border-destructive/40 hover:bg-destructive/10"
+                onClick={() => setShowCancel(true)}
+                disabled={pending}
+              >
+                Cancel Subscription
+              </Button>
+            </div>
+          )}
+          {sub.status !== "cancelled" && showCancel && (
+            <div className="border-t pt-3 space-y-2">
+              <p className="text-xs font-medium text-destructive">Cancel Subscription</p>
+              <CancelSubscriptionForm
+                sub={sub}
+                skips={skips}
+                payments={payments}
+                onDone={() => { setOpen(false); router.refresh(); }}
+                onCancel={() => setShowCancel(false)}
+              />
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

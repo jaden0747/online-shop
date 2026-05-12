@@ -2,16 +2,20 @@ import { getAllSubscriptions, getAllSkips, getAllExtras } from "@/lib/data/subsc
 import { getAllCustomers, getAllAddresses } from "@/lib/data/customers";
 import { getAllPricing } from "@/lib/data/pricing";
 import { getSettings, getMealPrices } from "@/lib/data/settings";
+import { getAllPayments } from "@/lib/data/payments";
+import { subscriptionPaymentStatus } from "@/lib/utils/payments";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { planTotalMeals, daysRemaining, isSubscriptionLive, subscriptionStatus, formatDate } from "@/lib/utils/subscription";
+import { planTotalMeals, daysRemaining, isSubscriptionLive } from "@/lib/utils/subscription";
 import { UpsertPricingForm } from "./upsert-pricing-form";
 import { DeletePricingButton } from "./delete-pricing-button";
 import { OpenInFinderButton } from "@/components/open-in-finder-button";
 import { NewSubscriptionDialog } from "./new-subscription-dialog";
-import { EditSubscriptionRow } from "./edit-subscription-row";
-import { CustomerOverlayTrigger } from "@/components/customer-overlay-trigger";
+import { SubscriptionFilters } from "./subscription-filters";
+import { parseFilters } from "./subscription-filters-shared";
+import { ActiveSubscriptionTable, InactiveSubscriptionTable } from "./subscription-table";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -19,62 +23,34 @@ const PLANS = ["trial", "weekly", "monthly"];
 const GOALS = ["cutting", "maintenance", "bulking", "keto"];
 const MEALS_PER_DAY = [1, 2];
 
-function EndDateCell({ endDate }: { endDate: string }) {
-  const days = daysRemaining(endDate);
-  let textClass: string;
-  let barClass: string;
-  if (days >= 14) {
-    textClass = "text-green-600";
-    barClass = "bg-green-500";
-  } else if (days >= 7) {
-    textClass = "text-yellow-600";
-    barClass = "bg-yellow-500";
-  } else if (days >= 3) {
-    textClass = "text-orange-600";
-    barClass = "bg-orange-500";
-  } else {
-    textClass = "text-red-600";
-    barClass = "bg-red-500";
-  }
-  const fillPct = Math.min(100, Math.round((days / 14) * 100));
-  return (
-    <div className="min-w-[70px]">
-      <span className={`text-xs font-medium ${textClass}`}>{days} days</span>
-      <div className="mt-0.5 h-1 w-full rounded-full bg-muted">
-        <div className={`h-1 rounded-full ${barClass}`} style={{ width: `${fillPct}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function PriceCell({ subscriptionPrice, shippingPrice }: { subscriptionPrice: number; shippingPrice: number }) {
-  const total = subscriptionPrice + shippingPrice;
-  return (
-    <div>
-      <span className="font-medium">₫{total.toLocaleString()}</span>
-      {shippingPrice > 0 && (
-        <p className="text-xs text-muted-foreground">
-          sub ₫{subscriptionPrice.toLocaleString()} + ship ₫{shippingPrice.toLocaleString()}
-        </p>
-      )}
-    </div>
-  );
-}
-
-export default async function SubscriptionsPage() {
+export default async function SubscriptionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const rawSubscriptions = getAllSubscriptions();
   const customers = getAllCustomers();
   const allAddresses = getAllAddresses();
   const skips = getAllSkips();
   const pricingEntries = getAllPricing();
   const allExtras = getAllExtras();
+  const allPayments = getAllPayments();
   const settings = getSettings();
 
-  const addressesByCustomer = new Map<string, typeof allAddresses>();
+  const sp = await searchParams;
+  // Build URLSearchParams from the Next.js searchParams record
+  const urlSP = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp)) {
+    if (Array.isArray(v)) v.forEach((val) => urlSP.append(k, val));
+    else if (v != null) urlSP.set(k, v);
+  }
+  const filters = parseFilters(urlSP);
+
+  const addressesByCustomer: Record<string, { id: string; label: string; isDefault: boolean }[]> = {};
   for (const a of allAddresses) {
-    const list = addressesByCustomer.get(a.customerId) ?? [];
-    list.push(a);
-    addressesByCustomer.set(a.customerId, list);
+    const list = addressesByCustomer[a.customerId] ?? [];
+    list.push({ id: a.id, label: a.label, isDefault: a.isDefault });
+    addressesByCustomer[a.customerId] = list;
   }
 
   const customerMap = new Map(customers.map((c) => [c.phone, c]));
@@ -94,12 +70,37 @@ export default async function SubscriptionsPage() {
   const lookup = new Map(
     pricingEntries.map((e) => [`${e.plan}-${e.goal}-${e.mealsPerDay}`, e])
   );
+
+  // Apply filters
+  function applyFilters<T extends (typeof subscriptions)[number]>(list: T[]): T[] {
+    return list.filter((s) => {
+      const q = filters.q.trim().toLowerCase();
+      if (q) {
+        const name = s.customer.name.toLowerCase();
+        const phone = s.customer.phone.toLowerCase();
+        if (!name.includes(q) && !phone.includes(q)) return false;
+      }
+      if (!filters.plans.has(s.plan)) return false;
+      if (!filters.goals.has(s.goal)) return false;
+      const payStatus = subscriptionPaymentStatus(s, allPayments, allExtras);
+      if (!filters.statuses.has(payStatus)) return false;
+      if (filters.expiringSoon && daysRemaining(s.endDate) > 7) return false;
+      if (filters.from) {
+        if (new Date(s.endDate) < new Date(filters.from)) return false;
+      }
+      if (filters.to) {
+        if (new Date(s.startDate) > new Date(filters.to)) return false;
+      }
+      return true;
+    });
+  }
+
   const active = subscriptions.filter((s) => isSubscriptionLive(s.status, s.startDate, s.endDate));
   const inactive = subscriptions.filter((s) => !isSubscriptionLive(s.status, s.startDate, s.endDate));
-
-  function extrasFor(subId: string) {
-    return allExtras.filter((e) => e.subscriptionId === subId);
-  }
+  const filteredActive = applyFilters(active);
+  const filteredInactive = applyFilters(inactive);
+  const totalFiltered = filteredActive.length + filteredInactive.length;
+  const totalAll = subscriptions.length;
 
   return (
     <div className="space-y-6">
@@ -116,18 +117,23 @@ export default async function SubscriptionsPage() {
         </div>
       </div>
 
+      {/* Filter toolbar */}
+      <Suspense fallback={null}>
+        <SubscriptionFilters totalCount={totalAll} matchCount={totalFiltered} />
+      </Suspense>
+
       <Tabs defaultValue="subscriptions">
         <TabsList>
           <TabsTrigger value="subscriptions">
             Active
             <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-xs font-medium tabular-nums">
-              {active.length}
+              {filteredActive.length}
             </span>
           </TabsTrigger>
           <TabsTrigger value="inactive">
             Inactive
             <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium tabular-nums">
-              {inactive.length}
+              {filteredInactive.length}
             </span>
           </TabsTrigger>
           <TabsTrigger value="pricing">Pricing</TabsTrigger>
@@ -137,60 +143,14 @@ export default async function SubscriptionsPage() {
           <Card>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="text-left px-4 py-2 font-medium">Customer</th>
-                      <th className="text-left px-4 py-2 font-medium">Plan</th>
-                      <th className="text-left px-4 py-2 font-medium">Period</th>
-                      <th className="text-left px-4 py-2 font-medium">End Date</th>
-                      <th className="text-left px-4 py-2 font-medium">Skips</th>
-                      <th className="text-left px-4 py-2 font-medium">Price</th>
-                      <th className="w-10" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {active.length === 0 && (
-                      <tr>
-                        <td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">
-                          No active subscriptions.
-                        </td>
-                      </tr>
-                    )}
-                    {active.map((sub) => (
-                      <tr key={sub.id} className="hover:bg-accent/50 transition-colors">
-                        <td className="px-4 py-2">
-                          <CustomerOverlayTrigger
-                            customerId={sub.customer.id}
-                            name={sub.customer.name}
-                            phone={sub.customer.phone}
-                          />
-                        </td>
-                        <td className="px-4 py-2 capitalize text-muted-foreground">
-                          {sub.plan} · {sub.goal} · {sub.mealsPerDay}×/day
-                        </td>
-                        <td className="px-4 py-2 text-muted-foreground whitespace-nowrap">
-                          {formatDate(sub.startDate)} – {formatDate(sub.endDate)}
-                        </td>
-                        <td className="px-4 py-2">
-                          <EndDateCell endDate={sub.endDate} />
-                        </td>
-                        <td className="px-4 py-2">{sub._count.mealSkips > 0 ? sub._count.mealSkips : "—"}</td>
-                        <td className="px-4 py-2">
-                          <PriceCell subscriptionPrice={sub.subscriptionPrice} shippingPrice={sub.shippingPrice} />
-                        </td>
-                        <td className="px-2 py-2">
-                          <EditSubscriptionRow
-                            sub={{ ...sub, startDate: String(sub.startDate), endDate: String(sub.endDate) }}
-                            pricing={pricingEntries}
-                            extras={extrasFor(sub.id)}
-                            customerAddresses={addressesByCustomer.get(sub.customerId) ?? []}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <ActiveSubscriptionTable
+                  subscriptions={filteredActive}
+                  allPayments={allPayments}
+                  allExtras={allExtras}
+                  allSkips={skips}
+                  pricingEntries={pricingEntries}
+                  addressesByCustomer={addressesByCustomer}
+                />
               </div>
             </CardContent>
           </Card>
@@ -200,66 +160,13 @@ export default async function SubscriptionsPage() {
           <Card>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="text-left px-4 py-2 font-medium">Customer</th>
-                      <th className="text-left px-4 py-2 font-medium">Plan</th>
-                      <th className="text-left px-4 py-2 font-medium">Period</th>
-                      <th className="text-left px-4 py-2 font-medium">Skips</th>
-                      <th className="text-left px-4 py-2 font-medium">Price</th>
-                      <th className="text-left px-4 py-2 font-medium">Status</th>
-                      <th className="w-10" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {inactive.length === 0 && (
-                      <tr>
-                        <td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">
-                          No inactive subscriptions.
-                        </td>
-                      </tr>
-                    )}
-                    {inactive.map((sub) => {
-                      const derivedStatus = subscriptionStatus(sub.status, sub.startDate, sub.endDate);
-                      return (
-                        <tr key={sub.id} className="hover:bg-accent/50 transition-colors">
-                          <td className="px-4 py-2">
-                            <button
-                              type="button"
-                              className="text-left"
-                            >
-                              <span className="font-medium leading-none block">{sub.customer.name}</span>
-                              <span className="text-xs text-muted-foreground">{sub.customer.phone}</span>
-                            </button>
-                          </td>
-                          <td className="px-4 py-2 capitalize text-muted-foreground">
-                            {sub.plan} · {sub.goal} · {sub.mealsPerDay}×/day
-                          </td>
-                          <td className="px-4 py-2 text-muted-foreground whitespace-nowrap">
-                            {formatDate(sub.startDate)} – {formatDate(sub.endDate)}
-                          </td>
-                          <td className="px-4 py-2">{sub._count.mealSkips > 0 ? sub._count.mealSkips : "—"}</td>
-                          <td className="px-4 py-2">
-                            <PriceCell subscriptionPrice={sub.subscriptionPrice} shippingPrice={sub.shippingPrice} />
-                          </td>
-                          <td className="px-4 py-2">
-                            <Badge variant={derivedStatus === "upcoming" ? "secondary" : "outline"}>
-                              {derivedStatus}
-                            </Badge>
-                          </td>
-                          <td className="px-2 py-2">
-                            <EditSubscriptionRow
-                              sub={{ ...sub, startDate: String(sub.startDate), endDate: String(sub.endDate) }}
-                              pricing={pricingEntries}
-                              extras={extrasFor(sub.id)}
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <InactiveSubscriptionTable
+                  subscriptions={filteredInactive}
+                  allPayments={allPayments}
+                  allExtras={allExtras}
+                  allSkips={skips}
+                  pricingEntries={pricingEntries}
+                />
               </div>
             </CardContent>
           </Card>

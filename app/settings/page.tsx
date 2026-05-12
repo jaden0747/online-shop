@@ -1,6 +1,7 @@
 import { getSettings, getMealPrices } from "@/lib/data/settings";
 import { isTestingMode } from "@/lib/data/testing";
 import { getAllPricing } from "@/lib/data/pricing";
+import { getAllCostCategories } from "@/lib/data/cost-categories";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { HubForm } from "./hub-form";
@@ -11,6 +12,8 @@ import { DeletePricingButton } from "@/app/subscriptions/delete-pricing-button";
 import { planTotalMeals } from "@/lib/utils/subscription";
 import { DataDirectoryPicker } from "@/components/data-directory-picker";
 import { MealPriceForm } from "./meal-price-form";
+import { CostCategoriesCard } from "./cost-categories-card";
+import { FormulaPricingForm } from "./formula-pricing-form";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +25,7 @@ export default async function SettingsPage() {
   const settings = getSettings();
   const testingActive = isTestingMode();
   const pricingEntries = getAllPricing();
+  const costCategories = getAllCostCategories();
   const lookup = new Map(pricingEntries.map((e) => [`${e.plan}-${e.goal}-${e.mealsPerDay}`, e]));
 
   return (
@@ -86,6 +90,38 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <MealPriceForm mealPrices={getMealPrices(settings)} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Pricing Formula</CardTitle>
+          <CardDescription>
+            Formula-based pricing: base price × goal multiplier. Used for reference and future automation.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FormulaPricingForm
+            basePrice={settings.basePricePerMeal}
+            multipliers={{
+              cutting: settings.goalMultiplierCutting,
+              maintenance: settings.goalMultiplierMaintenance,
+              bulking: settings.goalMultiplierBulking,
+              keto: settings.goalMultiplierKeto,
+            }}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Cost Categories</CardTitle>
+          <CardDescription>
+            Categories for weekly cost tracking (protein, packaging, labor, etc.).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CostCategoriesCard categories={costCategories} />
         </CardContent>
       </Card>
 

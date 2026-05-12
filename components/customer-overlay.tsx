@@ -27,10 +27,17 @@ import { skipDayAndExtendAction, unskipDayAndShortenAction } from "@/app/actions
 import { upsertSelectionDirectAction, deleteSelectionDirectAction } from "@/app/actions/selections";
 import { upsertKitchenNoteAction } from "@/app/actions/notes";
 import { upsertDayAddressAction, deleteDayAddressAction } from "@/app/actions/order-day-addresses";
-import { CustomerMinimap } from "./customer-minimap";
-import type { Customer, CustomerAddress, Subscription, Pricing, MealSkip, MealSelection, MenuItem, KitchenNote, OrderDayAddress } from "@/lib/data/types";
+import { createPaymentAction, deletePaymentAction } from "@/app/actions/payments";
+import dynamic from "next/dynamic";
+const CustomerMinimap = dynamic(
+  () => import("./customer-minimap").then((m) => m.CustomerMinimap),
+  { ssr: false }
+);
+import type { Customer, CustomerAddress, Subscription, SubscriptionExtra, Pricing, MealSkip, MealSelection, MenuItem, KitchenNote, OrderDayAddress, Payment } from "@/lib/data/types";
 import { subscriptionStatus, daysRemaining, planTotalMeals, addWorkingDays, isSubscriptionLive } from "@/lib/utils/subscription";
+import { subscriptionPaymentStatus, paymentsTotalForSub } from "@/lib/utils/payments";
 import { weekLabelForDate } from "@/lib/utils/week";
+import { CancelSubscriptionForm } from "./cancel-subscription-form";
 import { Pencil, X, Plus, Star, Trash2, Check, MapPin, ChevronLeft, ChevronRight, Copy } from "lucide-react";
 
 type Details = {
@@ -47,6 +54,8 @@ type Details = {
   dayAddresses: OrderDayAddress[];
   hub: { lat: number; lng: number };
   mealPrices: Record<string, number>;
+  payments: Payment[];
+  extras: SubscriptionExtra[];
 };
 
 // ── CoordsEditor ────────────────────────────────────────────────────────────
@@ -313,6 +322,182 @@ const inp = "w-full border rounded px-1 py-0.5 text-xs bg-background outline-non
 // ── Shared helpers ───────────────────────────────────────────────────────────
 function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// ── PaymentPanel ─────────────────────────────────────────────────────────────
+const PAYMENT_METHODS: Payment["method"][] = ["cash", "transfer", "momo", "other"];
+
+function PaymentBadge({ status }: { status: "paid" | "partial" | "unpaid" }) {
+  const cls =
+    status === "paid"
+      ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+      : status === "partial"
+      ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
+      : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+  return (
+    <span className={`px-1 py-0.5 rounded-full text-[9px] shrink-0 ${cls}`}>
+      {status}
+    </span>
+  );
+}
+
+function PaymentPanel({
+  sub,
+  payments,
+  extras,
+  onReload,
+}: {
+  sub: Subscription;
+  payments: Payment[];
+  extras: SubscriptionExtra[];
+  onReload: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, startSave] = useTransition();
+  const [form, setForm] = useState<{
+    type: Payment["type"];
+    amount: string;
+    paidAt: string;
+    method: Payment["method"];
+    note: string;
+  }>({
+    type: "payment",
+    amount: "",
+    paidAt: localDateStr(new Date()),
+    method: "cash",
+    note: "",
+  });
+
+  const subPayments = payments.filter((p) => p.subscriptionId === sub.id);
+  const { paid, refunded, net } = paymentsTotalForSub(payments, sub.id);
+  const totalDue =
+    sub.subscriptionPrice +
+    sub.shippingPrice -
+    sub.discount +
+    extras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
+  const balance = totalDue - net;
+  const payStatus = subscriptionPaymentStatus(sub, payments, extras);
+
+  function handleRecord() {
+    const amt = parseFloat(form.amount);
+    if (!amt || amt <= 0) return;
+    startSave(async () => {
+      await createPaymentAction({
+        subscriptionId: sub.id,
+        type: form.type,
+        amount: amt,
+        paidAt: form.paidAt,
+        method: form.type === "payment" ? "other" : form.method,
+        note: form.note.trim() || null,
+      });
+      setForm((p) => ({ ...p, amount: "", note: "" }));
+      onReload();
+    });
+  }
+
+  function handleDelete(id: string) {
+    startSave(async () => {
+      await deletePaymentAction(id);
+      onReload();
+    });
+  }
+
+  const inp = "border rounded px-1 py-0.5 text-xs bg-background outline-none focus:ring-1 focus:ring-ring";
+
+  return (
+    <div className="mt-0.5 border-t border-dashed pt-0.5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground w-full text-left"
+      >
+        <PaymentBadge status={payStatus} />
+        <span className="ml-1">
+          {net > 0 ? `₫${net.toLocaleString()} paid` : "No payment"}
+          {balance > 0 ? ` · ₫${balance.toLocaleString()} due` : balance < 0 ? ` · ₫${Math.abs(balance).toLocaleString()} over` : " · ✓"}
+        </span>
+        <span className="ml-auto">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="mt-1 space-y-1.5">
+          {/* Summary */}
+          <div className="grid grid-cols-3 gap-1 text-[10px]">
+            <div className="bg-muted/30 rounded p-1">
+              <p className="text-muted-foreground">Due</p>
+              <p className="font-medium">₫{totalDue.toLocaleString()}</p>
+            </div>
+            <div className="bg-muted/30 rounded p-1">
+              <p className="text-muted-foreground">Paid</p>
+              <p className="font-medium text-green-700 dark:text-green-400">₫{paid.toLocaleString()}</p>
+            </div>
+            <div className="bg-muted/30 rounded p-1">
+              <p className="text-muted-foreground">{balance >= 0 ? "Balance" : "Overpaid"}</p>
+              <p className={`font-medium ${balance > 0 ? "text-red-600" : balance < 0 ? "text-yellow-600" : "text-green-700"}`}>
+                ₫{Math.abs(balance).toLocaleString()}
+              </p>
+            </div>
+          </div>
+
+          {/* Payment history */}
+          {subPayments.length > 0 && (
+            <ul className="space-y-0.5">
+              {subPayments.map((p) => (
+                <li key={p.id} className="flex items-center gap-1 text-[10px] group">
+                  <span className={p.type === "refund" ? "text-yellow-600" : "text-green-700"}>
+                    {p.type === "refund" ? "-" : "+"}₫{p.amount.toLocaleString()}
+                  </span>
+                  <span className="text-muted-foreground">{p.method}</span>
+                  <span className="text-muted-foreground">{p.paidAt.slice(0, 10)}</span>
+                  {p.note && <span className="text-muted-foreground truncate">{p.note}</span>}
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(p.id)}
+                    disabled={saving}
+                    className="ml-auto h-4 w-4 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                  >
+                    <X size={9} />
+                  </button>
+                </li>
+              ))}
+              {refunded > 0 && (
+                <li className="text-[10px] text-yellow-600">Refunded: ₫{refunded.toLocaleString()}</li>
+              )}
+            </ul>
+          )}
+
+          {/* Record form */}
+          <div className="space-y-1">
+            <div className={`grid gap-1 ${form.type === "refund" ? "grid-cols-2" : "grid-cols-1"}`}>
+              <select className={inp} value={form.type} onChange={(e) => setForm((p) => ({ ...p, type: e.target.value as Payment["type"] }))}>
+                <option value="payment">Payment</option>
+                <option value="refund">Refund</option>
+              </select>
+              {form.type === "refund" && (
+                <select className={inp} value={form.method} onChange={(e) => setForm((p) => ({ ...p, method: e.target.value as Payment["method"] }))}>
+                  {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              <input className={inp} type="number" placeholder="Amount" value={form.amount}
+                onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} />
+              <input className={inp} type="date" value={form.paidAt}
+                onChange={(e) => setForm((p) => ({ ...p, paidAt: e.target.value }))} />
+            </div>
+            <div className="flex gap-1">
+              <input className={`${inp} flex-1`} type="text" placeholder="Note (optional)" value={form.note}
+                onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))} />
+              <button type="button" onClick={handleRecord} disabled={saving || !form.amount}
+                className="px-2 py-0.5 text-[10px] rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                Record
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function getRouteInfo(
@@ -765,7 +950,6 @@ export function CustomerOverlay({
   const [showAddSub, setShowAddSub] = useState(false);
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const [cancelReason, setCancelReason] = useState("");
 
   useEffect(() => {
     if (open && !prevOpenRef.current) {
@@ -776,7 +960,6 @@ export function CustomerOverlay({
       setShowAddSub(false);
       setEditingSubId(null);
       setCancellingId(null);
-      setCancelReason("");
       load(customerId);
     }
     prevOpenRef.current = open;
@@ -792,7 +975,7 @@ export function CustomerOverlay({
       if (showAddAddr) { setShowAddAddr(false); return; }
       if (showAddSub) { setShowAddSub(false); return; }
       if (editingSubId !== null) { setEditingSubId(null); return; }
-      if (cancellingId !== null) { setCancellingId(null); setCancelReason(""); return; }
+      if (cancellingId !== null) { setCancellingId(null); return; }
       onOpenChange(false);
     }
     document.addEventListener("keydown", onKeyDown);
@@ -942,15 +1125,6 @@ export function CustomerOverlay({
   function handleRecover(id: string) {
     startTransition(async () => {
       await updateSubscriptionStatusAction(id, "active");
-      reload();
-    });
-  }
-
-  function handleCancelConfirm(id: string) {
-    startTransition(async () => {
-      await updateSubscriptionStatusAction(id, "cancelled", cancelReason.trim() || undefined);
-      setCancellingId(null);
-      setCancelReason("");
       reload();
     });
   }
@@ -1198,7 +1372,7 @@ export function CustomerOverlay({
                   {details.subscriptions.length === 0 && !showAddSub && !editingSubId && (
                     <p className="text-xs text-muted-foreground/50">No subscriptions.</p>
                   )}
-                  <div className="max-h-[180px] overflow-y-auto pr-1">
+                  <div className="max-h-[240px] overflow-y-auto pr-1">
                   <ul className="space-y-1">
                     {[...details.subscriptions].sort((a, b) => {
                       const today = new Date();
@@ -1225,8 +1399,7 @@ export function CustomerOverlay({
                                       : "bg-muted text-muted-foreground",
                                   ].join(" ")}>{status}</span>
                                   <span className="text-muted-foreground truncate">{sub.goal}·{sub.mealsPerDay}×/day</span>
-                                </div>
-                                <div className="flex items-center gap-0.5 shrink-0">
+                                </div>                                <div className="flex items-center gap-0.5 shrink-0">
                                   <button type="button"
                                     onClick={() => { setEditingSubId(sub.id); setShowAddSub(false); setCancellingId(null); }}
                                     className="h-4 w-4 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent"
@@ -1255,7 +1428,10 @@ export function CustomerOverlay({
                               {canAct && !isCancelling && (
                                 <div className="flex gap-1 mt-0.5">
                                    <button type="button"
-                                     onClick={() => { setCancellingId(sub.id); setCancelReason(""); setEditingSubId(null); }}
+                                     onClick={() => {
+                                       setCancellingId(sub.id);
+                                       setEditingSubId(null);
+                                     }}
                                     disabled={isPending}
                                     className="px-1.5 py-0.5 text-[10px] rounded border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-50 ml-auto">
                                     Cancel
@@ -1271,21 +1447,17 @@ export function CustomerOverlay({
                                 </div>
                               )}
                               {isCancelling && (
-                                <div className="pt-0.5 space-y-1">
-                                  <input autoFocus
-                                    className="w-full border rounded px-2 py-0.5 text-xs bg-background outline-none focus:ring-1 focus:ring-ring"
-                                    placeholder="Reason (optional)" value={cancelReason}
-                                    onChange={(e) => setCancelReason(e.target.value)} />
-                                  <div className="flex gap-1">
-                                    <button type="button" onClick={() => handleCancelConfirm(sub.id)} disabled={isPending}
-                                      className="px-2 py-0.5 rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50">
-                                      Confirm
-                                    </button>
-                                    <button type="button" onClick={() => { setCancellingId(null); setCancelReason(""); }}
-                                      className="px-2 py-0.5 rounded border hover:bg-accent">Keep</button>
-                                  </div>
+                                <div className="pt-0.5">
+                                  <CancelSubscriptionForm
+                                    sub={sub}
+                                    skips={details.skips.filter((s) => s.subscriptionId === sub.id)}
+                                    payments={details.payments.filter((p) => p.subscriptionId === sub.id)}
+                                    onDone={() => { setCancellingId(null); reload(); }}
+                                    onCancel={() => { setCancellingId(null); }}
+                                  />
                                 </div>
                               )}
+                              <PaymentPanel sub={sub} payments={details.payments} extras={details.extras} onReload={reload} />
                              </>
                          </li>
                       );
@@ -1298,30 +1470,26 @@ export function CustomerOverlay({
               {/* Minimap removed from here - now in SchedulePanel */}
             </div>
 
-            {/* ── Schedule (when at least one non-cancelled subscription) ── */}
-            {details.subscriptions.some((s) => s.status !== "cancelled") && (
-              <SchedulePanel
-                subscriptions={details.subscriptions}
-                addresses={details.addresses}
-                skips={details.skips}
-                allSelections={details.allSelections}
-                allMenuItems={details.allMenuItems}
-                kitchenNotes={details.kitchenNotes}
-                dayAddresses={details.dayAddresses}
-                customerId={currentId}
-                onReload={reload}
-                minimap={
-                  details.addresses.some((a) => a.latitude != null && a.longitude != null)
-                    ? <CustomerMinimap
-                        addresses={details.addresses}
-                        hub={details.hub}
-                        routes={routes}
-                        loading={loadingRoutes}
-                      />
-                    : undefined
-                }
-              />
-            )}
+            {/* ── Schedule ── */}
+            <SchedulePanel
+              subscriptions={details.subscriptions}
+              addresses={details.addresses}
+              skips={details.skips}
+              allSelections={details.allSelections}
+              allMenuItems={details.allMenuItems}
+              kitchenNotes={details.kitchenNotes}
+              dayAddresses={details.dayAddresses}
+              customerId={currentId}
+              onReload={reload}
+              minimap={
+                <CustomerMinimap
+                  addresses={details.addresses}
+                  hub={details.hub}
+                  routes={routes}
+                  loading={loadingRoutes}
+                />
+              }
+            />
           </>
         )}
       </DialogContent>

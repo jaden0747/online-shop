@@ -54,6 +54,12 @@ export interface Settings {
   mealPriceMaintenance: number;
   mealPriceBulking: number;
   mealPriceKeto: number;
+  // Formula pricing
+  basePricePerMeal: number; // base cost per meal before goal multiplier
+  goalMultiplierCutting: number; // e.g. 1.0
+  goalMultiplierMaintenance: number;
+  goalMultiplierBulking: number;
+  goalMultiplierKeto: number;
 }
 
 export interface MealSkip {
@@ -109,4 +115,41 @@ export interface OrderDayAddress {
   day: number;
   addressId: string;
   createdAt: string;
+}
+
+export interface Payment {
+  id: string;
+  subscriptionId: string;
+  type: "payment" | "refund";
+  amount: number; // always positive; sign comes from `type`
+  paidAt: string; // ISO string
+  method: "cash" | "transfer" | "momo" | "other";
+  note: string | null;
+  createdAt: string; // ISO string
+}
+
+export interface CostCategory {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: string; // ISO string
+}
+
+export interface CostItem {
+  id: string;
+  weekLabel: string; // e.g. "2025-W21"
+  categoryId: string;
+  amount: number;
+  note: string | null;
+  createdAt: string; // ISO string
+}
+
+export interface WeeklyOps {
+  id: string; // = weekLabel
+  weekLabel: string;
+  mealsPrepared: number;
+  mealsDelivered: number;
+  wastedMeals: number;
+  note: string | null;
+  updatedAt: string; // ISO string
 }

@@ -88,14 +88,6 @@ export function CustomerMinimap({ addresses, hub, routes, loading }: CustomerMin
 
   const validAddresses = addresses.filter((a) => a.latitude != null && a.longitude != null);
 
-  if (validAddresses.length === 0) {
-    return (
-      <div className="h-[300px] w-full flex items-center justify-center border rounded-lg bg-muted/20">
-        <p className="text-sm text-muted-foreground">No addresses with coordinates available</p>
-      </div>
-    );
-  }
-
   const allPoints: [number, number][] = [
     [hub.lat, hub.lng],
     ...validAddresses.map((a) => [a.latitude!, a.longitude!] as [number, number]),
