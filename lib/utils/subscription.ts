@@ -203,6 +203,64 @@ export function workingDaysRemainingInclusive(endDate: Date | string): number {
   return Math.max(0, countWorkingDays(today, end));
 }
 
+export interface RefundDaysResult {
+  refundDays: number;
+  remainingDays: number;
+  futureSkipsNoReplace: number;
+  pastSkipsNoReplace: number;
+}
+
+/**
+ * Calculate refund days for a subscription (days that qualify for refund).
+ * Extracted from suggestedRefund for reuse in balance calculations.
+ */
+export function calculateRefundDays(
+  sub: { plan: string; endDate: string; cancelledAt?: string | null },
+  skips: { originalDay: string; replacementDay: string | null }[]
+): RefundDaysResult {
+  const today = sub.cancelledAt ? new Date(sub.cancelledAt) : new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const end = new Date(sub.endDate);
+  end.setDate(end.getDate() + 1); // make endDate inclusive in countWorkingDays
+  const remainingDays = Math.max(0, countWorkingDays(today, end));
+
+  const futureSkipsNoReplace = skips.filter((sk) => {
+    const d = new Date(sk.originalDay);
+    d.setHours(0, 0, 0, 0);
+    return d >= today && !sk.replacementDay;
+  }).length;
+
+  const pastSkipsNoReplace = skips.filter((sk) => {
+    const d = new Date(sk.originalDay);
+    d.setHours(0, 0, 0, 0);
+    return d < today && !sk.replacementDay;
+  }).length;
+
+  const refundDays = Math.max(0, remainingDays - futureSkipsNoReplace + pastSkipsNoReplace);
+
+  return { refundDays, remainingDays, futureSkipsNoReplace, pastSkipsNoReplace };
+}
+
+/**
+ * Calculate the prorated total due for a cancelled subscription.
+ * For cancelled subs, totalDue should reflect only days used, not full plan price.
+ */
+export function calculateProratedTotalDue(
+  sub: { plan: string; subscriptionPrice: number; shippingPrice: number; discount: number; endDate: string; cancelledAt?: string | null },
+  skips: { originalDay: string; replacementDay: string | null }[],
+  extrasTotal: number
+): number {
+  const totalDays = Math.max(1, planTotalMeals(sub.plan));
+  const effectiveTotal = sub.subscriptionPrice + sub.shippingPrice - sub.discount;
+  const pricePerDay = effectiveTotal / totalDays;
+
+  const refundInfo = calculateRefundDays(sub, skips);
+  const daysUsed = Math.max(0, totalDays - refundInfo.refundDays);
+
+  return Math.round(pricePerDay * daysUsed) + extrasTotal;
+}
+
 export interface SuggestedRefundResult {
   pricePerDay: number;
   totalDays: number;           // planTotalMeals(plan)

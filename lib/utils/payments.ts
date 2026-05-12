@@ -1,4 +1,5 @@
-import type { Payment, Subscription, SubscriptionExtra } from "@/lib/data/types";
+import type { Payment, Subscription, SubscriptionExtra, MealSkip } from "@/lib/data/types";
+import { calculateProratedTotalDue } from "./subscription";
 
 export function paymentsTotalForSub(
   payments: Payment[],
@@ -13,15 +14,16 @@ export function paymentsTotalForSub(
 export function subscriptionPaymentStatus(
   sub: Subscription,
   payments: Payment[],
-  extras: SubscriptionExtra[]
+  extras: SubscriptionExtra[],
+  skips?: MealSkip[]
 ): "paid" | "partial" | "unpaid" {
-  const totalDue =
-    sub.subscriptionPrice +
-    sub.shippingPrice -
-    sub.discount +
-    extras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
-  const { net } = paymentsTotalForSub(payments, sub.id);
-  if (net <= 0) return "unpaid";
-  if (net >= totalDue - 1) return "paid"; // 1₫ tolerance for rounding
+  const extrasTotal = extras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
+  const totalDue = sub.status === "cancelled" && skips
+    ? calculateProratedTotalDue(sub, skips, extrasTotal)
+    : sub.subscriptionPrice + sub.shippingPrice - sub.discount + extrasTotal;
+  const { net, paid } = paymentsTotalForSub(payments, sub.id);
+  const balance = totalDue - net;
+  if (balance <= 1) return "paid"; // fully paid or overpaid (1₫ tolerance)
+  if (net <= 0 && paid === 0) return "unpaid";
   return "partial";
 }

@@ -108,7 +108,8 @@ export function ActiveSubscriptionTable({
           </tr>
         )}
         {subscriptions.map((sub) => {
-          const payStatus = subscriptionPaymentStatus(sub, allPayments, allExtras);
+          const subSkips = allSkips.filter((sk) => sk.subscriptionId === sub.id);
+          const payStatus = subscriptionPaymentStatus(sub, allPayments, allExtras, subSkips);
           const isExpanded = expandedId === sub.id;
           const subExtrasTotal = allExtras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
           return (
@@ -177,7 +178,8 @@ export function InactiveSubscriptionTable({
           </tr>
         )}
         {subscriptions.map((sub) => {
-          const payStatus = subscriptionPaymentStatus(sub, allPayments, allExtras);
+          const subSkips = allSkips.filter((sk) => sk.subscriptionId === sub.id);
+          const payStatus = subscriptionPaymentStatus(sub, allPayments, allExtras, subSkips);
           const isExpanded = expandedId === sub.id;
           const subExtrasTotal = allExtras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
           return (
@@ -301,23 +303,29 @@ function ExpandableRow({
           />
         </td>
         <td className="px-4 py-2">
-          <div className="flex items-center gap-1.5">
-            <span className={[
-              "px-1.5 py-0.5 rounded-full text-[10px] font-medium",
-              payStatus === "paid" ? "bg-green-100 text-green-800" :
-              payStatus === "partial" ? "bg-yellow-100 text-yellow-800" :
-              "bg-red-100 text-red-700",
-            ].join(" ")}>{payStatus}</span>
-            {payStatus !== "paid" && (
-              <button
-                type="button"
-                onClick={handleMarkPaid}
-                disabled={saving}
-                title={`Mark as paid (₫${balance.toLocaleString()})`}
-                className="h-5 w-5 rounded flex items-center justify-center bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50 transition-colors"
-              >
-                <Check size={11} strokeWidth={3} />
-              </button>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-medium">₫{net.toLocaleString()}</span>
+              <span className={[
+                "px-1.5 py-0.5 rounded-full text-[10px] font-medium",
+                payStatus === "paid" ? "bg-green-100 text-green-800" :
+                payStatus === "partial" ? "bg-yellow-100 text-yellow-800" :
+                "bg-red-100 text-red-700",
+              ].join(" ")}>{payStatus}</span>
+              {payStatus !== "paid" && (
+                <button
+                  type="button"
+                  onClick={handleMarkPaid}
+                  disabled={saving}
+                  title={`Mark as paid (₫${balance.toLocaleString()})`}
+                  className="h-5 w-5 rounded flex items-center justify-center bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50 transition-colors"
+                >
+                  <Check size={11} strokeWidth={3} />
+                </button>
+              )}
+            </div>
+            {refunded > 0 && (
+              <p className="text-xs text-red-500 mt-0.5">−₫{refunded.toLocaleString()} refunded</p>
             )}
           </div>
         </td>

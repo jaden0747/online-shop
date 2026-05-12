@@ -26,6 +26,7 @@ function parseSub(raw: Record<string, unknown>): Subscription {
      endDate: parseExcelDate(raw.endDate as string | number) ?? parseExcelDate(raw.renewalDate as string | number) ?? new Date().toISOString(),
      endDateNoSkip: parseExcelDate(raw.endDateNoSkip as string | number) ?? parseExcelDate(raw.endDate as string | number) ?? parseExcelDate(raw.renewalDate as string | number) ?? new Date().toISOString(),
     cancelReason: toStrOrNull(raw.cancelReason),
+    cancelledAt: toStrOrNull(raw.cancelledAt),
     addressId: toStrOrNull(raw.addressId),
     createdAt: toStr(raw.createdAt) || new Date().toISOString(),
   };

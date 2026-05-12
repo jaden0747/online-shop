@@ -320,6 +320,7 @@ function makeSub(
     endDate: daysFromNow(10),
     endDateNoSkip: daysFromNow(10),
     cancelReason: null,
+    cancelledAt: null,
     addressId: null,
     createdAt: now,
     ...overrides,

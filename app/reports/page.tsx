@@ -24,7 +24,8 @@ function lastNWeekLabels(n: number): string[] {
 
 export default async function ReportsPage() {
   const subscriptions = getAllSubscriptions();
-  const allPayments = getAllPayments();
+  const knownSubIds = new Set(subscriptions.map((s) => s.id));
+  const allPayments = getAllPayments().filter((p) => knownSubIds.has(p.subscriptionId));
   const allExtras = getAllExtras();
   const allCostItems = getAllCostItems();
   const categories = getAllCostCategories();

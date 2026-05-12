@@ -33,7 +33,7 @@ export default async function SubscriptionsPage({
   const rawSubscriptions = getAllSubscriptions();
   const customers = getAllCustomers();
   const allAddresses = getAllAddresses();
-  const skips = getAllSkips();
+  const allSkips = getAllSkips();
   const pricingEntries = getAllPricing();
   const allExtras = getAllExtras();
   const allPayments = getAllPayments();
@@ -59,7 +59,7 @@ export default async function SubscriptionsPage({
 
   const customerMap = new Map(customers.map((c) => [c.phone, c]));
   const skipCountMap = new Map<string, number>();
-  for (const skip of skips) {
+  for (const skip of allSkips) {
     skipCountMap.set(skip.subscriptionId, (skipCountMap.get(skip.subscriptionId) ?? 0) + 1);
   }
 
@@ -86,7 +86,8 @@ export default async function SubscriptionsPage({
       }
       if (!filters.plans.has(s.plan)) return false;
       if (!filters.goals.has(s.goal)) return false;
-      const payStatus = subscriptionPaymentStatus(s, allPayments, allExtras);
+      const subSkips = allSkips.filter((sk) => sk.subscriptionId === s.id);
+      const payStatus = subscriptionPaymentStatus(s, allPayments, allExtras, subSkips);
       if (!filters.statuses.has(payStatus)) return false;
       if (filters.expiringSoon && daysRemaining(s.endDate) > 7) return false;
       if (filters.from) {
@@ -151,7 +152,7 @@ export default async function SubscriptionsPage({
                   subscriptions={filteredActive}
                   allPayments={allPayments}
                   allExtras={allExtras}
-                  allSkips={skips}
+                  allSkips={allSkips}
                   pricingEntries={pricingEntries}
                   addressesByCustomer={addressesByCustomer}
                   creditBalances={creditBalances}
@@ -169,7 +170,7 @@ export default async function SubscriptionsPage({
                   subscriptions={filteredInactive}
                   allPayments={allPayments}
                   allExtras={allExtras}
-                  allSkips={skips}
+                  allSkips={allSkips}
                   pricingEntries={pricingEntries}
                   creditBalances={creditBalances}
                 />

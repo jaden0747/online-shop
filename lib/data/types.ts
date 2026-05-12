@@ -35,6 +35,7 @@ export interface Subscription {
   endDate: string; // ISO string - last delivery day (inclusive), extended by skips
   endDateNoSkip: string; // ISO string - base end date without skip extensions
   cancelReason: string | null;
+  cancelledAt: string | null;
   addressId: string | null; // default delivery address for this sub; null = use customer default
   createdAt: string; // ISO string
 }

@@ -37,7 +37,7 @@ const CustomerMinimap = dynamic(
   { ssr: false }
 );
 import type { Customer, CustomerAddress, Subscription, SubscriptionExtra, Pricing, MealSkip, MealSelection, MenuItem, KitchenNote, OrderDayAddress, Payment, CreditTransaction } from "@/lib/data/types";
-import { subscriptionStatus, daysRemaining, planTotalMeals, addWorkingDays, isSubscriptionLive } from "@/lib/utils/subscription";
+import { subscriptionStatus, daysRemaining, planTotalMeals, addWorkingDays, isSubscriptionLive, calculateProratedTotalDue } from "@/lib/utils/subscription";
 import { subscriptionPaymentStatus, paymentsTotalForSub } from "@/lib/utils/payments";
 import { weekLabelForDate } from "@/lib/utils/week";
 import { CancelSubscriptionForm } from "./cancel-subscription-form";
@@ -672,6 +672,7 @@ function PaymentPanel({
   sub,
   payments,
   extras,
+  skips,
   customerCredit = 0,
   customerId,
   onReload,
@@ -679,6 +680,7 @@ function PaymentPanel({
   sub: Subscription;
   payments: Payment[];
   extras: SubscriptionExtra[];
+  skips: MealSkip[];
   customerCredit?: number;
   customerId: string;
   onReload: () => void;
@@ -704,13 +706,12 @@ function PaymentPanel({
 
   const subPayments = payments.filter((p) => p.subscriptionId === sub.id);
   const { paid, refunded, net } = paymentsTotalForSub(payments, sub.id);
-  const totalDue =
-    sub.subscriptionPrice +
-    sub.shippingPrice -
-    sub.discount +
-    extras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
+  const extrasTotal = extras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
+  const totalDue = sub.status === "cancelled"
+    ? calculateProratedTotalDue(sub, skips, extrasTotal)
+    : sub.subscriptionPrice + sub.shippingPrice - sub.discount + extrasTotal;
   const balance = totalDue - net;
-  const payStatus = subscriptionPaymentStatus(sub, payments, extras);
+  const payStatus = subscriptionPaymentStatus(sub, payments, extras, skips);
 
   function handleRecord() {
     const amt = parseFloat(form.amount);
@@ -771,7 +772,7 @@ function PaymentPanel({
       >
         <PaymentBadge status={payStatus} />
         <span className="ml-1">
-          {net > 0 ? `₫${net.toLocaleString()} paid` : "No payment"}
+          {net !== 0 ? `₫${net.toLocaleString()} ${net > 0 ? 'paid' : 'refunded'}` : paid > 0 ? "Fully refunded" : "No payment"}
           {balance > 0 ? ` · ₫${balance.toLocaleString()} due` : balance < 0 ? ` · ₫${Math.abs(balance).toLocaleString()} over` : " · ✓"}
         </span>
         <span className="ml-auto">{open ? "▲" : "▼"}</span>
@@ -1884,7 +1885,7 @@ export function CustomerOverlay({
                                 extras={details.extras.filter((e) => e.subscriptionId === sub.id)}
                                 onReload={reload}
                               />
-                              <PaymentPanel sub={sub} payments={details.payments} extras={details.extras} customerId={currentId} customerCredit={details.creditTransactions.reduce((acc, t) => { if (t.type === "refund_credit" || t.type === "manual_topup" || t.type === "adjustment") return acc + t.amount; if (t.type === "credit_used") return acc - t.amount; return acc; }, 0)} onReload={reload} />
+                              <PaymentPanel sub={sub} payments={details.payments} extras={details.extras} skips={details.skips.filter((s) => s.subscriptionId === sub.id)} customerId={currentId} customerCredit={details.creditTransactions.reduce((acc, t) => { if (t.type === "refund_credit" || t.type === "manual_topup" || t.type === "adjustment") return acc + t.amount; if (t.type === "credit_used") return acc - t.amount; return acc; }, 0)} onReload={reload} />
                              </>
                          </li>
                       );
