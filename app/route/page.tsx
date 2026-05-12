@@ -9,6 +9,7 @@ import { isSubscriptionLive } from "@/lib/utils/subscription";
 import { weekLabelForDate } from "@/lib/utils/week";
 import { DayPicker } from "@/components/day-picker";
 import { RouteMap } from "./route-map";
+import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,10 @@ function defaultDateStr(): string {
   return localDateStr(now);
 }
 
+function isValidDateStr(s: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s + "T00:00:00").getTime());
+}
+
 export default async function RoutePage({
   searchParams,
 }: {
@@ -34,7 +39,9 @@ export default async function RoutePage({
 }) {
   const params = await searchParams;
   const dateParam = typeof params.date === "string" ? params.date : null;
-  const selectedDateStr = dateParam ?? defaultDateStr();
+  const cookieStore = await cookies();
+  const cookieDate = cookieStore.get("selected_date")?.value;
+  const selectedDateStr = dateParam ?? (cookieDate && isValidDateStr(cookieDate) ? cookieDate : defaultDateStr());
   const selectedDate = new Date(selectedDateStr + "T00:00:00");
 
   const customers = getAllCustomers();

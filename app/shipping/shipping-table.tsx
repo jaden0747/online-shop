@@ -143,8 +143,7 @@ export function ShippingTable({
       }
     } catch { /* ignore */ }
     setReady(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [date, defaultHub]);
 
   // Resolve effective address/zone/lat/lng for each delivery based on selection
   const effectiveDeliveries = useMemo(() => deliveries.map((d) => {

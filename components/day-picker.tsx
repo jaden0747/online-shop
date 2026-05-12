@@ -33,6 +33,8 @@ export function DayPicker({ date }: { date: string }) {
   const dayName = DAY_NAMES[d.getDay()];
 
   function go(target: string) {
+    document.cookie = `selected_date=${target}; path=/; max-age=86400; SameSite=Lax`;
+    try { localStorage.setItem("selected_date", target); } catch { /* ignore */ }
     router.push(`${pathname}?date=${target}`);
   }
 
