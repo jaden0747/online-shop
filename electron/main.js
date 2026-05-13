@@ -1,13 +1,15 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { fork } = require("child_process");
 const http = require("http");
 
 let mainWindow;
+let tray;
 let serverProcess;
 let _autoUpdater = null;
 let updateCheckInProgress = false;
+let forceQuit = false;
 
 const PORT = 3099;
 const isDev = !app.isPackaged;
@@ -140,6 +142,47 @@ function killServer() {
   }
 }
 
+function createTray() {
+  const iconPath = path.join(__dirname, "icon.icns");
+  const trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+  tray = new Tray(trayIcon);
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: "Show Shop Organizer",
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.focus();
+        } else {
+          createWindow();
+        }
+      },
+    },
+    { type: "separator" },
+    {
+      label: "Quit",
+      click: () => {
+        forceQuit = true;
+        killServer();
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setToolTip("Shop Organizer — Oli Healthy");
+  tray.setContextMenu(contextMenu);
+
+  tray.on("click", () => {
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    } else {
+      createWindow();
+    }
+  });
+}
+
 function sendUpdateStatus(status) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("update-status", status);
@@ -156,6 +199,14 @@ async function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),
     },
+  });
+
+  // Hide to tray instead of closing
+  mainWindow.on("close", (event) => {
+    if (!forceQuit) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
   });
 
   if (isDev) {
@@ -258,6 +309,7 @@ function setupAutoUpdater() {
 }
 
 app.whenReady().then(() => {
+  createTray();
   createWindow();
 
   if (!isDev) {
@@ -267,8 +319,11 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  killServer();
-  if (process.platform !== "darwin") app.quit();
+  // On macOS, keep the server running in the tray
+  if (process.platform !== "darwin") {
+    killServer();
+    app.quit();
+  }
 });
 
 app.on("before-quit", () => {

@@ -106,7 +106,9 @@ export default async function ShippingPage({
       skip.subscriptionId === sub.id &&
       localDateStr(new Date(skip.originalDay + (skip.originalDay.length === 10 ? "T00:00:00" : ""))) === selectedDateStr
     );
-    const isReplacement = skips.some((skip) =>
+    // Only count a replacement from another day if THIS day is not explicitly skipped.
+    // An explicit skip on this day must win over a rescheduled delivery from a different day.
+    const isReplacement = !isSkipped && skips.some((skip) =>
       skip.subscriptionId === sub.id &&
       skip.replacementDay !== null &&
       localDateStr(new Date(skip.replacementDay + (skip.replacementDay.length === 10 ? "T00:00:00" : ""))) === selectedDateStr
