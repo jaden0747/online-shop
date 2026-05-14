@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { updateMealPriceAction } from "@/app/actions/settings";
-import { Input } from "@/components/ui/input";
+import { FormattedAmountInput } from "@/components/ui/formatted-amount-input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,15 +37,10 @@ export function MealPriceForm({ mealPrices }: MealPriceFormProps) {
             return (
               <div key={goal} className="space-y-1.5">
                 <Label htmlFor={fieldName} className="capitalize">{goal} (₫/meal)</Label>
-                <Input
-                  id={fieldName}
-                  name={fieldName}
-                  type="number"
-                  step="1000"
-                  min="0"
+                <FormattedAmountInput
                   value={values[goal] ?? mealPrices[goal]}
-                  onChange={(e) => setValues((prev) => ({ ...prev, [goal]: Number(e.target.value) }))}
-                  placeholder="50000"
+                  onChange={(raw) => setValues((prev) => ({ ...prev, [goal]: Number(raw) || 0 }))}
+                  placeholder="50,000"
                 />
               </div>
             );

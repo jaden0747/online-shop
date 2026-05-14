@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { updateFormulaSettingsAction } from "@/app/actions/settings";
+import { FormattedAmountInput } from "@/components/ui/formatted-amount-input";
 
 const GOALS = ["cutting", "maintenance", "bulking", "keto"] as const;
 const PLANS = [
@@ -50,12 +51,11 @@ export function FormulaPricingForm({
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <label className="text-sm font-medium w-36">Base price/meal</label>
-        <input
-          className={`${inp} w-32`}
-          type="number"
-          placeholder="e.g. 45000"
+        <FormattedAmountInput
+          className="w-32"
+          placeholder="e.g. 45,000"
           value={base}
-          onChange={(e) => setBase(e.target.value)}
+          onChange={(raw) => setBase(raw)}
         />
         <span className="text-xs text-muted-foreground">₫</span>
       </div>

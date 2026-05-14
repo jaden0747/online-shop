@@ -5,6 +5,7 @@ import { Plus, X, Pencil, Check } from "lucide-react";
 import { createCostItemAction, deleteCostItemAction, updateCostItemAction } from "@/app/actions/cost-items";
 import { upsertWeeklyOpsAction } from "@/app/actions/operations";
 import type { CostCategory, CostItem, WeeklyOps } from "@/lib/data/types";
+import { FormattedAmountInput } from "@/components/ui/formatted-amount-input";
 
 // ── Add Cost Item Form ────────────────────────────────────────────────────────
 function AddCostItemForm({
@@ -48,12 +49,11 @@ function AddCostItemForm({
       >
         {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
       </select>
-      <input
-        type="number"
-        className="w-28 border rounded px-2 py-1 text-sm bg-background outline-none focus:ring-1 focus:ring-ring"
+      <FormattedAmountInput
+        className="w-28 text-sm"
         placeholder="Amount"
         value={amount}
-        onChange={(e) => setAmount(e.target.value)}
+        onChange={(raw) => setAmount(raw)}
         onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
       />
       <input

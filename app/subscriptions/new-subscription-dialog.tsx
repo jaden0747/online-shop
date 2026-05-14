@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createSubscriptionAction } from "../actions/subscriptions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FormattedAmountInput } from "@/components/ui/formatted-amount-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -251,23 +252,20 @@ export function NewSubscriptionDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="newSubPrice">Subscription (₫)</Label>
-              <Input
+              <FormattedAmountInput
                 id="newSubPrice"
-                type="number"
-                step="1000"
-                value={subscriptionPrice || ""}
-                onChange={(e) => setSubscriptionPrice(Number(e.target.value))}
-                required
+                className="h-8"
+                value={subscriptionPrice}
+                onChange={(raw) => setSubscriptionPrice(Number(raw) || 0)}
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="newShipPrice">Shipping (₫)</Label>
-              <Input
+              <FormattedAmountInput
                 id="newShipPrice"
-                type="number"
-                step="1000"
-                value={shippingPrice || ""}
-                onChange={(e) => setShippingPrice(Number(e.target.value))}
+                className="h-8"
+                value={shippingPrice}
+                onChange={(raw) => setShippingPrice(Number(raw) || 0)}
               />
             </div>
           </div>

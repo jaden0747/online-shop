@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { updateSubscriptionAction, createExtraAction, deleteExtraAction } from "../actions/subscriptions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FormattedAmountInput } from "@/components/ui/formatted-amount-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -274,20 +275,16 @@ export function EditSubscriptionRow({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label>Subscription (₫)</Label>
-              <Input
-                type="number"
-                step="1000"
-                value={subscriptionPrice || ""}
-                onChange={(e) => setSubscriptionPrice(Number(e.target.value))}
+              <FormattedAmountInput
+                value={subscriptionPrice}
+                onChange={(raw) => setSubscriptionPrice(Number(raw) || 0)}
               />
             </div>
             <div className="space-y-1">
               <Label>Shipping (₫)</Label>
-              <Input
-                type="number"
-                step="1000"
-                value={shippingPrice || ""}
-                onChange={(e) => setShippingPrice(Number(e.target.value))}
+              <FormattedAmountInput
+                value={shippingPrice}
+                onChange={(raw) => setShippingPrice(Number(raw) || 0)}
               />
             </div>
           </div>
@@ -348,15 +345,13 @@ export function EditSubscriptionRow({
                     )
                   }
                 />
-                <Input
-                  type="number"
-                  step="1000"
+                <FormattedAmountInput
                   className="w-28 text-xs"
                   placeholder="Amount (₫)"
-                  value={extra.amount || ""}
-                  onChange={(e) =>
+                  value={extra.amount}
+                  onChange={(raw) =>
                     setPendingExtras((prev) =>
-                      prev.map((x, i) => (i === idx ? { ...x, amount: Number(e.target.value) } : x))
+                      prev.map((x, i) => (i === idx ? { ...x, amount: Number(raw) || 0 } : x))
                     )
                   }
                 />

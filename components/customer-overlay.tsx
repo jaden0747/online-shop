@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FormattedAmountInput } from "@/components/ui/formatted-amount-input";
 import {
   getCustomerDetailsAction,
   updateCustomerNoteAction,
@@ -148,15 +149,11 @@ function CreditPanel({
       {/* Add credit form */}
       {showAddForm && (
         <div className="border rounded-lg p-2 space-y-1">
-          <input
-            autoFocus
-            type="number"
-            min={0}
-            step={1000}
+          <FormattedAmountInput
             placeholder="Amount (₫)"
             className="w-full bg-transparent border-b border-input outline-none focus:border-ring text-xs pb-0.5"
             value={addAmount}
-            onChange={(e) => setAddAmount(e.target.value)}
+            onChange={(raw) => setAddAmount(raw)}
           />
           <input
             type="text"
@@ -453,15 +450,15 @@ const defaultCreditAmt = String(Math.min(customerCreditBalance, Math.max(0, tota
       <div className="grid grid-cols-3 gap-x-2 gap-y-0.5">
         <label className="flex items-center gap-1">
           <span className="text-[10px] text-muted-foreground shrink-0">Sub</span>
-          <input className={inp} type="number" placeholder="0" value={subPrice} onChange={(e) => setSubPrice(e.target.value)} />
+          <FormattedAmountInput className={inp} placeholder="0" value={subPrice} onChange={(raw) => setSubPrice(raw)} />
         </label>
         <label className="flex items-center gap-1">
           <span className="text-[10px] text-muted-foreground shrink-0">Ship</span>
-          <input className={inp} type="number" placeholder="0" value={shipPrice} onChange={(e) => setShipPrice(e.target.value)} />
+          <FormattedAmountInput className={inp} placeholder="0" value={shipPrice} onChange={(raw) => setShipPrice(raw)} />
         </label>
         <label className="flex items-center gap-1">
           <span className="text-[10px] text-muted-foreground shrink-0">Disc</span>
-          <input className={inp} type="number" placeholder="0" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+          <FormattedAmountInput className={inp} placeholder="0" value={discount} onChange={(raw) => setDiscount(raw)} />
         </label>
       </div>
       <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
@@ -500,13 +497,10 @@ const defaultCreditAmt = String(Math.min(customerCreditBalance, Math.max(0, tota
           {applyCredit && (
             <div className="flex items-center gap-1 pl-4">
               <span className="text-[10px] text-muted-foreground shrink-0">Amount</span>
-              <input
+              <FormattedAmountInput
                 className={inp + " max-w-[100px]"}
-                type="number"
-                step="1000"
-                min={0}
                 value={creditApplyAmt}
-                onChange={(e) => setCreditApplyAmt(e.target.value)}
+                onChange={(raw) => setCreditApplyAmt(raw)}
               />
               {parseFloat(creditApplyAmt) > customerCreditBalance && (
                 <span className="text-amber-600 text-[10px]">exceeds balance</span>
@@ -628,13 +622,11 @@ function ExtrasPanel({
               value={noteInput}
               onChange={(e) => setNoteInput(e.target.value)}
             />
-            <input
+            <FormattedAmountInput
               className={`${inp} w-24`}
-              type="number"
-              step="1000"
               placeholder="₫ Amount"
               value={amountInput}
-              onChange={(e) => setAmountInput(e.target.value)}
+              onChange={(raw) => setAmountInput(raw)}
             />
             <button
               type="button"
@@ -685,6 +677,15 @@ function PaymentPanel({
   customerId: string;
   onReload: () => void;
 }) {
+  const subPayments = payments.filter((p) => p.subscriptionId === sub.id);
+  const { paid, refunded, net } = paymentsTotalForSub(payments, sub.id);
+  const extrasTotal = extras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
+  const totalDue = sub.status === "cancelled"
+    ? calculateProratedTotalDue(sub, skips, extrasTotal)
+    : sub.subscriptionPrice + sub.shippingPrice - sub.discount + extrasTotal;
+  const balance = totalDue - net;
+  const payStatus = subscriptionPaymentStatus(sub, payments, extras, skips);
+
   const [open, setOpen] = useState(false);
   const [saving, startSave] = useTransition();
   const [form, setForm] = useState<{
@@ -695,23 +696,14 @@ function PaymentPanel({
     note: string;
   }>({
     type: "payment",
-    amount: "",
+    amount: balance > 0 ? String(balance) : "",
     paidAt: localDateStr(new Date()),
-    method: "cash",
+    method: "transfer",
     note: "",
   });
   const [showApplyCredit, setShowApplyCredit] = useState(false);
   const [creditApplyAmt, setCreditApplyAmt] = useState("");
   const [creditWarning, setCreditWarning] = useState<string | null>(null);
-
-  const subPayments = payments.filter((p) => p.subscriptionId === sub.id);
-  const { paid, refunded, net } = paymentsTotalForSub(payments, sub.id);
-  const extrasTotal = extras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
-  const totalDue = sub.status === "cancelled"
-    ? calculateProratedTotalDue(sub, skips, extrasTotal)
-    : sub.subscriptionPrice + sub.shippingPrice - sub.discount + extrasTotal;
-  const balance = totalDue - net;
-  const payStatus = subscriptionPaymentStatus(sub, payments, extras, skips);
 
   function handleRecord() {
     const amt = parseFloat(form.amount);
@@ -722,7 +714,7 @@ function PaymentPanel({
         type: form.type,
         amount: amt,
         paidAt: form.paidAt,
-        method: form.type === "payment" ? "other" : form.method,
+        method: form.method,
         note: form.note.trim() || null,
       });
       setForm((p) => ({ ...p, amount: "", note: "" }));
@@ -857,14 +849,11 @@ function PaymentPanel({
                 </button>
               ) : (
                 <div className="flex items-center gap-1 flex-wrap">
-                  <input
-                    autoFocus
+                  <FormattedAmountInput
                     className={`${inp} w-24`}
-                    type="number"
-                    step="1000"
                     placeholder="Amount"
                     value={creditApplyAmt}
-                    onChange={(e) => setCreditApplyAmt(e.target.value)}
+                    onChange={(raw) => setCreditApplyAmt(raw)}
                   />
                   <button type="button" onClick={handleApplyCredit} disabled={saving || !creditApplyAmt}
                     className="px-2 py-0.5 text-[10px] rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
@@ -882,20 +871,18 @@ function PaymentPanel({
 
           {/* Record form */}
           <div className="space-y-1">
-            <div className={`grid gap-1 ${form.type === "refund" ? "grid-cols-2" : "grid-cols-1"}`}>
+            <div className="grid grid-cols-2 gap-1">
               <select className={inp} value={form.type} onChange={(e) => setForm((p) => ({ ...p, type: e.target.value as Payment["type"] }))}>
                 <option value="payment">Payment</option>
                 <option value="refund">Refund</option>
               </select>
-              {form.type === "refund" && (
-                <select className={inp} value={form.method} onChange={(e) => setForm((p) => ({ ...p, method: e.target.value as Payment["method"] }))}>
-                  {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-              )}
+              <select className={inp} value={form.method} onChange={(e) => setForm((p) => ({ ...p, method: e.target.value as Payment["method"] }))}>
+                {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
             </div>
             <div className="grid grid-cols-2 gap-1">
-              <input className={inp} type="number" placeholder="Amount" value={form.amount}
-                onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} />
+              <FormattedAmountInput className={inp} placeholder="Amount" value={form.amount}
+                onChange={(raw) => setForm((p) => ({ ...p, amount: raw }))} />
               <input className={inp} type="date" value={form.paidAt}
                 onChange={(e) => setForm((p) => ({ ...p, paidAt: e.target.value }))} />
             </div>

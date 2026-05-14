@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FormattedAmountInput } from "@/components/ui/formatted-amount-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -49,7 +50,7 @@ export function CancelSubscriptionForm({
 
   const [reason, setReason] = useState("");
   const [refundAmt, setRefundAmt] = useState(String(refundCalc.suggested));
-  const [refundMethod, setRefundMethod] = useState<Payment["method"]>("cash");
+  const [refundMethod, setRefundMethod] = useState<Payment["method"]>("transfer");
   const [refundDate, setRefundDate] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
   const [keepAsCredit, setKeepAsCredit] = useState(false);
@@ -138,13 +139,10 @@ export function CancelSubscriptionForm({
       {/* Refund amount */}
       <div className="space-y-1">
         <Label className="text-xs">Refund amount (₫)</Label>
-        <Input
-          type="number"
-          min={0}
-          step={1000}
+        <FormattedAmountInput
           className="text-xs h-7"
           value={refundAmt}
-          onChange={(e) => setRefundAmt(e.target.value)}
+          onChange={(raw) => setRefundAmt(raw)}
         />
         {exceedsNetPaid && (
           <p className="text-amber-600 text-[10px]">

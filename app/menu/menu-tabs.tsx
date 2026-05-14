@@ -58,8 +58,21 @@ export function MenuTabs({ thisWeek, nextWeek }: { thisWeek: WeekData; nextWeek:
   const todayDow = new Date().getDay();
 
   const byDaySlot = new Map(data.menuItems.map((item) => [`${item.day}-${item.slot}`, item]));
+
+  // Build set of (subscriptionId, dayNum) pairs that are skipped, so totals
+  // match what actually ships (same as the Shipping page filtering).
+  const skippedKeys = new Set<string>();
+  for (const group of data.customerGroups) {
+    for (const sub of group.subscriptions) {
+      for (const sk of sub.skips) {
+        skippedKeys.add(`${sub.subscriptionId}-${sk.dayNum}`);
+      }
+    }
+  }
+
   const totals = new Map<string, number>();
   for (const sel of data.selections) {
+    if (skippedKeys.has(`${sel.subscriptionId}-${sel.day}`)) continue;
     const key = `${sel.day}-${sel.menuSlot}`;
     totals.set(key, (totals.get(key) || 0) + 1);
   }

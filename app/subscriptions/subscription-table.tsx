@@ -10,6 +10,7 @@ import { daysRemaining, formatDate } from "@/lib/utils/subscription";
 import { EditSubscriptionRow } from "./edit-subscription-row";
 import { CustomerOverlayTrigger } from "@/components/customer-overlay-trigger";
 import { Badge } from "@/components/ui/badge";
+import { FormattedAmountInput } from "@/components/ui/formatted-amount-input";
 import { X, Check, ChevronDown, ChevronRight } from "lucide-react";
 import type { Payment, SubscriptionExtra, MealSkip, Subscription } from "@/lib/data/types";
 
@@ -253,7 +254,7 @@ function ExpandableRow({
         type: "payment",
         amount: balance,
         paidAt: localDateStr(new Date()),
-        method: "other",
+        method: "transfer",
         note: null,
       });
       router.refresh();
@@ -408,7 +409,7 @@ function PaymentExpandedPanel({
     type: "payment",
     amount: balance > 0 ? String(balance) : "",
     paidAt: localDateStr(new Date()),
-    method: "cash",
+    method: "transfer",
     note: "",
   });
   const [creditAmount, setCreditAmount] = useState(String(Math.min(customerCredit, Math.max(0, balance))));
@@ -423,7 +424,7 @@ function PaymentExpandedPanel({
         type: form.type,
         amount: amt,
         paidAt: form.paidAt,
-        method: form.type === "payment" ? "other" : form.method,
+        method: form.method,
         note: form.note.trim() || null,
       });
       setForm((p) => ({ ...p, note: "" }));
@@ -592,13 +593,11 @@ function PaymentExpandedPanel({
             value={extraNote}
             onChange={(e) => setExtraNote(e.target.value)}
           />
-          <input
+          <FormattedAmountInput
             className={`${inp} w-28`}
-            type="number"
-            step="1000"
             placeholder="₫ Amount"
             value={extraAmount}
-            onChange={(e) => setExtraAmount(e.target.value)}
+            onChange={(raw) => setExtraAmount(raw)}
           />
           <button
             type="button"
@@ -617,13 +616,11 @@ function PaymentExpandedPanel({
           <option value="payment">Payment</option>
           <option value="refund">Refund</option>
         </select>
-        {form.type === "refund" && (
-          <select className={`${inp} w-24`} value={form.method} onChange={(e) => setForm((p) => ({ ...p, method: e.target.value as Payment["method"] }))}>
-            {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-        )}
-        <input className={`${inp} w-28`} type="number" step="1000" placeholder="Amount (₫)" value={form.amount}
-          onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} />
+        <select className={`${inp} w-24`} value={form.method} onChange={(e) => setForm((p) => ({ ...p, method: e.target.value as Payment["method"] }))}>
+          {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <FormattedAmountInput className={`${inp} w-28`} placeholder="Amount (₫)" value={form.amount}
+          onChange={(raw) => setForm((p) => ({ ...p, amount: raw }))} />
         <input className={`${inp} w-36`} type="date" value={form.paidAt}
           onChange={(e) => setForm((p) => ({ ...p, paidAt: e.target.value }))} />
         <input className={`${inp} flex-1 min-w-[100px]`} type="text" placeholder="Note (optional)" value={form.note}
@@ -640,8 +637,8 @@ function PaymentExpandedPanel({
           <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
             ₫{customerCredit.toLocaleString()} credit available
           </span>
-          <input className={`${inp} w-28`} type="number" step="1000" placeholder="Apply amount" value={creditAmount}
-            onChange={(e) => setCreditAmount(e.target.value)} />
+          <FormattedAmountInput className={`${inp} w-28`} placeholder="Apply amount" value={creditAmount}
+            onChange={(raw) => setCreditAmount(raw)} />
           <button type="button" onClick={handleApplyCredit} disabled={saving || !creditAmount}
             className="px-3 py-1 text-xs rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
             Apply Credit

@@ -563,8 +563,8 @@ export function ShippingTable({
 
   return (
     <div className="space-y-3">
-      <div className="px-3 pt-2 flex items-center gap-3 text-xs">
-        <label className="flex items-center gap-2 cursor-pointer select-none">
+      <div className="px-3 pt-2 flex items-center gap-3 text-xs flex-wrap">
+        <label className="flex items-center gap-2 cursor-pointer select-none shrink-0">
           <span className="text-muted-foreground">Shippers:</span>
           <input
             type="number"
@@ -588,14 +588,14 @@ export function ShippingTable({
             </button>
           )}
         </label>
-        <span className="text-muted-foreground">
+        <span className="text-muted-foreground shrink-0">
           {cluster.k > 0 ? `${cluster.k} shipper${cluster.k > 1 ? "s" : ""} planned` : "no route planned"}
         </span>
-        <div className="flex gap-1 ml-auto">
+        <div className="flex gap-1 ml-auto flex-wrap">
           <button
             type="button"
             onClick={handleExportPNG}
-            className="h-7 px-3 text-xs rounded border bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            className="h-7 px-3 text-xs rounded border bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shrink-0"
             title="Download shipping table as PNG"
           >
             Export PNG
@@ -604,7 +604,7 @@ export function ShippingTable({
             type="button"
             onClick={handleCopyPNG}
             disabled={copying}
-            className="h-7 px-3 text-xs rounded border bg-background hover:bg-accent transition-colors disabled:opacity-50"
+            className="h-7 px-3 text-xs rounded border bg-background hover:bg-accent transition-colors disabled:opacity-50 shrink-0"
             title="Copy shipping table PNG to clipboard"
           >
             {copying ? "Copying…" : "Copy PNG"}
@@ -612,7 +612,7 @@ export function ShippingTable({
           <button
             type="button"
             onClick={handleCopyText}
-            className="h-7 px-3 text-xs rounded border bg-background hover:bg-accent transition-colors"
+            className="h-7 px-3 text-xs rounded border bg-background hover:bg-accent transition-colors shrink-0"
             title="Copy shipping details as text, grouped by shipper"
           >
             {copiedText ? "Copied!" : "Copy Text"}
@@ -620,7 +620,7 @@ export function ShippingTable({
           <button
             type="button"
             onClick={handleCopyMenu}
-            className="h-7 px-3 text-xs rounded border bg-background hover:bg-accent transition-colors"
+            className="h-7 px-3 text-xs rounded border bg-background hover:bg-accent transition-colors shrink-0"
             title="Copy menu summary and per-customer info grouped by shipper"
           >
             {copiedMenu ? "Copied!" : "Menu"}
@@ -629,7 +629,7 @@ export function ShippingTable({
             type="button"
             onClick={handleCopyMenuPng}
             disabled={copyingMenuPng}
-            className="h-7 px-3 text-xs font-bold rounded border bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
+            className="h-7 px-3 text-xs font-bold rounded border bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50 shrink-0"
             title="Copy menu report as PNG to clipboard"
           >
             {copyingMenuPng ? "Copying…" : "Menu PNG"}

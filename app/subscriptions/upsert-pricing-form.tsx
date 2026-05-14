@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import { upsertPricingAction } from "../actions/pricing";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { FormattedAmountInput } from "@/components/ui/formatted-amount-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -121,14 +121,10 @@ export function UpsertPricingForm({
 
           <div className="space-y-1">
             <Label htmlFor="totalPrice">Package price (₫)</Label>
-            <Input
+            <FormattedAmountInput
               id="totalPrice"
-              name="totalPrice"
-              type="number"
-              step="1000"
-              value={totalPrice || ""}
-              onChange={(e) => setTotalPrice(Number(e.target.value))}
-              required
+              value={totalPrice}
+              onChange={(raw) => setTotalPrice(Number(raw) || 0)}
             />
             {pricePerMeal > 0 && (
               <p className="text-xs text-muted-foreground">
