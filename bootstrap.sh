@@ -2,7 +2,8 @@
 set -e
 
 REPO_URL="https://github.com/jaden0747/online-shop.git"
-APP_DIR="$HOME/shop-organizer"
+BASE_DIR="$(pwd)"
+APP_DIR="$BASE_DIR/shop-organizer"
 
 echo "==> Shop Organizer bootstrap"
 

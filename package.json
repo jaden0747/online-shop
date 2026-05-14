@@ -11,8 +11,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "electron:dev": "electron .",
-    "electron:build": "rm -rf .next && next build && cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/ && cp node_modules/next/dist/compiled/next-server/*.runtime.prod.js .next/standalone/node_modules/next/dist/compiled/next-server/ && electron-builder --mac",
-    "release": "bash scripts/release.sh"
+    "electron:prepare": "node scripts/prepare-electron-build.mjs",
+    "electron:build": "npm run electron:prepare && electron-builder --mac",
+    "electron:build:win": "npm run electron:prepare && electron-builder --win",
+    "release": "bash scripts/release.sh",
+    "release:win": "powershell -ExecutionPolicy Bypass -File scripts/release-windows.ps1"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
@@ -81,6 +84,21 @@
         "zip"
       ],
       "category": "public.app-category.business"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}-setup-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     },
     "publish": [
       {
