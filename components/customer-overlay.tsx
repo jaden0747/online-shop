@@ -39,7 +39,7 @@ const CustomerMinimap = dynamic(
 );
 import type { Customer, CustomerAddress, Subscription, SubscriptionExtra, Pricing, MealSkip, MealSelection, MenuItem, KitchenNote, OrderDayAddress, Payment, CreditTransaction } from "@/lib/data/types";
 import { subscriptionStatus, daysRemaining, planTotalMeals, addWorkingDays, isSubscriptionLive, calculateProratedTotalDue } from "@/lib/utils/subscription";
-import { subscriptionPaymentStatus, paymentsTotalForSub } from "@/lib/utils/payments";
+import { subscriptionPaymentStatus, paymentsTotalForSub, subscriptionCompensation } from "@/lib/utils/payments";
 import { weekLabelForDate } from "@/lib/utils/week";
 import { CancelSubscriptionForm } from "./cancel-subscription-form";
 import { Pencil, X, Plus, Star, Trash2, Check, MapPin, ChevronLeft, ChevronRight, Copy } from "lucide-react";
@@ -665,6 +665,7 @@ function PaymentPanel({
   payments,
   extras,
   skips,
+  creditTransactions,
   customerCredit = 0,
   customerId,
   onReload,
@@ -673,18 +674,22 @@ function PaymentPanel({
   payments: Payment[];
   extras: SubscriptionExtra[];
   skips: MealSkip[];
+  creditTransactions: CreditTransaction[];
   customerCredit?: number;
   customerId: string;
   onReload: () => void;
 }) {
   const subPayments = payments.filter((p) => p.subscriptionId === sub.id);
-  const { paid, refunded, net } = paymentsTotalForSub(payments, sub.id);
+  const { paid, refunded } = paymentsTotalForSub(payments, sub.id);
+  const compensation = subscriptionCompensation(sub.id, payments, creditTransactions);
   const extrasTotal = extras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
-  const totalDue = sub.status === "cancelled"
+  const isCancelled = sub.status === "cancelled";
+  const totalDue = isCancelled
     ? calculateProratedTotalDue(sub, skips, extrasTotal)
     : sub.subscriptionPrice + sub.shippingPrice - sub.discount + extrasTotal;
-  const balance = totalDue - net;
-  const payStatus = subscriptionPaymentStatus(sub, payments, extras, skips);
+  const balance = totalDue - compensation.netEarned;
+  const payStatusInfo = subscriptionPaymentStatus(sub, payments, extras, skips, creditTransactions);
+  const payStatus = payStatusInfo.status;
 
   const [open, setOpen] = useState(false);
   const [saving, startSave] = useTransition();
@@ -764,8 +769,18 @@ function PaymentPanel({
       >
         <PaymentBadge status={payStatus} />
         <span className="ml-1">
-          {net !== 0 ? `₫${net.toLocaleString()} ${net > 0 ? 'paid' : 'refunded'}` : paid > 0 ? "Fully refunded" : "No payment"}
-          {balance > 0 ? ` · ₫${balance.toLocaleString()} due` : balance < 0 ? ` · ₫${Math.abs(balance).toLocaleString()} over` : " · ✓"}
+          {compensation.netEarned !== 0
+            ? `₫${compensation.netEarned.toLocaleString()} ${compensation.netEarned > 0 ? 'net' : 'refunded'}`
+            : paid > 0 ? "Fully refunded" : "No payment"}
+          {balance > 0
+            ? isCancelled && payStatus === "paid"
+              ? ` · ₫${balance.toLocaleString()} over-refunded`
+              : ` · ₫${balance.toLocaleString()} due`
+            : balance < 0
+              ? isCancelled
+                ? ` · ₫${Math.abs(balance).toLocaleString()} refund owed`
+                : ` · ₫${Math.abs(balance).toLocaleString()} over`
+              : " · ✓"}
         </span>
         <span className="ml-auto">{open ? "▲" : "▼"}</span>
       </button>
@@ -783,8 +798,14 @@ function PaymentPanel({
               <p className="font-medium text-green-700 dark:text-green-400">₫{paid.toLocaleString()}</p>
             </div>
             <div className="bg-muted/30 rounded p-1">
-              <p className="text-muted-foreground">{balance >= 0 ? "Balance" : "Overpaid"}</p>
-              <p className={`font-medium ${balance > 0 ? "text-red-600" : balance < 0 ? "text-yellow-600" : "text-green-700"}`}>
+              <p className="text-muted-foreground">
+                {isCancelled && balance < 0
+                  ? "Refund owed"
+                  : isCancelled && balance > 0
+                    ? "Over-refunded"
+                    : balance >= 0 ? "Balance" : "Overpaid"}
+              </p>
+              <p className={`font-medium ${balance > 0 ? "text-red-600" : balance < 0 ? "text-amber-600" : "text-green-700"}`}>
                 ₫{Math.abs(balance).toLocaleString()}
               </p>
             </div>
@@ -829,6 +850,9 @@ function PaymentPanel({
               ))}
               {refunded > 0 && (
                 <li className="text-[10px] text-yellow-600">Refunded: ₫{refunded.toLocaleString()}</li>
+              )}
+              {compensation.refundedToCredit > 0 && (
+                <li className="text-[10px] text-emerald-600">→ Credit: ₫{compensation.refundedToCredit.toLocaleString()}</li>
               )}
             </ul>
           )}
@@ -1872,7 +1896,7 @@ export function CustomerOverlay({
                                 extras={details.extras.filter((e) => e.subscriptionId === sub.id)}
                                 onReload={reload}
                               />
-                              <PaymentPanel sub={sub} payments={details.payments} extras={details.extras} skips={details.skips.filter((s) => s.subscriptionId === sub.id)} customerId={currentId} customerCredit={details.creditTransactions.reduce((acc, t) => { if (t.type === "refund_credit" || t.type === "manual_topup" || t.type === "adjustment") return acc + t.amount; if (t.type === "credit_used") return acc - t.amount; return acc; }, 0)} onReload={reload} />
+                              <PaymentPanel sub={sub} payments={details.payments} extras={details.extras} skips={details.skips.filter((s) => s.subscriptionId === sub.id)} creditTransactions={details.creditTransactions} customerId={currentId} customerCredit={details.creditTransactions.reduce((acc, t) => { if (t.type === "refund_credit" || t.type === "manual_topup" || t.type === "adjustment") return acc + t.amount; if (t.type === "credit_used") return acc - t.amount; return acc; }, 0)} onReload={reload} />
                              </>
                          </li>
                       );

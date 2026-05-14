@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormattedAmountInput } from "@/components/ui/formatted-amount-input";
@@ -15,7 +15,7 @@ import {
 import { updateSubscriptionStatusAction } from "@/app/actions/subscriptions";
 import { createPaymentAction } from "@/app/actions/payments";
 import { addCreditAction } from "@/app/actions/credits";
-import { suggestedRefund } from "@/lib/utils/subscription";
+import { suggestedRefund, todayDateStr } from "@/lib/utils/subscription";
 import type { MealSkip, Payment } from "@/lib/data/types";
 
 type Sub = {
@@ -46,22 +46,41 @@ export function CancelSubscriptionForm({
   onDone,
   onCancel,
 }: CancelSubscriptionFormProps) {
-  const refundCalc = suggestedRefund(sub, skips, payments);
-
+  const [cancelDate, setCancelDate] = useState(todayDateStr());
   const [reason, setReason] = useState("");
-  const [refundAmt, setRefundAmt] = useState(String(refundCalc.suggested));
   const [refundMethod, setRefundMethod] = useState<Payment["method"]>("transfer");
-  const [refundDate, setRefundDate] = useState(new Date().toISOString().slice(0, 10));
+  const [refundDate, setRefundDate] = useState(todayDateStr());
   const [note, setNote] = useState("");
   const [keepAsCredit, setKeepAsCredit] = useState(false);
   const [pending, startTransition] = useTransition();
 
+  // Re-derive the refund calculation live as the cancellation date changes.
+  const refundCalc = useMemo(() => {
+    const asOf = new Date(cancelDate + "T00:00:00");
+    return suggestedRefund(sub, skips, payments, asOf);
+  }, [sub, skips, payments, cancelDate]);
+
+  const [refundAmt, setRefundAmt] = useState(String(refundCalc.suggested));
+
+  // Sync the refund amount when the calc changes (e.g. date changes), but only if
+  // the user hasn't manually edited it away from the suggested value.
+  const suggestedStr = String(refundCalc.suggested);
+
   const parsedAmt = parseFloat(refundAmt) || 0;
   const exceedsNetPaid = parsedAmt > refundCalc.netPaid && refundCalc.netPaid > 0;
 
+  const endDate = new Date(sub.endDate);
+  endDate.setHours(0, 0, 0, 0);
+  const cancelDateObj = new Date(cancelDate + "T00:00:00");
+
   function handleConfirm() {
     startTransition(async () => {
-      await updateSubscriptionStatusAction(sub.id, "cancelled", reason.trim() || undefined);
+      await updateSubscriptionStatusAction(
+        sub.id,
+        "cancelled",
+        reason.trim() || undefined,
+        cancelDate + "T00:00:00.000Z"
+      );
       if (parsedAmt > 0) {
         if (keepAsCredit) {
           await addCreditAction({
@@ -88,6 +107,27 @@ export function CancelSubscriptionForm({
 
   return (
     <div className="space-y-3">
+      {/* Cancellation date */}
+      <div className="space-y-1">
+        <Label className="text-xs">Cancellation date</Label>
+        <Input
+          type="date"
+          className="h-7 text-xs"
+          value={cancelDate}
+          max={endDate.toISOString().slice(0, 10)}
+          onChange={(e) => {
+            setCancelDate(e.target.value);
+            // Snap refund amount to new suggested when user hasn't diverged
+            const asOf = new Date(e.target.value + "T00:00:00");
+            const next = suggestedRefund(sub, skips, payments, asOf);
+            setRefundAmt(String(next.suggested));
+          }}
+        />
+        <p className="text-[10px] text-muted-foreground">
+          Set to <strong>tomorrow</strong> if today's meal was already served — refund days start from this date.
+        </p>
+      </div>
+
       {/* Refund breakdown */}
       <div className="rounded-lg bg-muted/60 p-3 text-xs space-y-1">
         <div className="flex justify-between text-muted-foreground">
@@ -95,7 +135,7 @@ export function CancelSubscriptionForm({
           <span>₫{refundCalc.pricePerDay.toLocaleString()}</span>
         </div>
         <div className="flex justify-between text-muted-foreground">
-          <span>Remaining days</span>
+          <span>Remaining days (from {cancelDate})</span>
           <span>{refundCalc.remainingDays}</span>
         </div>
         {refundCalc.futureSkipsNoReplace > 0 && (
@@ -138,7 +178,18 @@ export function CancelSubscriptionForm({
 
       {/* Refund amount */}
       <div className="space-y-1">
-        <Label className="text-xs">Refund amount (₫)</Label>
+        <Label className="text-xs">
+          Refund amount (₫)
+          {refundAmt !== suggestedStr && (
+            <button
+              type="button"
+              className="ml-2 text-[10px] text-primary hover:underline"
+              onClick={() => setRefundAmt(suggestedStr)}
+            >
+              reset to suggested
+            </button>
+          )}
+        </Label>
         <FormattedAmountInput
           className="text-xs h-7"
           value={refundAmt}
@@ -215,7 +266,7 @@ export function CancelSubscriptionForm({
           variant="destructive"
           size="sm"
           className="flex-1"
-          disabled={pending}
+          disabled={pending || cancelDateObj > endDate}
           onClick={handleConfirm}
         >
           {pending ? "Cancelling…" : "Confirm Cancel"}
@@ -232,4 +283,3 @@ export function CancelSubscriptionForm({
     </div>
   );
 }
-

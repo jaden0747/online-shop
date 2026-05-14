@@ -296,16 +296,20 @@ export function suggestedRefund(
     endDate: string;
   },
   skips: { originalDay: string; replacementDay: string | null }[],
-  payments: { type: "payment" | "refund"; amount: number }[]
+  payments: { type: "payment" | "refund"; amount: number }[],
+  asOf?: Date
 ): SuggestedRefundResult {
-  const today = new Date();
+  const today = asOf ? new Date(asOf) : new Date();
   today.setHours(0, 0, 0, 0);
 
   const totalDays = Math.max(1, planTotalMeals(sub.plan));
   const effectiveTotal = sub.subscriptionPrice + sub.shippingPrice - sub.discount;
   const pricePerDay = effectiveTotal / totalDays;
 
-  const remainingDays = workingDaysRemainingInclusive(sub.endDate);
+  // Count working days from the cancellation cutoff (inclusive) through endDate (inclusive).
+  const end = new Date(sub.endDate);
+  end.setDate(end.getDate() + 1); // make endDate inclusive in countWorkingDays
+  const remainingDays = Math.max(0, countWorkingDays(today, end));
 
   const futureSkipsNoReplace = skips.filter((sk) => {
     const d = new Date(sk.originalDay);

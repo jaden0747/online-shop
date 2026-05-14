@@ -87,7 +87,7 @@ export default async function SubscriptionsPage({
       if (!filters.plans.has(s.plan)) return false;
       if (!filters.goals.has(s.goal)) return false;
       const subSkips = allSkips.filter((sk) => sk.subscriptionId === s.id);
-      const payStatus = subscriptionPaymentStatus(s, allPayments, allExtras, subSkips);
+      const { status: payStatus } = subscriptionPaymentStatus(s, allPayments, allExtras, subSkips, allCreditTransactions);
       if (!filters.statuses.has(payStatus)) return false;
       if (filters.expiringSoon && daysRemaining(s.endDate) > 7) return false;
       if (filters.from) {
@@ -153,6 +153,7 @@ export default async function SubscriptionsPage({
                   allPayments={allPayments}
                   allExtras={allExtras}
                   allSkips={allSkips}
+                  allCreditTransactions={allCreditTransactions}
                   pricingEntries={pricingEntries}
                   addressesByCustomer={addressesByCustomer}
                   creditBalances={creditBalances}
@@ -171,6 +172,7 @@ export default async function SubscriptionsPage({
                   allPayments={allPayments}
                   allExtras={allExtras}
                   allSkips={allSkips}
+                  allCreditTransactions={allCreditTransactions}
                   pricingEntries={pricingEntries}
                   creditBalances={creditBalances}
                 />

@@ -63,10 +63,13 @@ export async function createSubscriptionAction(formData: FormData): Promise<{ id
 export async function updateSubscriptionStatusAction(
   id: string,
   status: string,
-  cancelReason?: string
+  cancelReason?: string,
+  cancelledAt?: string
 ) {
-  const cancelledAt = status === "cancelled" ? new Date().toISOString() : null;
-  updateSubscription(id, { status, cancelReason: cancelReason ?? null, cancelledAt });
+  const resolvedCancelledAt = status === "cancelled"
+    ? (cancelledAt ?? new Date().toISOString())
+    : null;
+  updateSubscription(id, { status, cancelReason: cancelReason ?? null, cancelledAt: resolvedCancelledAt });
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
 }

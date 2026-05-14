@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import { createPaymentAction, deletePaymentAction } from "@/app/actions/payments";
 import { applyCreditToSubscriptionAction, revertCreditPaymentAction } from "@/app/actions/credits";
 import { createExtraAction, deleteExtraAction } from "@/app/actions/subscriptions";
-import { paymentsTotalForSub, subscriptionPaymentStatus } from "@/lib/utils/payments";
-import { daysRemaining, formatDate } from "@/lib/utils/subscription";
+import { paymentsTotalForSub, subscriptionPaymentStatus, subscriptionCompensation } from "@/lib/utils/payments";
+import { calculateProratedTotalDue, daysRemaining, formatDate } from "@/lib/utils/subscription";
 import { EditSubscriptionRow } from "./edit-subscription-row";
 import { CustomerOverlayTrigger } from "@/components/customer-overlay-trigger";
 import { Badge } from "@/components/ui/badge";
 import { FormattedAmountInput } from "@/components/ui/formatted-amount-input";
 import { X, Check, ChevronDown, ChevronRight } from "lucide-react";
-import type { Payment, SubscriptionExtra, MealSkip, Subscription } from "@/lib/data/types";
+import type { Payment, SubscriptionExtra, MealSkip, Subscription, CreditTransaction } from "@/lib/data/types";
 
 function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -70,6 +70,7 @@ export function ActiveSubscriptionTable({
   allPayments,
   allExtras,
   allSkips,
+  allCreditTransactions,
   pricingEntries,
   addressesByCustomer,
   creditBalances,
@@ -78,6 +79,7 @@ export function ActiveSubscriptionTable({
   allPayments: Payment[];
   allExtras: SubscriptionExtra[];
   allSkips: MealSkip[];
+  allCreditTransactions: CreditTransaction[];
   pricingEntries: PricingEntry[];
   addressesByCustomer: Record<string, CustomerAddress[]>;
   creditBalances: Map<string, number>;
@@ -110,7 +112,7 @@ export function ActiveSubscriptionTable({
         )}
         {subscriptions.map((sub) => {
           const subSkips = allSkips.filter((sk) => sk.subscriptionId === sub.id);
-          const payStatus = subscriptionPaymentStatus(sub, allPayments, allExtras, subSkips);
+          const payStatus = subscriptionPaymentStatus(sub, allPayments, allExtras, subSkips, allCreditTransactions);
           const isExpanded = expandedId === sub.id;
           const subExtrasTotal = allExtras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
           return (
@@ -123,6 +125,7 @@ export function ActiveSubscriptionTable({
               allPayments={allPayments}
               allExtras={allExtras}
               allSkips={allSkips}
+              allCreditTransactions={allCreditTransactions}
               pricingEntries={pricingEntries}
               customerAddresses={addressesByCustomer[sub.customerId] ?? []}
               extrasTotal={subExtrasTotal}
@@ -142,6 +145,7 @@ export function InactiveSubscriptionTable({
   allPayments,
   allExtras,
   allSkips,
+  allCreditTransactions,
   pricingEntries,
   creditBalances,
 }: {
@@ -149,6 +153,7 @@ export function InactiveSubscriptionTable({
   allPayments: Payment[];
   allExtras: SubscriptionExtra[];
   allSkips: MealSkip[];
+  allCreditTransactions: CreditTransaction[];
   pricingEntries: PricingEntry[];
   creditBalances: Map<string, number>;
 }) {
@@ -180,7 +185,7 @@ export function InactiveSubscriptionTable({
         )}
         {subscriptions.map((sub) => {
           const subSkips = allSkips.filter((sk) => sk.subscriptionId === sub.id);
-          const payStatus = subscriptionPaymentStatus(sub, allPayments, allExtras, subSkips);
+          const payStatus = subscriptionPaymentStatus(sub, allPayments, allExtras, subSkips, allCreditTransactions);
           const isExpanded = expandedId === sub.id;
           const subExtrasTotal = allExtras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
           return (
@@ -193,6 +198,7 @@ export function InactiveSubscriptionTable({
               allPayments={allPayments}
               allExtras={allExtras}
               allSkips={allSkips}
+              allCreditTransactions={allCreditTransactions}
               pricingEntries={pricingEntries}
               customerAddresses={[]}
               extrasTotal={subExtrasTotal}
@@ -215,6 +221,7 @@ function ExpandableRow({
   allPayments,
   allExtras,
   allSkips,
+  allCreditTransactions,
   pricingEntries,
   customerAddresses,
   extrasTotal,
@@ -223,12 +230,13 @@ function ExpandableRow({
   showEndDate,
 }: {
   sub: SubRow;
-  payStatus: "paid" | "partial" | "unpaid";
+  payStatus: ReturnType<typeof subscriptionPaymentStatus>;
   isExpanded: boolean;
   onToggle: () => void;
   allPayments: Payment[];
   allExtras: SubscriptionExtra[];
   allSkips: MealSkip[];
+  allCreditTransactions: CreditTransaction[];
   pricingEntries: PricingEntry[];
   customerAddresses: CustomerAddress[];
   extrasTotal: number;
@@ -239,11 +247,15 @@ function ExpandableRow({
   const router = useRouter();
   const [saving, startSave] = useTransition();
   const subPayments = allPayments.filter((p) => p.subscriptionId === sub.id);
-  const { paid, refunded, net } = paymentsTotalForSub(allPayments, sub.id);
-  const totalDue = sub.subscriptionPrice + sub.shippingPrice - sub.discount + extrasTotal;
-  const balance = totalDue - net;
+  const { paid, refunded } = paymentsTotalForSub(allPayments, sub.id);
   const subSkips = allSkips.filter((sk) => sk.subscriptionId === sub.id);
   const subExtras = allExtras.filter((e) => e.subscriptionId === sub.id);
+  const compensation = subscriptionCompensation(sub.id, allPayments, allCreditTransactions);
+  const isCancelled = sub.status === "cancelled";
+  const totalDue = isCancelled
+    ? calculateProratedTotalDue(sub, subSkips, extrasTotal)
+    : sub.subscriptionPrice + sub.shippingPrice - sub.discount + extrasTotal;
+  const balance = totalDue - compensation.netEarned;
 
   function handleMarkPaid(e: React.MouseEvent) {
     e.stopPropagation();
@@ -306,14 +318,14 @@ function ExpandableRow({
         <td className="px-4 py-2">
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-medium">₫{net.toLocaleString()}</span>
+              <span className="font-medium">₫{compensation.netEarned.toLocaleString()}</span>
               <span className={[
                 "px-1.5 py-0.5 rounded-full text-[10px] font-medium",
-                payStatus === "paid" ? "bg-green-100 text-green-800" :
-                payStatus === "partial" ? "bg-yellow-100 text-yellow-800" :
+                payStatus.status === "paid" ? "bg-green-100 text-green-800" :
+                payStatus.status === "partial" ? "bg-yellow-100 text-yellow-800" :
                 "bg-red-100 text-red-700",
-              ].join(" ")}>{payStatus}</span>
-              {payStatus !== "paid" && (
+              ].join(" ")}>{payStatus.status}</span>
+              {payStatus.status !== "paid" && (
                 <button
                   type="button"
                   onClick={handleMarkPaid}
@@ -325,8 +337,18 @@ function ExpandableRow({
                 </button>
               )}
             </div>
-            {refunded > 0 && (
-              <p className="text-xs text-red-500 mt-0.5">−₫{refunded.toLocaleString()} refunded</p>
+            {isCancelled && payStatus.status === "paid" && Math.abs(payStatus.residual) > 1 && (
+              <p className={`text-[10px] mt-0.5 ${payStatus.residual < 0 ? "text-amber-600" : "text-muted-foreground"}`}>
+                {payStatus.residual < 0
+                  ? `₫${Math.abs(payStatus.residual).toLocaleString()} refund owed`
+                  : `₫${payStatus.residual.toLocaleString()} over-refunded`}
+              </p>
+            )}
+            {compensation.cashRefunded > 0 && (
+              <p className="text-xs text-red-500 mt-0.5">−₫{compensation.cashRefunded.toLocaleString()} refunded</p>
+            )}
+            {compensation.refundedToCredit > 0 && (
+              <p className="text-[10px] text-emerald-600 mt-0.5">−₫{compensation.refundedToCredit.toLocaleString()} → credit</p>
             )}
           </div>
         </td>
@@ -365,7 +387,7 @@ function ExpandableRow({
               totalDue={totalDue}
               paid={paid}
               refunded={refunded}
-              net={net}
+              refundedToCredit={compensation.refundedToCredit}
               balance={balance}
               customerCredit={customerCredit}
             />
@@ -383,7 +405,7 @@ function PaymentExpandedPanel({
   totalDue,
   paid,
   refunded,
-  net,
+  refundedToCredit,
   balance,
   customerCredit,
 }: {
@@ -393,7 +415,7 @@ function PaymentExpandedPanel({
   totalDue: number;
   paid: number;
   refunded: number;
-  net: number;
+  refundedToCredit: number;
   balance: number;
   customerCredit: number;
 }) {
@@ -506,9 +528,17 @@ function PaymentExpandedPanel({
             <span className="font-medium text-yellow-600">₫{refunded.toLocaleString()}</span>
           </div>
         )}
+        {refundedToCredit > 0 && (
+          <div>
+            <span className="text-muted-foreground">→ Credit </span>
+            <span className="font-medium text-emerald-600">₫{refundedToCredit.toLocaleString()}</span>
+          </div>
+        )}
         <div>
-          <span className="text-muted-foreground">{balance >= 0 ? "Balance " : "Overpaid "}</span>
-          <span className={`font-medium ${balance > 0 ? "text-red-600" : balance < 0 ? "text-yellow-600" : "text-green-700"}`}>
+          <span className="text-muted-foreground">
+            {sub.status === "cancelled" && balance < 0 ? "Refund owed " : balance >= 0 ? "Balance " : "Overpaid "}
+          </span>
+          <span className={`font-medium ${balance > 0 ? "text-red-600" : balance < 0 ? "text-amber-600" : "text-green-700"}`}>
             ₫{Math.abs(balance).toLocaleString()}
           </span>
         </div>
