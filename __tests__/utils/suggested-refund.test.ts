@@ -189,3 +189,118 @@ describe("suggestedRefund — all 5 worked examples from spec", () => {
     expect(result.isCapped).toBe(false);
   });
 });
+
+// Week fixture: Mon 2026-05-11 – Fri 2026-05-15, next Mon 2026-05-18, next Tue 2026-05-19
+const WED = "2026-05-13";
+const THU = "2026-05-14";
+const FRI = "2026-05-15";
+const NEXT_MON = "2026-05-18";
+const NEXT_TUE = "2026-05-19";
+
+function makeSub(endDate: string) {
+  return { plan: "weekly", subscriptionPrice: 500_000, shippingPrice: 0, discount: 0, endDate };
+}
+function paid(amount: number) {
+  return [{ type: "payment" as const, amount }];
+}
+function skipNoReplace(day: string) {
+  return { originalDay: day + "T00:00:00.000Z", replacementDay: null };
+}
+function skipWithReplace(day: string, rep: string) {
+  return { originalDay: day + "T00:00:00.000Z", replacementDay: rep + "T00:00:00.000Z" };
+}
+
+// ── Extras refund — no skips ──────────────────────────────────────────────────
+describe("suggestedRefund — extras, no skips", () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("user scenario: weekly May13–19, extra protein May14–19 (4d ₫40k), cancel May18 → ₫20k", () => {
+    // Sub: Wed May13 – Tue May19 (5 days, ₫100k/day)
+    // Extra: Thu May14 – Tue May19 (4 working days: Thu,Fri,Mon,Tue = ₫10k/day)
+    // Consumed: May13,14,15 (3 meals). Cancel May18 (Mon, first unserved).
+    vi.setSystemTime(new Date(NEXT_MON + "T08:00:00"));
+    const result = suggestedRefund(
+      makeSub(NEXT_TUE),
+      [],
+      paid(540_000),
+      undefined,
+      [{ amount: 40_000, startDate: THU + "T00:00:00.000Z", endDate: NEXT_TUE + "T00:00:00.000Z" }]
+    );
+    // refundStart = max(Mon18, Thu14) = Mon18; remaining = 2 (Mon18, Tue19)
+    expect(result.extrasRefund).toBe(20_000); // 40k × 2/4
+    expect(result.suggested).toBe(220_000);   // 200k sub + 20k extra
+  });
+
+  it("cancel before extra period → full extra refund (clamped to period start)", () => {
+    // Cancel Tue May12, extra is Thu–Fri
+    vi.setSystemTime(new Date("2026-05-12T08:00:00"));
+    const result = suggestedRefund(
+      makeSub(FRI),
+      [],
+      paid(540_000),
+      undefined,
+      [{ amount: 40_000, startDate: THU + "T00:00:00.000Z", endDate: FRI + "T00:00:00.000Z" }]
+    );
+    // refundStart = max(Tue12, Thu14) = Thu14; remaining = 2 (Thu,Fri); totalDays = 2
+    expect(result.extrasRefund).toBe(40_000);
+  });
+
+  it("cancel after extra period → extra refund = 0", () => {
+    vi.setSystemTime(new Date(NEXT_MON + "T08:00:00")); // Mon18
+    const result = suggestedRefund(
+      makeSub(NEXT_TUE),
+      [],
+      paid(540_000),
+      undefined,
+      [{ amount: 40_000, startDate: WED + "T00:00:00.000Z", endDate: FRI + "T00:00:00.000Z" }]
+    );
+    // Extra period Wed–Fri, cancel Mon18 → refundStart Mon18 > end Fri15 → 0
+    expect(result.extrasRefund).toBe(0);
+  });
+});
+
+// ── Extras refund — with skips ────────────────────────────────────────────────
+describe("suggestedRefund — extras, skip interactions", () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  // Extra: Wed–Thu (2 days, ₫200k = ₫100k/day)
+  const extra2d = [{ amount: 200_000, startDate: WED + "T00:00:00.000Z", endDate: THU + "T00:00:00.000Z" }];
+
+  it("past skip (no replace) in extra period, cancel Thu → full refund (Wed not served)", () => {
+    // Skip Wed (no replace), cancel Thu (first unserved). Wed's extra never delivered.
+    vi.setSystemTime(new Date(THU + "T08:00:00"));
+    const result = suggestedRefund(makeSub(FRI), [skipNoReplace(WED)], paid(700_000), undefined, extra2d);
+    // remaining = countWorkingDays(Thu, Fri) = 1; pastSkipsInPeriod = 1 (Wed)
+    // adjustedRemaining = min(2, 1+1) = 2 → full refund
+    expect(result.extrasRefund).toBe(200_000);
+  });
+
+  it("past skip (no replace) in extra period, cancel Fri (after period) → partial refund for unserved Wed", () => {
+    // Skip Wed (no replace), cancel Fri. Thu served. Wed never served.
+    vi.setSystemTime(new Date(FRI + "T08:00:00"));
+    const result = suggestedRefund(makeSub(FRI), [skipNoReplace(WED)], paid(700_000), undefined, extra2d);
+    // refundStart = max(Fri, Wed) = Fri > end(Thu) → remaining = 0
+    // pastSkipsInPeriod = 1 (Wed < Fri, no replace) → adjustedRemaining = min(2, 1) = 1
+    expect(result.extrasRefund).toBe(100_000);
+  });
+
+  it("past skip with replacement INSIDE extra period → no extra refund for that day", () => {
+    // Skip Wed → replace Thu (inside period). Both days covered. Cancel Fri (after period).
+    vi.setSystemTime(new Date(FRI + "T08:00:00"));
+    const result = suggestedRefund(makeSub(FRI), [skipWithReplace(WED, THU)], paid(700_000), undefined, extra2d);
+    // replacement Thu is within [Wed, Thu] → pastSkipsInPeriod = 0
+    // remaining = 0 (cancel after period) → adjustedRemaining = 0
+    expect(result.extrasRefund).toBe(0);
+  });
+
+  it("past skip with replacement OUTSIDE extra period → refund that day's extra", () => {
+    // Skip Wed → replace next Mon (outside extra period Wed–Thu). Cancel Fri.
+    vi.setSystemTime(new Date(FRI + "T08:00:00"));
+    const result = suggestedRefund(makeSub(FRI), [skipWithReplace(WED, NEXT_MON)], paid(700_000), undefined, extra2d);
+    // replacement Mon18 > end Thu14 → outside period → pastSkipsInPeriod = 1
+    // remaining = 0; adjustedRemaining = 1 → ₫100k
+    expect(result.extrasRefund).toBe(100_000);
+  });
+});

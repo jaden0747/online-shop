@@ -111,12 +111,14 @@ export async function createExtraAction(formData: FormData) {
   const subscriptionId = formData.get("subscriptionId") as string;
   const amount = parseFloat(formData.get("amount") as string) || 0;
   const note = (formData.get("note") as string) || null;
-  createExtra({ subscriptionId, amount, note });
+  const startDate = (formData.get("startDate") as string) || null;
+  const endDate = (formData.get("endDate") as string) || startDate;
+  createExtra({ subscriptionId, amount, note, startDate, endDate });
   revalidatePath("/subscriptions");
   revalidatePath("/customers");
 }
 
-export async function updateExtraAction(id: string, data: { amount: number; note: string | null }) {
+export async function updateExtraAction(id: string, data: { amount: number; note: string | null; startDate?: string | null; endDate?: string | null }) {
   updateExtra(id, data);
   revalidatePath("/subscriptions");
   revalidatePath("/customers");

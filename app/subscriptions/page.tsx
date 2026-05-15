@@ -223,10 +223,10 @@ export default async function SubscriptionsPage({
                             <div className="flex items-center gap-3">
                               <div className="text-right">
                                 <p className="text-sm font-semibold">
-                                  ₫{entry.totalPrice.toLocaleString()}
+                                  {entry.totalPrice.toLocaleString()} VND
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  ₫{Math.round(entry.totalPrice / totalMeals).toLocaleString()}/meal
+                                  {Math.round(entry.totalPrice / totalMeals).toLocaleString()} VND/meal
                                 </p>
                               </div>
                               <UpsertPricingForm

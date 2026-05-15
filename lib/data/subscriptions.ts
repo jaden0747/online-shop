@@ -33,12 +33,19 @@ function parseSub(raw: Record<string, unknown>): Subscription {
 }
 
 function parseExtra(raw: Record<string, unknown>): SubscriptionExtra {
+  const createdAt = toStr(raw.createdAt) || new Date().toISOString();
+  // Backward compat: old rows stored a single `forDate`; map it to startDate/endDate (single day).
+  const legacy = toStrOrNull(raw.forDate);
+  const startDate = toStrOrNull(raw.startDate) ?? legacy;
+  const endDate = toStrOrNull(raw.endDate) ?? startDate;
   return {
     id: toStr(raw.id),
     subscriptionId: toStr(raw.subscriptionId),
     amount: toNum(raw.amount),
     note: toNullStr(raw.note),
-    createdAt: toStr(raw.createdAt) || new Date().toISOString(),
+    startDate,
+    endDate,
+    createdAt,
   };
 }
 
@@ -91,13 +98,15 @@ export function saveExtras(extras: SubscriptionExtra[]): void {
   writeRows(FILE, SHEET_EX, extras);
 }
 
-export function createExtra(data: { subscriptionId: string; amount: number; note?: string | null }): SubscriptionExtra {
+export function createExtra(data: { subscriptionId: string; amount: number; note?: string | null; startDate?: string | null; endDate?: string | null }): SubscriptionExtra {
   const extras = getAllExtras();
   const extra: SubscriptionExtra = {
     id: crypto.randomUUID(),
     subscriptionId: data.subscriptionId,
     amount: data.amount,
     note: data.note ?? null,
+    startDate: data.startDate ?? null,
+    endDate: data.endDate ?? data.startDate ?? null,
     createdAt: new Date().toISOString(),
   };
   extras.push(extra);
@@ -105,7 +114,7 @@ export function createExtra(data: { subscriptionId: string; amount: number; note
   return extra;
 }
 
-export function updateExtra(id: string, data: Partial<Pick<SubscriptionExtra, "amount" | "note">>): void {
+export function updateExtra(id: string, data: Partial<Pick<SubscriptionExtra, "amount" | "note" | "startDate" | "endDate">>): void {
   const extras = getAllExtras().map((e) => e.id === id ? { ...e, ...data } : e);
   saveExtras(extras);
 }

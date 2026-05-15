@@ -69,13 +69,13 @@ export function MealPriceForm({ mealPrices }: MealPriceFormProps) {
                   <div className="flex gap-6 text-muted-foreground text-xs">
                     {[3, 5, 7].map((days) => (
                       <div key={days} className="text-right">
-                        <p className="font-medium text-foreground">₫{(mp * days * 1).toLocaleString()}</p>
+                        <p className="font-medium text-foreground">{(mp * days * 1).toLocaleString()} VND</p>
                         <p>{days}d × 1/day</p>
                       </div>
                     ))}
                     {[3, 5, 7].map((days) => (
                       <div key={`${days}-2`} className="text-right">
-                        <p className="font-medium text-foreground">₫{(mp * days * 2).toLocaleString()}</p>
+                        <p className="font-medium text-foreground">{(mp * days * 2).toLocaleString()} VND</p>
                         <p>{days}d × 2/day</p>
                       </div>
                     ))}

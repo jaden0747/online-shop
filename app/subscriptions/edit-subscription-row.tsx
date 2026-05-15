@@ -24,7 +24,7 @@ import {
 import { addWorkingDays } from "@/lib/utils/subscription";
 import { CancelSubscriptionForm } from "@/components/cancel-subscription-form";
 import { Pencil, Trash2, Plus } from "lucide-react";
-import type { MealSkip, Payment } from "@/lib/data/types";
+import type { MealSkip, Payment, SubscriptionExtra } from "@/lib/data/types";
 
 type Sub = {
   id: string;
@@ -47,12 +47,7 @@ type CustomerAddress = { id: string; label: string; isDefault: boolean };
 
 type PricingEntry = { goal: string; plan: string; mealsPerDay: number; totalPrice: number };
 
-type Extra = {
-  id: string;
-  subscriptionId: string;
-  amount: number;
-  note: string | null;
-};
+type Extra = SubscriptionExtra;
 
 type PendingExtra = {
   amount: number;
@@ -317,7 +312,7 @@ export function EditSubscriptionRow({
                   readOnly
                 />
                 <span className="text-xs font-medium w-24 text-right shrink-0">
-                  ₫{extra.amount.toLocaleString()}
+                  {extra.amount.toLocaleString()} VND
                 </span>
                 <Button
                   type="button"
@@ -371,23 +366,23 @@ export function EditSubscriptionRow({
           <div className="rounded-lg bg-muted/60 p-3 text-sm space-y-1">
             <div className="flex justify-between text-muted-foreground">
               <span>Subscription</span>
-              <span>₫{subscriptionPrice.toLocaleString()}</span>
+              <span>{subscriptionPrice.toLocaleString()} VND</span>
             </div>
             {shippingPrice > 0 && (
               <div className="flex justify-between text-muted-foreground">
                 <span>Shipping</span>
-                <span>₫{shippingPrice.toLocaleString()}</span>
+                <span>{shippingPrice.toLocaleString()} VND</span>
               </div>
             )}
             {extrasTotal > 0 && (
               <div className="flex justify-between text-muted-foreground">
                 <span>Extras</span>
-                <span>₫{extrasTotal.toLocaleString()}</span>
+                <span>{extrasTotal.toLocaleString()} VND</span>
               </div>
             )}
             <div className="flex justify-between font-semibold border-t pt-1 mt-1">
               <span>Total</span>
-              <span>₫{grandTotal.toLocaleString()}</span>
+              <span>{grandTotal.toLocaleString()} VND</span>
             </div>
           </div>
 
@@ -426,6 +421,7 @@ export function EditSubscriptionRow({
                 customerId={sub.customerId}
                 skips={skips}
                 payments={payments}
+                extras={extras}
                 onDone={() => { setOpen(false); router.refresh(); }}
                 onCancel={() => setShowCancel(false)}
               />

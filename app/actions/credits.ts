@@ -58,7 +58,7 @@ export async function useCreditAction(data: {
 
   let warning: string | null = null;
   if (data.amount > balance) {
-    warning = `Amount ₫${data.amount.toLocaleString()} exceeds available credit ₫${balance.toLocaleString()}.`;
+    warning = `Amount ${data.amount.toLocaleString()} VND exceeds available credit ${balance.toLocaleString()} VND.`;
   }
 
   const tx = createCreditTransaction({
@@ -90,7 +90,7 @@ export async function deleteCreditTransactionAction(
 
   let warning: string | null = null;
   if (newBalance < 0) {
-    warning = `Deleting this entry would make the credit balance negative (₫${newBalance.toLocaleString()}).`;
+    warning = `Deleting this entry would make the credit balance negative (${newBalance.toLocaleString()} VND).`;
   }
 
   deleteCreditTransaction(id);
@@ -121,7 +121,7 @@ export async function applyCreditToSubscriptionAction(data: {
 
   let warning: string | null = null;
   if (data.amount > balance) {
-    warning = `Amount ₫${data.amount.toLocaleString()} exceeds available credit ₫${balance.toLocaleString()}.`;
+    warning = `Amount ${data.amount.toLocaleString()} VND exceeds available credit ${balance.toLocaleString()} VND.`;
   }
 
   const noteText = data.note?.trim() || "Credit applied";

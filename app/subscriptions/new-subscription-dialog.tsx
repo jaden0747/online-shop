@@ -275,24 +275,24 @@ export function NewSubscriptionDialog({
               {subscriptionPrice > 0 && (
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subscription</span>
-                  <span>₫{subscriptionPrice.toLocaleString()}</span>
+                  <span>{subscriptionPrice.toLocaleString()} VND</span>
                 </div>
               )}
               {pricePerMealCalc > 0 && (
                 <div className="flex justify-between text-muted-foreground">
                   <span>Price/meal ({totalMeals} meals)</span>
-                  <span>₫{Math.round(pricePerMealCalc).toLocaleString()}</span>
+                  <span>{Math.round(pricePerMealCalc).toLocaleString()} VND</span>
                 </div>
               )}
               {shippingPrice > 0 && (
                 <div className="flex justify-between text-muted-foreground">
                   <span>Shipping</span>
-                  <span>₫{shippingPrice.toLocaleString()}</span>
+                  <span>{shippingPrice.toLocaleString()} VND</span>
                 </div>
               )}
               <div className="flex justify-between font-semibold border-t pt-1 mt-1">
                 <span>Total</span>
-                <span>₫{total.toLocaleString()}</span>
+                <span>{total.toLocaleString()} VND</span>
               </div>
             </div>
           )}

@@ -44,13 +44,16 @@ function skip(originalDay: string, replacementDay: string | null = null): MealSk
   };
 }
 
-function extra(amount: number, forDate: string | null, createdAt = "2026-05-11"): SubscriptionExtra {
+function extra(amount: number, startDate: string | null, createdAt = "2026-05-11", endDate?: string | null): SubscriptionExtra {
+  const start = startDate ? startDate + "T00:00:00.000Z" : null;
+  const end = endDate !== undefined ? (endDate ? endDate + "T00:00:00.000Z" : null) : start;
   return {
     id: `e-${Math.random()}`,
     subscriptionId: "sub1",
     amount,
     note: null,
-    forDate: forDate ? forDate + "T00:00:00.000Z" : null,
+    startDate: start,
+    endDate: end,
     createdAt: createdAt + "T00:00:00.000Z",
   };
 }
@@ -61,6 +64,8 @@ const TUE = "2026-05-12";
 const WED = "2026-05-13";
 const THU = "2026-05-14";
 const FRI = "2026-05-15";
+// Day after Fri (used as first-unserved-day when all 5 days were served)
+const SAT = "2026-05-16";
 // Next week
 const NEXT_MON = "2026-05-18";
 const NEXT_FRI = "2026-05-22";
@@ -122,9 +127,9 @@ describe("daysDeliveredAsOf", () => {
     expect(daysDeliveredAsOf(sub, [skip(WED, NEXT_MON)], d(NEXT_MON))).toBe(5);
   });
 
-  it("cancelled mid-week: cancelledAt = Wednesday, asOf = Friday → 3 days", () => {
-    const sub = makeSub({ status: "cancelled", cancelledAt: WED + "T00:00:00.000Z" });
-    // cutoff = min(Fri, Wed) = Wed. Working days Mon–Wed = 3.
+  it("cancelled mid-week: cancelledAt = Thursday (first unserved), asOf = Friday → 3 days", () => {
+    const sub = makeSub({ status: "cancelled", cancelledAt: THU + "T00:00:00.000Z" });
+    // cancelledAt is the first unserved day (exclusive). Last served = Wed. Mon+Tue+Wed = 3.
     expect(daysDeliveredAsOf(sub, [], d(FRI))).toBe(3);
   });
 
@@ -202,9 +207,9 @@ describe("earnedRevenueInRange", () => {
     expect(earnedRevenueInRange(makeSub(), [], [extra(25_000, NEXT_MON)], d(MON), d(FRI))).toBe(500_000);
   });
 
-  it("mid-week cancel: only days up to cancelledAt are earned", () => {
-    const sub = makeSub({ status: "cancelled", cancelledAt: WED + "T00:00:00.000Z" });
-    // cutoff = Wed. Range Mon–Fri intersects to Mon–Wed = 3 days.
+  it("mid-week cancel: only days before cancelledAt are earned", () => {
+    const sub = makeSub({ status: "cancelled", cancelledAt: THU + "T00:00:00.000Z" });
+    // cancelledAt = Thu = first unserved. Mon+Tue+Wed earned = 3 days = 300k.
     expect(earnedRevenueInRange(sub, [], [], d(MON), d(FRI))).toBe(300_000);
   });
 });
@@ -232,14 +237,16 @@ describe("deferredRevenue", () => {
   });
 
   it("paid 500k, refunded 300k (cancelled 2 days used) → deferred = 0", () => {
-    // 2 days earned, 300k refunded, collected-refunded-earned = 500k-300k-200k = 0
-    const sub = makeSub({ status: "cancelled", cancelledAt: TUE + "T00:00:00.000Z" });
+    // cancelledAt = Wed = first unserved. Mon+Tue = 2 days earned = 200k.
+    // deferred = max(0, 500k-300k-200k) = 0
+    const sub = makeSub({ status: "cancelled", cancelledAt: WED + "T00:00:00.000Z" });
     expect(deferredRevenue(sub, [pay(500_000), pay(300_000, "refund")], [], [], [], d(FRI))).toBe(0);
   });
 
   it("paid 500k, 200k refund-to-credit, 3 days used → deferred = 0", () => {
-    const sub = makeSub({ status: "cancelled", cancelledAt: WED + "T00:00:00.000Z" });
-    // earned = 300k. collected=500k, refund=0, refund_credit=200k. deferred = max(0, 500-0-200-300) = 0
+    // cancelledAt = Thu = first unserved. Mon+Tue+Wed = 3 days earned = 300k.
+    // deferred = max(0, 500k-200k-300k) = 0
+    const sub = makeSub({ status: "cancelled", cancelledAt: THU + "T00:00:00.000Z" });
     expect(deferredRevenue(sub, [pay(500_000)], [credit(200_000)], [], [], d(FRI))).toBe(0);
   });
 

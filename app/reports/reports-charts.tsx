@@ -13,7 +13,7 @@ interface TooltipPayload {
   color?: string;
 }
 
-function ChartTooltip({ active, payload, label, prefix = "₫", suffix = "" }: {
+function ChartTooltip({ active, payload, label, prefix = "", suffix = "" }: {
   active?: boolean;
   payload?: TooltipPayload[];
   label?: string;
@@ -40,7 +40,7 @@ export function ReportsCharts({
   costByCategory,
   weeklyWaste,
 }: {
-  weeklyRevenue: { week: string; revenue: number; cost: number }[];
+  weeklyRevenue: { week: string; revenue: number; collected: number; cost: number }[];
   weeklyMargin: { week: string; margin: number }[];
   goalBreakdown: { goal: string; subs: number; revenue: number }[];
   costByCategory: { name: string; amount: number }[];
@@ -48,16 +48,17 @@ export function ReportsCharts({
 }) {
   return (
     <div className="space-y-8">
-      {/* Revenue vs Cost trend */}
+      {/* Recognized revenue vs Cost trend */}
       <div>
-        <h3 className="text-sm font-semibold mb-3">Revenue vs Cost (last 8 weeks)</h3>
+        <h3 className="text-sm font-semibold mb-3">Recognized Revenue vs Cost (last 8 weeks)</h3>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={weeklyRevenue} barGap={2}>
             <XAxis dataKey="week" tick={{ fontSize: 10 }} />
-            <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `₫${(v / 1000).toFixed(0)}k`} />
-            <Tooltip content={<ChartTooltip />} />
+            <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => v >= 1000000 ? `${(v / 1000000).toFixed(0)}M` : `${(v / 1000).toFixed(0)}k`} />
+            <Tooltip content={<ChartTooltip suffix=" VND" />} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="revenue" name="Revenue" fill="#6366f1" radius={[3, 3, 0, 0]} />
+            <Bar dataKey="revenue" name="Recognized" fill="#6366f1" radius={[3, 3, 0, 0]} />
+            <Bar dataKey="collected" name="Collected" fill="#14b8a6" radius={[3, 3, 0, 0]} />
             <Bar dataKey="cost" name="Cost" fill="#f59e0b" radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
@@ -81,7 +82,7 @@ export function ReportsCharts({
       {/* Goal breakdown */}
       {goalBreakdown.length > 0 && (
         <div>
-          <h3 className="text-sm font-semibold mb-3">Per-Goal Breakdown (active subs)</h3>
+          <h3 className="text-sm font-semibold mb-3">Per-Goal Breakdown — earned to date (active subs)</h3>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={goalBreakdown} layout="vertical" barSize={16}>
               <XAxis type="number" tick={{ fontSize: 10 }} />
@@ -89,7 +90,7 @@ export function ReportsCharts({
               <Tooltip content={<ChartTooltip prefix="" />} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="subs" name="Subs" fill="#6366f1" radius={[0, 3, 3, 0]} />
-              <Bar dataKey="revenue" name="Revenue (k₫)" fill="#22c55e" radius={[0, 3, 3, 0]} />
+              <Bar dataKey="revenue" name="Revenue" fill="#22c55e" radius={[0, 3, 3, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -101,9 +102,9 @@ export function ReportsCharts({
           <h3 className="text-sm font-semibold mb-3">Cost by Category (last 4 weeks)</h3>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={costByCategory} layout="vertical" barSize={20}>
-              <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `₫${(v / 1000).toFixed(0)}k`} />
+              <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => v >= 1000000 ? `${(v / 1000000).toFixed(0)}M` : `${(v / 1000).toFixed(0)}k`} />
               <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={90} />
-              <Tooltip content={<ChartTooltip />} />
+              <Tooltip content={<ChartTooltip suffix=" VND" />} />
               <Bar dataKey="amount" name="Amount" radius={[0, 3, 3, 0]}>
                 {costByCategory.map((_, i) => (
                   <Cell key={i} fill={PALETTE[i % PALETTE.length]} />

@@ -45,6 +45,8 @@ export interface SubscriptionExtra {
   subscriptionId: string;
   amount: number;
   note: string | null;
+  startDate: string | null; // ISO — start of recognition period (null = recognize on createdAt)
+  endDate: string | null;   // ISO — end of period (null = same as startDate, single day)
   createdAt: string; // ISO string
 }
 

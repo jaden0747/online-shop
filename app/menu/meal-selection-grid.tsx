@@ -235,54 +235,58 @@ export function MealSelectionGrid({ weekLabel, weekMonday, customerGroups, menuI
                       return (
                         <td key={num} className="px-2 py-2">
                           <div className="space-y-0.5">
-                            {Array.from({ length: sub.mealsPerDay }, (_, mealIdx) => {
-                              const mealNum = mealIdx + 1;
-                              const sel = getSelection(sub.subscriptionId, num, mealNum);
-                              const selPendingKey = `${sub.subscriptionId}-${num}-${mealNum}-sel`;
-                              const isSelPending = pending === selPendingKey;
-                              return (
-                                <div key={mealNum} className="flex gap-0.5">
-                                  <button
-                                    disabled={isSelPending || isSkipPending}
-                                    onClick={() => handleSelect(sub.subscriptionId, num, mealNum, 1)}
-                                    className={`flex-1 px-1 py-0.5 rounded text-[10px] border transition-colors disabled:opacity-50 text-center leading-tight ${
-                                      showNames ? "whitespace-normal" : "truncate"
-                                    } ${
-                                      sel?.menuSlot === 1
-                                        ? "bg-primary text-primary-foreground border-primary"
-                                        : "bg-muted/50 hover:bg-muted border-transparent"
-                                    }`}
-                                    title={getMenuName(num, 1)}
-                                  >
-                                    {showNames ? getMenuName(num, 1) : "A"}
-                                  </button>
-                                  <button
-                                    disabled={isSelPending || isSkipPending}
-                                    onClick={() => handleSelect(sub.subscriptionId, num, mealNum, 2)}
-                                    className={`flex-1 px-1 py-0.5 rounded text-[10px] border transition-colors disabled:opacity-50 text-center leading-tight ${
-                                      showNames ? "whitespace-normal" : "truncate"
-                                    } ${
-                                      sel?.menuSlot === 2
-                                        ? "bg-primary text-primary-foreground border-primary"
-                                        : "bg-muted/50 hover:bg-muted border-transparent"
-                                    }`}
-                                    title={getMenuName(num, 2)}
-                                  >
-                                    {showNames ? getMenuName(num, 2) : "B"}
-                                  </button>
-                                  {mealIdx === 0 && (
-                                    <button
-                                      disabled={isSkipPending || isSelPending}
-                                      onClick={() => handleSkip(sub.subscriptionId, num)}
-                                      className="flex-1 px-1 py-0.5 rounded text-[10px] border border-transparent text-muted-foreground hover:text-amber-600 hover:bg-amber-50 hover:border-amber-200 transition-colors disabled:opacity-50"
-                                      title="Skip this day"
-                                    >
-                                      {isSkipPending ? "…" : "Skip"}
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            })}
+                            <div className="flex gap-0.5 items-stretch">
+                              {/* Meal selection columns */}
+                              <div className="flex flex-col gap-0.5 flex-1">
+                                {Array.from({ length: sub.mealsPerDay }, (_, mealIdx) => {
+                                  const mealNum = mealIdx + 1;
+                                  const sel = getSelection(sub.subscriptionId, num, mealNum);
+                                  const selPendingKey = `${sub.subscriptionId}-${num}-${mealNum}-sel`;
+                                  const isSelPending = pending === selPendingKey;
+                                  return (
+                                    <div key={mealNum} className="flex gap-0.5">
+                                      <button
+                                        disabled={isSelPending || isSkipPending}
+                                        onClick={() => handleSelect(sub.subscriptionId, num, mealNum, 1)}
+                                        className={`flex-1 px-1 py-0.5 rounded text-[10px] border transition-colors disabled:opacity-50 text-center leading-tight ${
+                                          showNames ? "whitespace-normal" : "truncate"
+                                        } ${
+                                          sel?.menuSlot === 1
+                                            ? "bg-primary text-primary-foreground border-primary"
+                                            : "bg-muted/50 hover:bg-muted border-transparent"
+                                        }`}
+                                        title={getMenuName(num, 1)}
+                                      >
+                                        {showNames ? getMenuName(num, 1) : "A"}
+                                      </button>
+                                      <button
+                                        disabled={isSelPending || isSkipPending}
+                                        onClick={() => handleSelect(sub.subscriptionId, num, mealNum, 2)}
+                                        className={`flex-1 px-1 py-0.5 rounded text-[10px] border transition-colors disabled:opacity-50 text-center leading-tight ${
+                                          showNames ? "whitespace-normal" : "truncate"
+                                        } ${
+                                          sel?.menuSlot === 2
+                                            ? "bg-primary text-primary-foreground border-primary"
+                                            : "bg-muted/50 hover:bg-muted border-transparent"
+                                        }`}
+                                        title={getMenuName(num, 2)}
+                                      >
+                                        {showNames ? getMenuName(num, 2) : "B"}
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              {/* Skip button — spans all meal rows */}
+                              <button
+                                disabled={isSkipPending}
+                                onClick={() => handleSkip(sub.subscriptionId, num)}
+                                className="px-1 rounded text-[10px] border border-transparent text-muted-foreground hover:text-amber-600 hover:bg-amber-50 hover:border-amber-200 transition-colors disabled:opacity-50 self-stretch flex items-center justify-center"
+                                title="Skip this day"
+                              >
+                                {isSkipPending ? "…" : "Skip"}
+                              </button>
+                            </div>
                             {/* Per-day note — only on the first sub row for this customer */}
                             {isFirst && (
                               isEditingNote ? (

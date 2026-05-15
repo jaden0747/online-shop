@@ -162,7 +162,7 @@ function CostItemRow({
   return (
     <div className="flex items-center gap-2 text-sm group py-0.5">
       <span className="text-muted-foreground text-xs w-24 shrink-0">{categoryName}</span>
-      <span className="font-medium">₫{item.amount.toLocaleString()}</span>
+      <span className="font-medium">{item.amount.toLocaleString()} VND</span>
       {item.note && <span className="text-muted-foreground text-xs flex-1 truncate">{item.note}</span>}
       <button type="button" onClick={handleDelete} disabled={deleting}
         className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 ml-auto disabled:opacity-50 shrink-0">
@@ -204,7 +204,7 @@ export function CostsPanel({
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold">Cost Breakdown</h3>
           <span className="text-sm font-medium text-muted-foreground">
-            Total: <span className="text-foreground">₫{grandTotal.toLocaleString()}</span>
+            Total: <span className="text-foreground">{grandTotal.toLocaleString()} VND</span>
           </span>
         </div>
 
@@ -216,7 +216,7 @@ export function CostsPanel({
           <div key={g.category.id} className="space-y-0.5">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium">{g.category.name}</p>
-              <span className="text-sm text-muted-foreground">₫{g.total.toLocaleString()}</span>
+              <span className="text-sm text-muted-foreground">{g.total.toLocaleString()} VND</span>
             </div>
             <div className="pl-2 border-l-2 border-muted space-y-0.5">
               {g.items.map((item) => (

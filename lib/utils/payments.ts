@@ -79,12 +79,11 @@ export function subscriptionPaymentStatus(
   skips?: MealSkip[],
   credits: CreditTransaction[] = []
 ): SubscriptionPaymentStatus {
-  const extrasTotal = extras
-    .filter((e) => e.subscriptionId === sub.id)
-    .reduce((s, e) => s + e.amount, 0);
+  const subExtras = extras.filter((e) => e.subscriptionId === sub.id);
+  const extrasTotal = subExtras.reduce((s, e) => s + e.amount, 0);
   const isCancelled = sub.status === "cancelled";
   const totalDue = isCancelled && skips
-    ? calculateProratedTotalDue(sub, skips, extrasTotal)
+    ? calculateProratedTotalDue(sub, skips, subExtras)
     : sub.subscriptionPrice + sub.shippingPrice - sub.discount + extrasTotal;
 
   const { netEarned, totalCompensated, paid } = subscriptionCompensation(sub.id, payments, credits);

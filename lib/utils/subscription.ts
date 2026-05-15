@@ -122,8 +122,14 @@ export function formatDate(d: Date | string): string {
   });
 }
 
+/** Returns "YYYY-MM-DD" using local calendar date (safe in any timezone). */
+export function localDateStr(d: Date | string): string {
+  const dt = typeof d === "string" ? new Date(d) : d;
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
 export function todayDateStr(): string {
-  return new Date().toISOString().split("T")[0];
+  return localDateStr(new Date());
 }
 
 /** Returns true if a given Date falls on today (ignoring time). */
@@ -245,11 +251,12 @@ export function calculateRefundDays(
 /**
  * Calculate the prorated total due for a cancelled subscription.
  * For cancelled subs, totalDue should reflect only days used, not full plan price.
+ * Extras with date ranges are pro-rated to only charge for the used portion.
  */
 export function calculateProratedTotalDue(
   sub: { plan: string; subscriptionPrice: number; shippingPrice: number; discount: number; endDate: string; cancelledAt?: string | null },
   skips: { originalDay: string; replacementDay: string | null }[],
-  extrasTotal: number
+  extras: { amount: number; startDate: string | null; endDate: string | null }[]
 ): number {
   const totalDays = Math.max(1, planTotalMeals(sub.plan));
   const effectiveTotal = sub.subscriptionPrice + sub.shippingPrice - sub.discount;
@@ -258,7 +265,34 @@ export function calculateProratedTotalDue(
   const refundInfo = calculateRefundDays(sub, skips);
   const daysUsed = Math.max(0, totalDays - refundInfo.refundDays);
 
-  return Math.round(pricePerDay * daysUsed) + extrasTotal;
+  const cutoff = sub.cancelledAt ? new Date(sub.cancelledAt) : new Date();
+  cutoff.setHours(0, 0, 0, 0);
+
+  const extrasCharged = extras.reduce((sum, e) => {
+    if (!e.startDate || !e.endDate) return sum + e.amount;
+
+    const start = new Date(e.startDate); start.setHours(0, 0, 0, 0);
+    const end = new Date(e.endDate); end.setHours(0, 0, 0, 0);
+    const refundStart = new Date(Math.max(cutoff.getTime(), start.getTime()));
+    const endExcl = new Date(end.getTime() + 86_400_000);
+    const extraTotalDays = Math.max(1, countWorkingDays(start, endExcl));
+
+    const pastSkipsInPeriod = skips.filter((sk) => {
+      const d = new Date(sk.originalDay); d.setHours(0, 0, 0, 0);
+      if (d < start || d >= refundStart) return false;
+      if (!sk.replacementDay) return true;
+      const rep = new Date(sk.replacementDay); rep.setHours(0, 0, 0, 0);
+      return rep < start || rep > end;
+    }).length;
+
+    const remaining = refundStart > end ? 0 : countWorkingDays(refundStart, endExcl);
+    const adjustedRemaining = Math.min(extraTotalDays, remaining + pastSkipsInPeriod);
+    const usedDays = extraTotalDays - adjustedRemaining;
+    if (usedDays <= 0) return sum;
+    return sum + Math.round((e.amount * usedDays) / extraTotalDays);
+  }, 0);
+
+  return Math.round(pricePerDay * daysUsed) + extrasCharged;
 }
 
 export interface SuggestedRefundResult {
@@ -269,8 +303,9 @@ export interface SuggestedRefundResult {
   pastSkipsNoReplace: number;
   refundDays: number;
   proRataRefund: number;
+  extrasRefund: number;        // refund portion of period extras (remaining days)
   netPaid: number;
-  suggested: number;           // min(proRataRefund, netPaid), ≥0
+  suggested: number;           // min(proRataRefund + extrasRefund, netPaid), ≥0
   isCapped: boolean;
 }
 
@@ -297,7 +332,8 @@ export function suggestedRefund(
   },
   skips: { originalDay: string; replacementDay: string | null }[],
   payments: { type: "payment" | "refund"; amount: number }[],
-  asOf?: Date
+  asOf?: Date,
+  extras: { amount: number; startDate: string | null; endDate: string | null }[] = []
 ): SuggestedRefundResult {
   const today = asOf ? new Date(asOf) : new Date();
   today.setHours(0, 0, 0, 0);
@@ -326,13 +362,42 @@ export function suggestedRefund(
   const refundDays = Math.max(0, remainingDays - futureSkipsNoReplace + pastSkipsNoReplace);
   const proRataRefund = Math.round(pricePerDay * refundDays);
 
+  // Extras: refund the remaining portion of each period extra from cancelDate to endDate.
+  // Clamp refund window start to max(cancelDate, extra.startDate) so cancelling before
+  // the extra period doesn't produce a refund > the extra amount.
+  // Also compensate for past skips (no replacement, or replacement outside the extra period)
+  // whose originalDay fell inside the extra period — those days were never served.
+  const extrasRefund = extras.reduce((s, e) => {
+    if (!e.startDate || !e.endDate) return s; // undated extras are not auto-refunded
+    const start = new Date(e.startDate); start.setHours(0, 0, 0, 0);
+    const end = new Date(e.endDate); end.setHours(0, 0, 0, 0);
+    const refundStart = new Date(Math.max(today.getTime(), start.getTime()));
+    const endExcl = new Date(end.getTime() + 86_400_000);
+    const totalDays = Math.max(1, countWorkingDays(start, endExcl));
+    // Past skips within the extra period where the extra was never delivered:
+    // no replacement at all, or replacement fell outside [start, end].
+    // Computed before the early-return so a cancel after the period still
+    // compensates for unserved skip days within it.
+    const pastSkipsInPeriod = skips.filter((sk) => {
+      const d = new Date(sk.originalDay); d.setHours(0, 0, 0, 0);
+      if (d < start || d >= refundStart) return false;
+      if (!sk.replacementDay) return true;
+      const rep = new Date(sk.replacementDay); rep.setHours(0, 0, 0, 0);
+      return rep < start || rep > end;
+    }).length;
+    const remaining = refundStart > end ? 0 : countWorkingDays(refundStart, endExcl);
+    const adjustedRemaining = Math.min(totalDays, remaining + pastSkipsInPeriod);
+    if (adjustedRemaining === 0) return s;
+    return s + Math.round((e.amount * adjustedRemaining) / totalDays);
+  }, 0);
+
   const netPaid = payments.reduce(
     (s, p) => s + (p.type === "payment" ? p.amount : -p.amount),
     0
   );
 
-  const suggested = Math.max(0, Math.min(proRataRefund, netPaid));
-  const isCapped = proRataRefund > netPaid && netPaid > 0;
+  const suggested = Math.max(0, Math.min(proRataRefund + extrasRefund, netPaid));
+  const isCapped = proRataRefund + extrasRefund > netPaid && netPaid > 0;
 
   return {
     pricePerDay: Math.round(pricePerDay),
@@ -342,6 +407,7 @@ export function suggestedRefund(
     pastSkipsNoReplace,
     refundDays,
     proRataRefund,
+    extrasRefund,
     netPaid,
     suggested,
     isCapped,

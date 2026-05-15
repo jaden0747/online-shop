@@ -226,7 +226,7 @@ describe("subscriptionPaymentStatus — non-cancelled subs (regression)", () => 
   it("extras add to total due", () => {
     const sub = makeSub();
     const extras: SubscriptionExtra[] = [
-      { id: "e1", subscriptionId: "sub1", amount: 50_000, note: null, createdAt: "" },
+      { id: "e1", subscriptionId: "sub1", amount: 50_000, note: null, startDate: null, endDate: null, createdAt: "" },
     ];
     const r = subscriptionPaymentStatus(sub, [payment(500_000)], extras, [], []);
     expect(r.totalDue).toBe(550_000);

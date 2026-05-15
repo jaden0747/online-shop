@@ -6,6 +6,7 @@ import {
   updateCustomer,
   deleteCustomer,
   getCustomerById,
+  getAllCustomers,
   getAllAddresses,
   createAddress,
   updateAddress,
@@ -13,6 +14,7 @@ import {
   setDefaultAddress,
 } from "@/lib/data/customers";
 import { getAllSubscriptions, getAllSkips, getAllExtras } from "@/lib/data/subscriptions";
+import { isSubscriptionLive } from "@/lib/utils/subscription";
 import { getAllSelections } from "@/lib/data/selections";
 import { getAllMenuItems } from "@/lib/data/menu";
 import { getAllPricing } from "@/lib/data/pricing";
@@ -177,4 +179,27 @@ export async function setDefaultAddressAction(addressId: string, customerId: str
   setDefaultAddress(addressId, customerId);
   revalidatePath("/customers");
   revalidatePath("/shipping");
+}
+
+export async function getAllCustomersForSearchAction(): Promise<{
+  id: string;
+  name: string;
+  phone: string;
+  zone: string;
+  hasActiveSub: boolean;
+}[]> {
+  const customers = getAllCustomers();
+  const subscriptions = getAllSubscriptions();
+  const activeIds = new Set(
+    subscriptions
+      .filter((s) => isSubscriptionLive(s.status, s.startDate, s.endDate))
+      .map((s) => s.customerId)
+  );
+  return customers.map((c) => ({
+    id: c.id,
+    name: c.name,
+    phone: c.phone,
+    zone: c.zone,
+    hasActiveSub: activeIds.has(c.id),
+  }));
 }

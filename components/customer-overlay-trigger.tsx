@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CustomerOverlay } from "@/components/customer-overlay";
+import { PhoneDisplay } from "@/components/phone-display";
 
 export function CustomerOverlayTrigger({
   customerId,
@@ -19,7 +20,7 @@ export function CustomerOverlayTrigger({
     <>
       <button type="button" className="text-left" onClick={() => setOpen(true)}>
         <span className="font-medium leading-none block hover:underline">{name}</span>
-        <span className="text-xs text-muted-foreground">{phone}</span>
+        <PhoneDisplay phone={phone} />
         {permanentNote && (
           <span className="text-xs text-blue-600 dark:text-blue-400 block whitespace-pre-wrap">
             · {permanentNote}

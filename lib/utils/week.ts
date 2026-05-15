@@ -48,6 +48,24 @@ export function weekLabelToDateRange(label: string): string {
   return `${monDay} ${monMonth} – ${friDay} ${friMonth} ${friYear}`;
 }
 
+/** Returns the Monday Date for a given week label (e.g. "2026-W21"). */
+export function weekLabelToMonday(label: string): Date {
+  const [yearStr, weekPart] = label.split("-W");
+  const year = parseInt(yearStr, 10);
+  const weekNum = parseInt(weekPart, 10);
+  const jan1 = new Date(year, 0, 1);
+  jan1.setHours(0, 0, 0, 0);
+  const jan1Dow = jan1.getDay();
+  const daysToFirstMon = jan1Dow === 0 ? 1 : jan1Dow === 1 ? 0 : 8 - jan1Dow;
+  const firstMonday = new Date(jan1);
+  firstMonday.setDate(jan1.getDate() + daysToFirstMon);
+  const firstMondayWeek = parseInt(weekLabelForDate(firstMonday).split("-W")[1], 10);
+  const monday = new Date(firstMonday);
+  monday.setDate(firstMonday.getDate() + (weekNum - firstMondayWeek) * 7);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
 export function currentWeekLabel(): string {
   return weekLabelForDate(new Date());
 }

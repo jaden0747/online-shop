@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/sidebar";
 import { DataFileWatcher } from "@/components/data-file-watcher";
 import { TestingBanner } from "@/components/testing-banner";
 import { ThemeProvider } from "@/components/theme-provider";
+import { GlobalSearch } from "@/components/global-search";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Sidebar />
           <main className="flex-1 overflow-y-auto p-6 bg-background">{children}</main>
           <DataFileWatcher />
+          <GlobalSearch />
         </ThemeProvider>
       </body>
     </html>

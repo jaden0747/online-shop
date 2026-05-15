@@ -636,7 +636,7 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
       ctx.font = "12px system-ui,sans-serif";
       ctx.textAlign = "right";
       ctx.fillText(
-        `${cluster.totalDist.toFixed(1)} km · ${Math.ceil(cluster.totalTime)} min · ${Math.round(cluster.totalPrice).toLocaleString()}đ`,
+        `${cluster.totalDist.toFixed(1)} km · ${Math.ceil(cluster.totalTime)} min · ${Math.round(cluster.totalPrice).toLocaleString()} VND`,
         DETAIL_X + DETAIL_W - PAD, dy + 12
       );
       ctx.textAlign = "left";
@@ -900,7 +900,7 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
             <Row label="Total dist" value={`${totalDistance.toFixed(1)} km`} />
             <Row label="Avg time" value={`${Math.ceil(avgTime)} min`} />
             <Row label="Max time" value={`${Math.ceil(maxTime)} min`} />
-            <Row label="Total cost" value={`${Math.round(totalPrice).toLocaleString()}đ`} />
+            <Row label="Total cost" value={`${Math.round(totalPrice).toLocaleString()} VND`} />
             {manualAssign.size > 0 && (
               <p className="text-xs text-amber-600 pt-1">
                 {manualAssign.size} manual move{manualAssign.size > 1 ? "s" : ""}
@@ -1039,7 +1039,7 @@ function ShipperCard({
           <div className="text-[10px] text-muted-foreground ml-auto text-right leading-tight">
             {cluster.totalDist.toFixed(1)}km · {Math.ceil(cluster.totalTime)}min
             <br />
-            {Math.round(cluster.totalPrice).toLocaleString()}đ
+            {Math.round(cluster.totalPrice).toLocaleString()} VND
           </div>
         </div>
         <div className="divide-y max-h-[220px] overflow-y-auto -mx-3">

@@ -49,8 +49,10 @@ export function daysDeliveredAsOf(
   asOf: Date
 ): number {
   const start = normalizeDate(sub.startDate);
+  // cancelledAt is the FIRST UNSERVED day (exclusive upper bound).
+  // For non-cancelled subs endDate is the last served day (inclusive).
   const cutoffRaw = sub.status === "cancelled" && sub.cancelledAt
-    ? normalizeDate(sub.cancelledAt)
+    ? (() => { const d = normalizeDate(sub.cancelledAt); d.setDate(d.getDate() - 1); return d; })()
     : normalizeDate(sub.endDate);
   const cutoff = new Date(Math.min(asOf.getTime(), cutoffRaw.getTime()));
 
@@ -80,18 +82,13 @@ export function daysDeliveredAsOf(
 export function earnedRevenueAsOf(
   sub: SubForRevenue,
   skips: Pick<MealSkip, "subscriptionId" | "originalDay">[],
-  extras: Pick<SubscriptionExtra, "subscriptionId" | "amount" | "forDate" | "createdAt">[],
+  extras: Pick<SubscriptionExtra, "subscriptionId" | "amount" | "startDate" | "endDate" | "createdAt">[],
   asOf: Date
 ): number {
   const ppd = pricePerDay(sub);
   const days = daysDeliveredAsOf(sub, skips, asOf);
   const subExtras = extras.filter((e) => e.subscriptionId === sub.id);
-  const extrasRecognized = subExtras
-    .filter((e) => {
-      const d = normalizeDate(e.forDate ?? e.createdAt);
-      return d <= asOf;
-    })
-    .reduce((s, e) => s + e.amount, 0);
+  const extrasRecognized = subExtras.reduce((s, e) => s + extraEarnedAsOf(e, asOf), 0);
   return Math.round(ppd * days) + extrasRecognized;
 }
 
@@ -103,13 +100,14 @@ export function earnedRevenueAsOf(
 export function earnedRevenueInRange(
   sub: SubForRevenue,
   skips: Pick<MealSkip, "subscriptionId" | "originalDay">[],
-  extras: Pick<SubscriptionExtra, "subscriptionId" | "amount" | "forDate" | "createdAt">[],
+  extras: Pick<SubscriptionExtra, "subscriptionId" | "amount" | "startDate" | "endDate" | "createdAt">[],
   from: Date,
   to: Date
 ): number {
   const start = normalizeDate(sub.startDate);
+  // cancelledAt is the FIRST UNSERVED day (exclusive). Last served = cancelledAt - 1.
   const cutoffRaw = sub.status === "cancelled" && sub.cancelledAt
-    ? normalizeDate(sub.cancelledAt)
+    ? (() => { const d = normalizeDate(sub.cancelledAt); d.setDate(d.getDate() - 1); return d; })()
     : normalizeDate(sub.endDate);
 
   // Intersect [from, to] with [startDate, cutoff]
@@ -134,14 +132,12 @@ export function earnedRevenueInRange(
 
   const deliveredInRange = Math.max(0, scheduled - skipped);
 
-  // Extras attributed to this range
+  // Extras: recognize the portion of each extra that falls within [from, to]
   const subExtras = extras.filter((e) => e.subscriptionId === sub.id);
-  const extrasInRange = subExtras
-    .filter((e) => {
-      const d = normalizeDate(e.forDate ?? e.createdAt);
-      return d >= from && d <= to;
-    })
-    .reduce((s, e) => s + e.amount, 0);
+  const extrasInRange = subExtras.reduce((s, e) => {
+    const earned = extraEarnedAsOf(e, to) - extraEarnedAsOf(e, new Date(from.getTime() - 86_400_000));
+    return s + earned;
+  }, 0);
 
   return Math.round(ppd * deliveredInRange) + extrasInRange;
 }
@@ -159,7 +155,7 @@ export function deferredRevenue(
   payments: Pick<Payment, "subscriptionId" | "type" | "amount">[],
   credits: Pick<CreditTransaction, "subscriptionId" | "type" | "amount">[],
   skips: Pick<MealSkip, "subscriptionId" | "originalDay">[],
-  extras: Pick<SubscriptionExtra, "subscriptionId" | "amount" | "forDate" | "createdAt">[],
+  extras: Pick<SubscriptionExtra, "subscriptionId" | "amount" | "startDate" | "endDate" | "createdAt">[],
   asOf: Date
 ): number {
   const subPayments = payments.filter((p) => p.subscriptionId === sub.id);
@@ -177,6 +173,33 @@ export function deferredRevenue(
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Recognized revenue from a single extra as of `asOf`, pro-rated by working days.
+ * If the extra has no startDate, it's recognized in full on createdAt.
+ */
+function extraEarnedAsOf(
+  e: Pick<SubscriptionExtra, "amount" | "startDate" | "endDate" | "createdAt">,
+  asOf: Date
+): number {
+  if (!e.startDate) {
+    // Legacy single-date or undated: recognize in full on createdAt
+    return normalizeDate(e.createdAt) <= asOf ? e.amount : 0;
+  }
+  const start = normalizeDate(e.startDate);
+  const end = e.endDate ? normalizeDate(e.endDate) : start;
+  if (start > asOf) return 0;
+  const effectiveEnd = new Date(Math.min(end.getTime(), asOf.getTime()));
+  const totalDays = Math.max(1, countWorkingDays(start, nextDay(end)));
+  const earnedDays = countWorkingDays(start, nextDay(effectiveEnd));
+  return Math.round((e.amount * earnedDays) / totalDays);
+}
+
+function nextDay(d: Date): Date {
+  const r = new Date(d);
+  r.setDate(r.getDate() + 1);
+  return r;
+}
 
 function normalizeDate(d: Date | string): Date {
   const result = new Date(d);

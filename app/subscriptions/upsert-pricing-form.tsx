@@ -128,7 +128,7 @@ export function UpsertPricingForm({
             />
             {pricePerMeal > 0 && (
               <p className="text-xs text-muted-foreground">
-                ₫{Math.round(pricePerMeal).toLocaleString()}/meal · {totalMeals} meals total
+                {Math.round(pricePerMeal).toLocaleString()} VND/meal · {totalMeals} meals total
               </p>
             )}
           </div>

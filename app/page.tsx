@@ -1,19 +1,20 @@
 import Link from "next/link";
 import { getAllCustomers } from "@/lib/data/customers";
-import { getAllSubscriptions, getAllExtras } from "@/lib/data/subscriptions";
+import { getAllSubscriptions, getAllExtras, getAllSkips } from "@/lib/data/subscriptions";
 import { getSelectionsByWeek } from "@/lib/data/selections";
 import { getMenuItemsByWeek } from "@/lib/data/menu";
-import { getAllPayments } from "@/lib/data/payments";
 import { getCostItemsByWeek } from "@/lib/data/cost-items";
 import { getWeeklyOpsByLabel } from "@/lib/data/operations";
 import { isSubscriptionLive, daysRemaining, isTodayWeekday } from "@/lib/utils/subscription";
 import { currentWeekLabel, currentWeekMonday } from "@/lib/utils/week";
+import { earnedRevenueInRange } from "@/lib/utils/revenue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardCharts } from "./dashboard-charts";
 import { CustomerNameButton } from "./customer-name-button";
 import { AppVersionBadge } from "@/components/app-version-badge";
 import { AppUpdateStatus } from "@/components/update-status";
 import { OpenInFinderButton } from "@/components/open-in-finder-button";
+import { QuickRenewDialog } from "@/components/quick-renew-dialog";
 
 export const dynamic = "force-dynamic";
 
@@ -161,15 +162,18 @@ export default async function DashboardPage() {
     .slice(0, 7);
 
   // ── Financial metrics ────────────────────────────────────────────────────────
-  const allPayments = getAllPayments();
   const allExtras = getAllExtras();
+  const allSkips = getAllSkips();
   const weekCostItems = getCostItemsByWeek(weekLabel);
   const weekOps = getWeeklyOpsByLabel(weekLabel);
 
-  // Revenue: net payments for subscriptions that are live this week
-  const thisWeekSubIdsArr = Array.from(thisWeekSubIds);
-  const weekPayments = allPayments.filter((p) => thisWeekSubIdsArr.includes(p.subscriptionId));
-  const weekRevenue = weekPayments.reduce((s, p) => s + (p.type === "payment" ? p.amount : -p.amount), 0);
+  // Revenue: recognized (accrual) — meals earned Mon–Fri this week
+  const friday = new Date(monday);
+  friday.setDate(monday.getDate() + 4);
+  const weekRevenue = subscriptions.reduce(
+    (s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, monday, friday),
+    0
+  );
 
   // Total costs this week
   const weekTotalCost = weekCostItems.reduce((s, i) => s + i.amount, 0);
@@ -272,11 +276,11 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card>
           <CardHeader className="pb-1 pt-4 px-4">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Revenue This Week</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Recognized This Week</CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
             <p className="text-2xl font-bold">
-              {weekRevenue > 0 ? `₫${(weekRevenue / 1000).toFixed(0)}k` : "—"}
+              {weekRevenue > 0 ? `${weekRevenue.toLocaleString()} VND` : "—"}
             </p>
             <Link href="/costs" className="text-xs text-muted-foreground hover:underline underline-offset-2 mt-1 inline-block">
               View Costs →
@@ -290,10 +294,10 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent className="px-4 pb-4">
             <p className="text-2xl font-bold">
-              {costPerMeal > 0 ? `₫${costPerMeal.toLocaleString()}` : "—"}
+              {costPerMeal > 0 ? `${costPerMeal.toLocaleString()} VND` : "—"}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              {weekTotalCost > 0 ? `₫${(weekTotalCost / 1000).toFixed(0)}k total` : "No cost data"}
+              {weekTotalCost > 0 ? `${weekTotalCost.toLocaleString()} VND total` : "No cost data"}
             </p>
           </CardContent>
         </Card>
@@ -307,7 +311,7 @@ export default async function DashboardPage() {
               {grossMargin !== null ? `${grossMargin}%` : "—"}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              {weekRevenue > 0 && weekTotalCost > 0 ? `₫${((weekRevenue - weekTotalCost) / 1000).toFixed(0)}k profit` : "No data"}
+              {weekRevenue > 0 && weekTotalCost > 0 ? `${(weekRevenue - weekTotalCost).toLocaleString()} VND profit` : "No data"}
             </p>
           </CardContent>
         </Card>
@@ -342,7 +346,7 @@ export default async function DashboardPage() {
                 {expiringSoon.map(({ sub, days }) => {
                   const customer = customerMap.get(sub.customerId);
                   return (
-                    <li key={sub.id} className="grid grid-cols-[1fr_auto_auto] items-center py-1.5 text-sm gap-x-3">
+                    <li key={sub.id} className="grid grid-cols-[1fr_auto_auto_auto] items-center py-1.5 text-sm gap-x-3">
                       <CustomerNameButton
                         customerId={sub.customerId}
                         name={customer?.name ?? sub.customerId}
@@ -353,6 +357,17 @@ export default async function DashboardPage() {
                       <span className={`font-semibold text-xs text-right tabular-nums w-10 ${expiryColor(days)}`}>
                         {days === 0 ? "today" : `${days}d`}
                       </span>
+                      <QuickRenewDialog
+                        customerId={sub.customerId}
+                        customerName={customer?.name ?? sub.customerId}
+                        lastSub={{
+                          plan: sub.plan,
+                          goal: sub.goal,
+                          mealsPerDay: sub.mealsPerDay,
+                          subscriptionPrice: sub.subscriptionPrice,
+                          shippingPrice: sub.shippingPrice,
+                        }}
+                      />
                     </li>
                   );
                 })}

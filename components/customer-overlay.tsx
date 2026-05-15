@@ -38,8 +38,9 @@ const CustomerMinimap = dynamic(
   { ssr: false }
 );
 import type { Customer, CustomerAddress, Subscription, SubscriptionExtra, Pricing, MealSkip, MealSelection, MenuItem, KitchenNote, OrderDayAddress, Payment, CreditTransaction } from "@/lib/data/types";
-import { subscriptionStatus, daysRemaining, planTotalMeals, addWorkingDays, isSubscriptionLive, calculateProratedTotalDue } from "@/lib/utils/subscription";
+import { subscriptionStatus, daysRemaining, planTotalMeals, addWorkingDays, isSubscriptionLive, calculateProratedTotalDue, countWorkingDays } from "@/lib/utils/subscription";
 import { subscriptionPaymentStatus, paymentsTotalForSub, subscriptionCompensation } from "@/lib/utils/payments";
+import { earnedRevenueAsOf } from "@/lib/utils/revenue";
 import { weekLabelForDate } from "@/lib/utils/week";
 import { CancelSubscriptionForm } from "./cancel-subscription-form";
 import { Pencil, X, Plus, Star, Trash2, Check, MapPin, ChevronLeft, ChevronRight, Copy } from "lucide-react";
@@ -137,7 +138,7 @@ function CreditPanel({
         balance > 0 ? "bg-emerald-50 dark:bg-emerald-950/30" : "bg-muted/40",
       ].join(" ")}>
         <p className={["text-lg font-bold", balance > 0 ? "text-emerald-600" : "text-muted-foreground"].join(" ")}>
-          ₫{balance.toLocaleString()}
+          {balance.toLocaleString()} VND
         </p>
         <p className="text-[10px] text-muted-foreground">available credit</p>
       </div>
@@ -187,7 +188,7 @@ function CreditPanel({
                   "font-medium",
                   tx.type === "credit_used" ? "text-red-600" : "text-emerald-600",
                 ].join(" ")}>
-                  {tx.type === "credit_used" ? "-" : "+"}₫{tx.amount.toLocaleString()}
+                  {tx.type === "credit_used" ? "-" : "+"}{tx.amount.toLocaleString()} VND
                 </span>
                 <span className="text-muted-foreground ml-1">{TYPE_LABELS[tx.type]}</span>
                 {tx.note && <span className="text-muted-foreground/60 ml-1">· {tx.note}</span>}
@@ -491,7 +492,7 @@ const defaultCreditAmt = String(Math.min(customerCreditBalance, Math.max(0, tota
               }}
             />
             <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
-              Apply credit (₫{customerCreditBalance.toLocaleString()} available)
+              Apply credit ({customerCreditBalance.toLocaleString()} VND available)
             </span>
           </label>
           {applyCredit && (
@@ -511,7 +512,7 @@ const defaultCreditAmt = String(Math.min(customerCreditBalance, Math.max(0, tota
       )}
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-muted-foreground">
-          {totalMeals} meals · ₫{totalPrice.toLocaleString()}
+          {totalMeals} meals · {totalPrice.toLocaleString()} VND
         </span>
         <div className="flex gap-1">
           <button type="button" onClick={submit} disabled={saving || !subPrice}
@@ -529,8 +530,9 @@ const defaultCreditAmt = String(Math.min(customerCreditBalance, Math.max(0, tota
 }
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
-function localDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function localDateStr(d: Date | string): string {
+  const dt = typeof d === "string" ? new Date(d) : d;
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
 }
 
 // ── ExtrasPanel ──────────────────────────────────────────────────────────────
@@ -547,7 +549,10 @@ function ExtrasPanel({
   const [saving, startSave] = useTransition();
   const [noteInput, setNoteInput] = useState("");
   const [amountInput, setAmountInput] = useState("");
+  const [startDateInput, setStartDateInput] = useState("");
+  const [endDateInput, setEndDateInput] = useState("");
 
+  const subEndDate = localDateStr(sub.endDate); // max allowed for endDate
   const total = extras.reduce((s, e) => s + e.amount, 0);
   const inp = "border rounded px-1 py-0.5 text-xs bg-background outline-none focus:ring-1 focus:ring-ring";
 
@@ -559,9 +564,15 @@ function ExtrasPanel({
       fd.set("subscriptionId", sub.id);
       fd.set("amount", String(amount));
       fd.set("note", noteInput.trim());
+      if (startDateInput) {
+        fd.set("startDate", startDateInput);
+        fd.set("endDate", endDateInput || startDateInput);
+      }
       await createExtraAction(fd);
       setNoteInput("");
       setAmountInput("");
+      setStartDateInput("");
+      setEndDateInput("");
       onReload();
     });
   }
@@ -582,7 +593,7 @@ function ExtrasPanel({
       >
         <span className="font-medium">Extras / Addons</span>
         {total > 0 && (
-          <span className="text-amber-600 font-medium">+₫{total.toLocaleString()}</span>
+          <span className="text-amber-600 font-medium">+{total.toLocaleString()} VND</span>
         )}
         <span className="ml-auto">{open ? "▲" : "▼"}</span>
       </button>
@@ -594,48 +605,102 @@ function ExtrasPanel({
             <p className="text-[10px] text-muted-foreground/50">No extras yet.</p>
           ) : (
             <ul className="space-y-0.5">
-              {extras.map((e) => (
-                <li key={e.id} className="flex items-center gap-1 text-[10px] group">
-                  <span className="font-medium text-amber-600">+₫{e.amount.toLocaleString()}</span>
-                  {e.note && (
-                    <span className="text-muted-foreground flex-1 truncate">{e.note}</span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(e.id)}
-                    disabled={saving}
-                    className="ml-auto h-4 w-4 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 disabled:opacity-50"
-                  >
-                    <X size={9} />
-                  </button>
-                </li>
-              ))}
+              {extras.map((e) => {
+                const hasPeriod = e.startDate && e.endDate;
+                let periodLabel = "";
+                let perDayLabel = "";
+                if (hasPeriod) {
+                  const start = localDateStr(e.startDate!);
+                  const end = localDateStr(e.endDate!);
+                  periodLabel = start === end ? start : `${start} – ${end}`;
+                  const startD = new Date(start + "T00:00:00");
+                  const endD = new Date(end + "T00:00:00");
+                  const days = Math.max(1, countWorkingDays(startD, new Date(endD.getTime() + 86_400_000)));
+                  if (days > 1) perDayLabel = `${Math.round(e.amount / days).toLocaleString()} VND/day`;
+                }
+                return (
+                  <li key={e.id} className="flex items-start gap-1 text-[10px] group">
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium text-amber-600">+{e.amount.toLocaleString()} VND</span>
+                      {perDayLabel && <span className="text-muted-foreground ml-1">({perDayLabel})</span>}
+                      {periodLabel && <span className="text-muted-foreground ml-1">{periodLabel}</span>}
+                      {e.note && <span className="text-muted-foreground ml-1 truncate">{e.note}</span>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(e.id)}
+                      disabled={saving}
+                      className="h-4 w-4 flex-shrink-0 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                    >
+                      <X size={9} />
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
 
           {/* Add extra form */}
-          <div className="flex items-center gap-1 pt-0.5">
-            <input
-              className={`${inp} flex-1`}
-              type="text"
-              placeholder="Note (e.g. extra protein)"
-              value={noteInput}
-              onChange={(e) => setNoteInput(e.target.value)}
-            />
-            <FormattedAmountInput
-              className={`${inp} w-24`}
-              placeholder="₫ Amount"
-              value={amountInput}
-              onChange={(raw) => setAmountInput(raw)}
-            />
-            <button
-              type="button"
-              onClick={handleAdd}
-              disabled={saving || !amountInput}
-              className="px-2 py-0.5 text-[10px] rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            >
-              Add
-            </button>
+          <div className="space-y-1 pt-0.5">
+            <div className="flex items-center gap-1 flex-wrap">
+              <input
+                className={`${inp} flex-1 min-w-[80px]`}
+                type="text"
+                placeholder="Note (e.g. extra protein)"
+                value={noteInput}
+                onChange={(e) => setNoteInput(e.target.value)}
+              />
+              <FormattedAmountInput
+                className={`${inp} w-20`}
+                placeholder="₫ Amount"
+                value={amountInput}
+                onChange={(raw) => setAmountInput(raw)}
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-muted-foreground w-10">Start</span>
+              <input
+                className={`${inp} flex-1`}
+                type="date"
+                title="Period start date"
+                value={startDateInput}
+                max={subEndDate}
+                onChange={(e) => {
+                  setStartDateInput(e.target.value);
+                  // Auto-set end to start if end is before new start
+                  if (!endDateInput || endDateInput < e.target.value) setEndDateInput(e.target.value);
+                }}
+              />
+              <span className="text-[10px] text-muted-foreground w-6 text-center">–</span>
+              <input
+                className={`${inp} flex-1`}
+                type="date"
+                title="Period end date (cannot exceed subscription end)"
+                value={endDateInput}
+                min={startDateInput}
+                max={subEndDate}
+                onChange={(e) => setEndDateInput(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={handleAdd}
+                disabled={saving || !amountInput}
+                className="px-2 py-0.5 text-[10px] rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                Add
+              </button>
+            </div>
+            {startDateInput && endDateInput && startDateInput !== endDateInput && (() => {
+              const s = new Date(startDateInput + "T00:00:00");
+              const e = new Date(endDateInput + "T00:00:00");
+              const days = countWorkingDays(s, new Date(e.getTime() + 86_400_000));
+              const amt = parseFloat(amountInput) || 0;
+              return days > 0 && amt > 0 ? (
+                <p className="text-[10px] text-muted-foreground">
+                  {days} working days · {Math.round(amt / days).toLocaleString()} VND/day
+                </p>
+              ) : null;
+            })()}
           </div>
         </div>
       )}
@@ -682,10 +747,11 @@ function PaymentPanel({
   const subPayments = payments.filter((p) => p.subscriptionId === sub.id);
   const { paid, refunded } = paymentsTotalForSub(payments, sub.id);
   const compensation = subscriptionCompensation(sub.id, payments, creditTransactions);
-  const extrasTotal = extras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
+  const subExtras = extras.filter((e) => e.subscriptionId === sub.id);
+  const extrasTotal = subExtras.reduce((s, e) => s + e.amount, 0);
   const isCancelled = sub.status === "cancelled";
   const totalDue = isCancelled
-    ? calculateProratedTotalDue(sub, skips, extrasTotal)
+    ? calculateProratedTotalDue(sub, skips, subExtras)
     : sub.subscriptionPrice + sub.shippingPrice - sub.discount + extrasTotal;
   const balance = totalDue - compensation.netEarned;
   const payStatusInfo = subscriptionPaymentStatus(sub, payments, extras, skips, creditTransactions);
@@ -770,16 +836,16 @@ function PaymentPanel({
         <PaymentBadge status={payStatus} />
         <span className="ml-1">
           {compensation.netEarned !== 0
-            ? `₫${compensation.netEarned.toLocaleString()} ${compensation.netEarned > 0 ? 'net' : 'refunded'}`
+            ? `${compensation.netEarned.toLocaleString()} VND ${compensation.netEarned > 0 ? 'net' : 'refunded'}`
             : paid > 0 ? "Fully refunded" : "No payment"}
           {balance > 0
             ? isCancelled && payStatus === "paid"
-              ? ` · ₫${balance.toLocaleString()} over-refunded`
-              : ` · ₫${balance.toLocaleString()} due`
+              ? ` · ${balance.toLocaleString()} VND over-refunded`
+              : ` · ${balance.toLocaleString()} VND due`
             : balance < 0
               ? isCancelled
-                ? ` · ₫${Math.abs(balance).toLocaleString()} refund owed`
-                : ` · ₫${Math.abs(balance).toLocaleString()} over`
+                ? ` · ${Math.abs(balance).toLocaleString()} VND refund owed`
+                : ` · ${Math.abs(balance).toLocaleString()} VND over`
               : " · ✓"}
         </span>
         <span className="ml-auto">{open ? "▲" : "▼"}</span>
@@ -791,11 +857,11 @@ function PaymentPanel({
           <div className="grid grid-cols-3 gap-1 text-[10px]">
             <div className="bg-muted/30 rounded p-1">
               <p className="text-muted-foreground">Due</p>
-              <p className="font-medium">₫{totalDue.toLocaleString()}</p>
+              <p className="font-medium">{totalDue.toLocaleString()} VND</p>
             </div>
             <div className="bg-muted/30 rounded p-1">
               <p className="text-muted-foreground">Paid</p>
-              <p className="font-medium text-green-700 dark:text-green-400">₫{paid.toLocaleString()}</p>
+              <p className="font-medium text-green-700 dark:text-green-400">{paid.toLocaleString()} VND</p>
             </div>
             <div className="bg-muted/30 rounded p-1">
               <p className="text-muted-foreground">
@@ -806,7 +872,7 @@ function PaymentPanel({
                     : balance >= 0 ? "Balance" : "Overpaid"}
               </p>
               <p className={`font-medium ${balance > 0 ? "text-red-600" : balance < 0 ? "text-amber-600" : "text-green-700"}`}>
-                ₫{Math.abs(balance).toLocaleString()}
+                {Math.abs(balance).toLocaleString()} VND
               </p>
             </div>
           </div>
@@ -817,7 +883,7 @@ function PaymentPanel({
               {subPayments.map((p) => (
                 <li key={p.id} className="flex items-center gap-1 text-[10px] group">
                   <span className={p.type === "refund" ? "text-yellow-600" : "text-green-700"}>
-                    {p.type === "refund" ? "-" : "+"}₫{p.amount.toLocaleString()}
+                    {p.type === "refund" ? "-" : "+"}{p.amount.toLocaleString()} VND
                   </span>
                   {p.method === "credit" ? (
                     <span className="px-1 py-px rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 text-[9px] font-medium">credit</span>
@@ -849,10 +915,10 @@ function PaymentPanel({
                 </li>
               ))}
               {refunded > 0 && (
-                <li className="text-[10px] text-yellow-600">Refunded: ₫{refunded.toLocaleString()}</li>
+                <li className="text-[10px] text-yellow-600">Refunded: {refunded.toLocaleString()} VND</li>
               )}
               {compensation.refundedToCredit > 0 && (
-                <li className="text-[10px] text-emerald-600">→ Credit: ₫{compensation.refundedToCredit.toLocaleString()}</li>
+                <li className="text-[10px] text-emerald-600">→ Credit: {compensation.refundedToCredit.toLocaleString()} VND</li>
               )}
             </ul>
           )}
@@ -869,7 +935,7 @@ function PaymentPanel({
                   }}
                   className="text-[10px] text-emerald-700 dark:text-emerald-400 hover:underline"
                 >
-                  ₫{customerCredit.toLocaleString()} credit available — Apply
+                  {customerCredit.toLocaleString()} VND credit available — Apply
                 </button>
               ) : (
                 <div className="flex items-center gap-1 flex-wrap">
@@ -1632,7 +1698,15 @@ export function CustomerOverlay({
                     </button>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <p className="text-sm text-muted-foreground">{details.customer.phone}</p>
+                    <a
+                      href={`https://zalo.me/${details.customer.phone}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-muted-foreground hover:text-blue-500 transition-colors"
+                      title="Open in Zalo"
+                    >
+                      {details.customer.phone}
+                    </a>
                     <button
                       type="button"
                       onClick={() => copyToClipboard(details.customer!.phone, "phone")}
@@ -1645,6 +1719,49 @@ export function CustomerOverlay({
                 </div>
               )}
             </DialogHeader>
+
+            {/* ── Customer financial summary ──────────────────────────────── */}
+            {(() => {
+              const today = new Date(); today.setHours(0, 0, 0, 0);
+              const totalEarned = details.subscriptions.reduce(
+                (s, sub) => s + earnedRevenueAsOf(sub, details.skips, details.extras, today),
+                0
+              );
+              const totalCollected = details.payments.filter((p) => p.type === "payment").reduce((s, p) => s + p.amount, 0);
+              const totalRefundCash = details.payments.filter((p) => p.type === "refund").reduce((s, p) => s + p.amount, 0);
+              const totalRefundCredit = details.creditTransactions.filter((t) => t.type === "refund_credit").reduce((s, t) => s + t.amount, 0);
+              const netCollected = totalCollected - totalRefundCash - totalRefundCredit;
+              const totalBalance = details.subscriptions.reduce((s, sub) => {
+                const subExtras = details.extras.filter((e) => e.subscriptionId === sub.id);
+                const extrasTotal = subExtras.reduce((a, e) => a + e.amount, 0);
+                const isCancelled = sub.status === "cancelled";
+                const totalDue = isCancelled
+                  ? calculateProratedTotalDue(sub, details.skips.filter((sk) => sk.subscriptionId === sub.id), subExtras)
+                  : sub.subscriptionPrice + sub.shippingPrice - sub.discount + extrasTotal;
+                const comp = subscriptionCompensation(sub.id, details.payments, details.creditTransactions);
+                return s + (totalDue - comp.netEarned);
+              }, 0);
+              return (
+                <div className="grid grid-cols-3 gap-2 text-[11px] bg-muted/30 rounded-lg p-2.5">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">Recognized Revenue</p>
+                    <p className="font-semibold">{totalEarned.toLocaleString()} VND</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">Net Collected</p>
+                    <p className="font-semibold">{netCollected.toLocaleString()} VND</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">
+                      {totalBalance > 0 ? "Balance Due" : totalBalance < 0 ? "Refund Owed" : "Balance"}
+                    </p>
+                    <p className={`font-semibold ${totalBalance > 0 ? "text-red-600" : totalBalance < 0 ? "text-amber-600" : "text-green-600"}`}>
+                      {totalBalance === 0 ? "✓ Clear" : `${Math.abs(totalBalance).toLocaleString()} VND`}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 pt-1">
               {/* ── LEFT COLUMN ─────────────────────────────────────────── */}
@@ -1765,6 +1882,14 @@ export function CustomerOverlay({
                     onBlur={handleNoteBlur}
                   />
                 </div>
+
+                {/* Credit balance */}
+                <CreditPanel
+                  customerId={currentId}
+                  creditTransactions={details.creditTransactions}
+                  subscriptions={details.subscriptions}
+                  onReload={reload}
+                />
               </div>
 
               {/* ── RIGHT COLUMN ────────────────────────────────────────── */}
@@ -1805,7 +1930,7 @@ export function CustomerOverlay({
                   {details.subscriptions.length === 0 && !showAddSub && !editingSubId && (
                     <p className="text-xs text-muted-foreground/50">No subscriptions.</p>
                   )}
-                  <div className="max-h-[240px] overflow-y-auto pr-1">
+                  <div className="max-h-[380px] overflow-y-auto pr-1">
                   <ul className="space-y-1">
                     {[...details.subscriptions].sort((a, b) => {
                       const today = new Date();
@@ -1851,11 +1976,19 @@ export function CustomerOverlay({
                                 {!isCancelling && (
                                 <div className="flex items-center justify-between text-muted-foreground mt-0.5">
                                   <span className="truncate">
-                                    <span>₫{(sub.subscriptionPrice + sub.shippingPrice - sub.discount).toLocaleString()}{sub.discount > 0 && <span className="text-[9px]"> (-₫{sub.discount.toLocaleString()})</span>} · </span>
+                                    <span>{(sub.subscriptionPrice + sub.shippingPrice - sub.discount).toLocaleString()} VND{sub.discount > 0 && <span className="text-[9px]"> (-{sub.discount.toLocaleString()} VND)</span>} · </span>
                                     Ends {fmt(sub.endDate)}
                                     {status === "active" && ` · ${days}d`}
                                     {skips > 0 && ` · ${skips} skip${skips !== 1 ? "s" : ""}`}
                                   </span>
+                                </div>
+                              )}
+                              {!isCancelling && sub.status === "cancelled" && (sub.cancelledAt || sub.cancelReason) && (
+                                <div className="text-[10px] text-muted-foreground mt-0.5 flex gap-1.5 flex-wrap">
+                                  {sub.cancelledAt && (
+                                    <span>Cancelled {new Date(sub.cancelledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+                                  )}
+                                  {sub.cancelReason && <span>· {sub.cancelReason}</span>}
                                 </div>
                               )}
                               {canAct && !isCancelling && (
@@ -1886,6 +2019,7 @@ export function CustomerOverlay({
                                     customerId={currentId}
                                     skips={details.skips.filter((s) => s.subscriptionId === sub.id)}
                                     payments={details.payments.filter((p) => p.subscriptionId === sub.id)}
+                                    extras={details.extras.filter((e) => e.subscriptionId === sub.id)}
                                     onDone={() => { setCancellingId(null); reload(); }}
                                     onCancel={() => { setCancellingId(null); }}
                                   />
@@ -1905,13 +2039,6 @@ export function CustomerOverlay({
                   </div>
                 </div>
 
-                {/* Credit balance */}
-                <CreditPanel
-                  customerId={currentId}
-                  creditTransactions={details.creditTransactions}
-                  subscriptions={details.subscriptions}
-                  onReload={reload}
-                />
               </div>
 
               {/* Minimap removed from here - now in SchedulePanel */}

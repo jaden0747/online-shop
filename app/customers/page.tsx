@@ -1,18 +1,25 @@
 import { getAllCustomers, getAllAddresses } from "@/lib/data/customers";
 import { getAllSubscriptions, getAllSkips, getAllExtras } from "@/lib/data/subscriptions";
 import { getAllPricing } from "@/lib/data/pricing";
-import { isSubscriptionLive, subscriptionStatus, formatDate, daysRemaining } from "@/lib/utils/subscription";
+import { isSubscriptionLive, subscriptionStatus, formatDate } from "@/lib/utils/subscription";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AddCustomerForm } from "./add-customer-form";
-import { UnifiedCustomerTable } from "./unified-customer-table";
+import { CustomerPageClient } from "./customer-page-client";
 import { EditSubscriptionRow } from "@/app/subscriptions/edit-subscription-row";
 import { CustomerOverlayTrigger } from "@/components/customer-overlay-trigger";
 
 export const dynamic = "force-dynamic";
 
-export default async function CustomersPage() {
+export default async function CustomersPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const initialOverlayId = typeof sp.overlay === "string" ? sp.overlay : undefined;
+
   const customers = getAllCustomers();
   const allAddresses = getAllAddresses();
   const rawSubscriptions = getAllSubscriptions();
@@ -53,23 +60,28 @@ export default async function CustomersPage() {
       activeSubsMap.set(s.customer.id, list);
     }
   }
-  // Sort each customer's active subs by endDate ascending
   for (const list of activeSubsMap.values()) {
     list.sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime());
+  }
+
+  // Build total spend map and hasSubs map
+  const spendMap = new Map<string, number>();
+  const hasSubsSet = new Set<string>();
+  for (const s of rawSubscriptions) {
+    spendMap.set(s.customerId, (spendMap.get(s.customerId) ?? 0) + s.subscriptionPrice + s.shippingPrice);
+    hasSubsSet.add(s.customerId);
   }
 
   const sortedCustomers = [...customers].sort((a, b) => {
     const aList = activeSubsMap.get(a.id), bList = activeSubsMap.get(b.id);
     const aActive = !!(aList?.length), bActive = !!(bList?.length);
     if (aActive && bActive) {
-      // Sort by earliest ending active sub
       return new Date(aList![0].endDate).getTime() - new Date(bList![0].endDate).getTime();
     }
     if (aActive) return -1; if (bActive) return 1;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
-  // Build unified row data for Tab 1
   const customerRows = sortedCustomers.map((c) => {
     const addresses = addressesByCustomer.get(c.id) ?? [];
     const defaultAddr = addresses.find((a) => a.isDefault) ?? addresses[0] ?? null;
@@ -88,8 +100,17 @@ export default async function CustomersPage() {
       zone: defaultAddr?.zone ?? c.zone,
       addresses: addresses.map((a) => ({ label: a.label, address: a.address, isDefault: a.isDefault })),
       activeSubs,
+      totalSpend: spendMap.get(c.id) ?? 0,
+      hasSubs: hasSubsSet.has(c.id),
+      createdAt: c.createdAt,
     };
   });
+
+  // Last 5 newly created customers for the Recent panel
+  const recentlyCreated = [...customers]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 5)
+    .map((c) => ({ id: c.id, name: c.name, phone: c.phone, createdAt: c.createdAt }));
 
   const active = subscriptions.filter((s) => isSubscriptionLive(s.status, s.startDate, s.endDate));
   const inactive = subscriptions.filter((s) => !isSubscriptionLive(s.status, s.startDate, s.endDate))
@@ -130,7 +151,11 @@ export default async function CustomersPage() {
         <TabsContent value="customers" className="mt-4">
           <Card>
             <CardContent className="p-0">
-              <UnifiedCustomerTable rows={customerRows} />
+              <CustomerPageClient
+                rows={customerRows}
+                recentlyCreated={recentlyCreated}
+                initialOverlayId={initialOverlayId}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -177,10 +202,10 @@ export default async function CustomersPage() {
                             {formatDate(sub.startDate)} – {formatDate(sub.endDate)}
                           </td>
                           <td className="px-4 py-2">
-                            <span className="font-medium">₫{total.toLocaleString()}</span>
+                            <span className="font-medium">{total.toLocaleString()} VND</span>
                             {sub.shippingPrice > 0 && (
                               <p className="text-xs text-muted-foreground">
-                                sub ₫{sub.subscriptionPrice.toLocaleString()} + ship ₫{sub.shippingPrice.toLocaleString()}
+                                sub {sub.subscriptionPrice.toLocaleString()} VND + ship {sub.shippingPrice.toLocaleString()} VND
                               </p>
                             )}
                           </td>

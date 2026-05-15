@@ -11,7 +11,8 @@ import { EditSubscriptionRow } from "./edit-subscription-row";
 import { CustomerOverlayTrigger } from "@/components/customer-overlay-trigger";
 import { Badge } from "@/components/ui/badge";
 import { FormattedAmountInput } from "@/components/ui/formatted-amount-input";
-import { X, Check, ChevronDown, ChevronRight } from "lucide-react";
+import { X, Check, ChevronDown, ChevronRight, Banknote } from "lucide-react";
+import { Popover } from "@base-ui/react/popover";
 import type { Payment, SubscriptionExtra, MealSkip, Subscription, CreditTransaction } from "@/lib/data/types";
 
 function localDateStr(d: Date): string {
@@ -50,15 +51,15 @@ function EndDateCell({ endDate }: { endDate: string }) {
 function PriceCell({ subscriptionPrice, shippingPrice, discount = 0, extrasTotal = 0 }: { subscriptionPrice: number; shippingPrice: number; discount?: number; extrasTotal?: number }) {
   const total = subscriptionPrice + shippingPrice - discount + extrasTotal;
   const parts: string[] = [];
-  if (shippingPrice > 0) parts.push(`ship ₫${shippingPrice.toLocaleString()}`);
-  if (discount > 0) parts.push(`−disc ₫${discount.toLocaleString()}`);
-  if (extrasTotal > 0) parts.push(`+extra ₫${extrasTotal.toLocaleString()}`);
+  if (shippingPrice > 0) parts.push(`ship ${shippingPrice.toLocaleString()} VND`);
+  if (discount > 0) parts.push(`−disc ${discount.toLocaleString()} VND`);
+  if (extrasTotal > 0) parts.push(`+extra ${extrasTotal.toLocaleString()} VND`);
   return (
     <div>
-      <span className="font-medium">₫{total.toLocaleString()}</span>
+      <span className="font-medium">{total.toLocaleString()} VND</span>
       {parts.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          sub ₫{subscriptionPrice.toLocaleString()} {parts.join(" ")}
+          sub {subscriptionPrice.toLocaleString()} VND {parts.join(" ")}
         </p>
       )}
     </div>
@@ -86,6 +87,9 @@ export function ActiveSubscriptionTable({
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  const sorted = [...subscriptions].sort((a, b) => a.customer.name.localeCompare(b.customer.name));
+  const seenCustomers = new Set<string>();
+
   return (
     <table className="w-full text-sm">
       <thead>
@@ -103,14 +107,16 @@ export function ActiveSubscriptionTable({
         </tr>
       </thead>
       <tbody className="divide-y">
-        {subscriptions.length === 0 && (
+        {sorted.length === 0 && (
           <tr>
             <td colSpan={10} className="px-4 py-6 text-center text-muted-foreground">
               No active subscriptions.
             </td>
           </tr>
         )}
-        {subscriptions.map((sub) => {
+        {sorted.map((sub) => {
+          const isFirstForCustomer = !seenCustomers.has(sub.customer.id);
+          seenCustomers.add(sub.customer.id);
           const subSkips = allSkips.filter((sk) => sk.subscriptionId === sub.id);
           const payStatus = subscriptionPaymentStatus(sub, allPayments, allExtras, subSkips, allCreditTransactions);
           const isExpanded = expandedId === sub.id;
@@ -132,6 +138,7 @@ export function ActiveSubscriptionTable({
               customerCredit={creditBalances.get(sub.customerId) ?? 0}
               colSpan={10}
               showEndDate
+              isFirstForCustomer={isFirstForCustomer}
             />
           );
         })}
@@ -159,6 +166,9 @@ export function InactiveSubscriptionTable({
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  const sorted = [...subscriptions].sort((a, b) => a.customer.name.localeCompare(b.customer.name));
+  const seenCustomers = new Set<string>();
+
   return (
     <table className="w-full text-sm">
       <thead>
@@ -176,14 +186,16 @@ export function InactiveSubscriptionTable({
         </tr>
       </thead>
       <tbody className="divide-y">
-        {subscriptions.length === 0 && (
+        {sorted.length === 0 && (
           <tr>
             <td colSpan={10} className="px-4 py-6 text-center text-muted-foreground">
               No inactive subscriptions.
             </td>
           </tr>
         )}
-        {subscriptions.map((sub) => {
+        {sorted.map((sub) => {
+          const isFirstForCustomer = !seenCustomers.has(sub.customer.id);
+          seenCustomers.add(sub.customer.id);
           const subSkips = allSkips.filter((sk) => sk.subscriptionId === sub.id);
           const payStatus = subscriptionPaymentStatus(sub, allPayments, allExtras, subSkips, allCreditTransactions);
           const isExpanded = expandedId === sub.id;
@@ -205,11 +217,107 @@ export function InactiveSubscriptionTable({
               customerCredit={creditBalances.get(sub.customerId) ?? 0}
               colSpan={10}
               showEndDate={false}
+              isFirstForCustomer={isFirstForCustomer}
             />
           );
         })}
       </tbody>
     </table>
+  );
+}
+
+function QuickPayButton({
+  subscriptionId,
+  balance,
+}: {
+  subscriptionId: string;
+  balance: number;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [method, setMethod] = useState<Payment["method"]>("transfer");
+  const [amount, setAmount] = useState(balance > 0 ? balance : 0);
+  const [saving, startSave] = useTransition();
+
+  function handleOpen(o: boolean) {
+    if (o) setAmount(balance > 0 ? balance : 0);
+    setOpen(o);
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!amount || amount <= 0) return;
+    startSave(async () => {
+      await createPaymentAction({
+        subscriptionId,
+        type: "payment",
+        amount,
+        paidAt: localDateStr(new Date()),
+        method,
+        note: null,
+      });
+      setOpen(false);
+      router.refresh();
+    });
+  }
+
+  return (
+    <Popover.Root open={open} onOpenChange={handleOpen}>
+      <Popover.Trigger
+        render={
+          <button
+            type="button"
+            onClick={(e) => e.stopPropagation()}
+            title="Quick log payment"
+            className="h-5 w-5 rounded flex items-center justify-center bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50 transition-colors"
+          />
+        }
+      >
+        <Banknote size={11} />
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner side="bottom" align="end" sideOffset={6}>
+          <Popover.Popup
+            className="z-50 w-56 rounded-xl bg-popover text-sm text-popover-foreground ring-1 ring-foreground/10 shadow-lg p-3 space-y-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-xs font-medium text-muted-foreground">Quick Log Payment</p>
+            <form onSubmit={handleSubmit} className="space-y-2">
+              <FormattedAmountInput
+                value={amount}
+                onChange={(v) => setAmount(Number(v) || 0)}
+                className="h-7 text-xs"
+              />
+              <div className="flex gap-1 flex-wrap">
+                {PAYMENT_METHODS.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setMethod(m)}
+                    className={[
+                      "px-2 py-0.5 rounded-full text-xs font-medium border transition-colors",
+                      method === m
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-border text-muted-foreground hover:border-foreground/40",
+                    ].join(" ")}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="submit"
+                disabled={saving || amount <= 0}
+                className="w-full h-7 rounded-md bg-primary text-primary-foreground text-xs font-medium disabled:opacity-50 transition-opacity"
+              >
+                {saving ? "Saving…" : `Log ${amount.toLocaleString()} VND`}
+              </button>
+            </form>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 
@@ -228,6 +336,7 @@ function ExpandableRow({
   customerCredit,
   colSpan,
   showEndDate,
+  isFirstForCustomer = true,
 }: {
   sub: SubRow;
   payStatus: ReturnType<typeof subscriptionPaymentStatus>;
@@ -243,6 +352,7 @@ function ExpandableRow({
   customerCredit: number;
   colSpan: number;
   showEndDate: boolean;
+  isFirstForCustomer?: boolean;
 }) {
   const router = useRouter();
   const [saving, startSave] = useTransition();
@@ -253,7 +363,7 @@ function ExpandableRow({
   const compensation = subscriptionCompensation(sub.id, allPayments, allCreditTransactions);
   const isCancelled = sub.status === "cancelled";
   const totalDue = isCancelled
-    ? calculateProratedTotalDue(sub, subSkips, extrasTotal)
+    ? calculateProratedTotalDue(sub, subSkips, subExtras)
     : sub.subscriptionPrice + sub.shippingPrice - sub.discount + extrasTotal;
   const balance = totalDue - compensation.netEarned;
 
@@ -287,13 +397,17 @@ function ExpandableRow({
           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </td>
         <td className="px-4 py-2">
-          <div onClick={(e) => e.stopPropagation()}>
-            <CustomerOverlayTrigger
-              customerId={sub.customer.id}
-              name={sub.customer.name}
-              phone={sub.customer.phone}
-            />
-          </div>
+          {isFirstForCustomer ? (
+            <div onClick={(e) => e.stopPropagation()}>
+              <CustomerOverlayTrigger
+                customerId={sub.customer.id}
+                name={sub.customer.name}
+                phone={sub.customer.phone}
+              />
+            </div>
+          ) : (
+            <span className="text-muted-foreground/40 text-xs pl-2">↳</span>
+          )}
         </td>
         <td className="px-4 py-2 capitalize text-muted-foreground">
           {sub.plan} · {sub.goal} · {sub.mealsPerDay}×/day
@@ -318,7 +432,7 @@ function ExpandableRow({
         <td className="px-4 py-2">
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-medium">₫{compensation.netEarned.toLocaleString()}</span>
+              <span className="font-medium">{compensation.netEarned.toLocaleString()} VND</span>
               <span className={[
                 "px-1.5 py-0.5 rounded-full text-[10px] font-medium",
                 payStatus.status === "paid" ? "bg-green-100 text-green-800" :
@@ -326,35 +440,27 @@ function ExpandableRow({
                 "bg-red-100 text-red-700",
               ].join(" ")}>{payStatus.status}</span>
               {payStatus.status !== "paid" && (
-                <button
-                  type="button"
-                  onClick={handleMarkPaid}
-                  disabled={saving}
-                  title={`Mark as paid (₫${balance.toLocaleString()})`}
-                  className="h-5 w-5 rounded flex items-center justify-center bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50 transition-colors"
-                >
-                  <Check size={11} strokeWidth={3} />
-                </button>
+                <QuickPayButton subscriptionId={sub.id} balance={balance} />
               )}
             </div>
             {isCancelled && payStatus.status === "paid" && Math.abs(payStatus.residual) > 1 && (
               <p className={`text-[10px] mt-0.5 ${payStatus.residual < 0 ? "text-amber-600" : "text-muted-foreground"}`}>
                 {payStatus.residual < 0
-                  ? `₫${Math.abs(payStatus.residual).toLocaleString()} refund owed`
-                  : `₫${payStatus.residual.toLocaleString()} over-refunded`}
+                  ? `${Math.abs(payStatus.residual).toLocaleString()} VND refund owed`
+                  : `${payStatus.residual.toLocaleString()} VND over-refunded`}
               </p>
             )}
             {compensation.cashRefunded > 0 && (
-              <p className="text-xs text-red-500 mt-0.5">−₫{compensation.cashRefunded.toLocaleString()} refunded</p>
+              <p className="text-xs text-red-500 mt-0.5">−{compensation.cashRefunded.toLocaleString()} VND refunded</p>
             )}
             {compensation.refundedToCredit > 0 && (
-              <p className="text-[10px] text-emerald-600 mt-0.5">−₫{compensation.refundedToCredit.toLocaleString()} → credit</p>
+              <p className="text-[10px] text-emerald-600 mt-0.5">−{compensation.refundedToCredit.toLocaleString()} VND → credit</p>
             )}
           </div>
         </td>
         <td className="px-4 py-2">
           {customerCredit > 0 ? (
-            <span className="text-xs font-medium text-emerald-600">₫{customerCredit.toLocaleString()}</span>
+            <span className="text-xs font-medium text-emerald-600">{customerCredit.toLocaleString()} VND</span>
           ) : (
             <span className="text-xs text-muted-foreground/40">—</span>
           )}
@@ -485,6 +591,7 @@ function PaymentExpandedPanel({
 
   const [extraNote, setExtraNote] = useState("");
   const [extraAmount, setExtraAmount] = useState("");
+  const [extraForDate, setExtraForDate] = useState("");
 
   function handleAddExtra() {
     const amount = parseFloat(extraAmount);
@@ -494,9 +601,11 @@ function PaymentExpandedPanel({
       fd.set("subscriptionId", sub.id);
       fd.set("amount", String(amount));
       fd.set("note", extraNote.trim());
+      if (extraForDate) fd.set("forDate", extraForDate);
       await createExtraAction(fd);
       setExtraNote("");
       setExtraAmount("");
+      setExtraForDate("");
       router.refresh();
     });
   }
@@ -512,26 +621,37 @@ function PaymentExpandedPanel({
 
   return (
     <div className="max-w-2xl space-y-3">
+      {/* Cancellation info */}
+      {sub.status === "cancelled" && (sub.cancelledAt || sub.cancelReason) && (
+        <div className="text-xs text-muted-foreground flex items-center gap-3">
+          {sub.cancelledAt && (
+            <span>Cancelled: <span className="font-medium text-foreground">{new Date(sub.cancelledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span></span>
+          )}
+          {sub.cancelReason && (
+            <span>Reason: <span className="font-medium text-foreground">{sub.cancelReason}</span></span>
+          )}
+        </div>
+      )}
       {/* Summary bar */}
       <div className="flex items-center gap-4 text-xs">
         <div>
           <span className="text-muted-foreground">Due </span>
-          <span className="font-medium">₫{totalDue.toLocaleString()}</span>
+          <span className="font-medium">{totalDue.toLocaleString()} VND</span>
         </div>
         <div>
           <span className="text-muted-foreground">Paid </span>
-          <span className="font-medium text-green-700 dark:text-green-400">₫{paid.toLocaleString()}</span>
+          <span className="font-medium text-green-700 dark:text-green-400">{paid.toLocaleString()} VND</span>
         </div>
         {refunded > 0 && (
           <div>
             <span className="text-muted-foreground">Refunded </span>
-            <span className="font-medium text-yellow-600">₫{refunded.toLocaleString()}</span>
+            <span className="font-medium text-yellow-600">{refunded.toLocaleString()} VND</span>
           </div>
         )}
         {refundedToCredit > 0 && (
           <div>
             <span className="text-muted-foreground">→ Credit </span>
-            <span className="font-medium text-emerald-600">₫{refundedToCredit.toLocaleString()}</span>
+            <span className="font-medium text-emerald-600">{refundedToCredit.toLocaleString()} VND</span>
           </div>
         )}
         <div>
@@ -539,7 +659,7 @@ function PaymentExpandedPanel({
             {sub.status === "cancelled" && balance < 0 ? "Refund owed " : balance >= 0 ? "Balance " : "Overpaid "}
           </span>
           <span className={`font-medium ${balance > 0 ? "text-red-600" : balance < 0 ? "text-amber-600" : "text-green-700"}`}>
-            ₫{Math.abs(balance).toLocaleString()}
+            {Math.abs(balance).toLocaleString()} VND
           </span>
         </div>
       </div>
@@ -550,7 +670,7 @@ function PaymentExpandedPanel({
           {payments.map((p) => (
             <div key={p.id} className="flex items-center gap-2 text-xs group">
               <span className={`font-medium ${p.type === "refund" ? "text-yellow-600" : "text-green-700"}`}>
-                {p.type === "refund" ? "−" : "+"}₫{p.amount.toLocaleString()}
+                {p.type === "refund" ? "−" : "+"}{p.amount.toLocaleString()} VND
               </span>
               {p.method === "credit" ? (
                 <span className="px-1.5 py-px rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 text-[10px] font-medium">credit</span>
@@ -593,7 +713,7 @@ function PaymentExpandedPanel({
           <span className="font-medium text-muted-foreground">Extras / Addons</span>
           {extras.length > 0 && (
             <span className="text-amber-600 font-medium">
-              +₫{extras.reduce((s, e) => s + e.amount, 0).toLocaleString()}
+              +{extras.reduce((s, e) => s + e.amount, 0).toLocaleString()} VND
             </span>
           )}
         </div>
@@ -601,7 +721,8 @@ function PaymentExpandedPanel({
           <div className="space-y-0.5">
             {extras.map((e) => (
               <div key={e.id} className="flex items-center gap-2 text-xs group">
-                <span className="font-medium text-amber-600">+₫{e.amount.toLocaleString()}</span>
+                <span className="font-medium text-amber-600">+{e.amount.toLocaleString()} VND</span>
+                {e.startDate && <span className="text-muted-foreground">{localDateStr(new Date(e.startDate))}{e.endDate && e.endDate !== e.startDate ? ` – ${localDateStr(new Date(e.endDate))}` : ""}</span>}
                 {e.note && <span className="text-muted-foreground flex-1 truncate">{e.note}</span>}
                 <button
                   type="button"
@@ -628,6 +749,13 @@ function PaymentExpandedPanel({
             placeholder="₫ Amount"
             value={extraAmount}
             onChange={(raw) => setExtraAmount(raw)}
+          />
+          <input
+            className={`${inp} w-32`}
+            type="date"
+            title="Delivery date for this extra (optional)"
+            value={extraForDate}
+            onChange={(e) => setExtraForDate(e.target.value)}
           />
           <button
             type="button"
@@ -665,7 +793,7 @@ function PaymentExpandedPanel({
       {customerCredit > 0 && balance > 0 && (
         <div className="flex items-center gap-2 flex-wrap pt-1 border-t">
           <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
-            ₫{customerCredit.toLocaleString()} credit available
+            {customerCredit.toLocaleString()} VND credit available
           </span>
           <FormattedAmountInput className={`${inp} w-28`} placeholder="Apply amount" value={creditAmount}
             onChange={(raw) => setCreditAmount(raw)} />

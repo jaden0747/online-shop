@@ -57,7 +57,7 @@ export function FormulaPricingForm({
           value={base}
           onChange={(raw) => setBase(raw)}
         />
-        <span className="text-xs text-muted-foreground">₫</span>
+        <span className="text-xs text-muted-foreground">VND</span>
       </div>
 
       <div className="space-y-2">
@@ -76,7 +76,7 @@ export function FormulaPricingForm({
               />
               {baseNum > 0 && (
                 <span className="text-xs text-muted-foreground">
-                  → ₫{Math.round(baseNum * (parseFloat(muls[g]) || 1)).toLocaleString()}/meal
+                  → {Math.round(baseNum * (parseFloat(muls[g]) || 1)).toLocaleString()} VND/meal
                 </span>
               )}
             </label>
@@ -103,7 +103,7 @@ export function FormulaPricingForm({
                     <td className="pr-4 py-1 text-muted-foreground">{plan.label} · {mpd}×/day</td>
                     {computedPrices.map(({ goal, pricePerMeal }) => (
                       <td key={goal} className="px-3 py-1 text-right font-medium">
-                        ₫{(pricePerMeal * plan.days * mpd).toLocaleString()}
+                        {(pricePerMeal * plan.days * mpd).toLocaleString()} VND
                       </td>
                     ))}
                   </tr>

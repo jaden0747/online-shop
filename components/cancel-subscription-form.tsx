@@ -15,8 +15,8 @@ import {
 import { updateSubscriptionStatusAction } from "@/app/actions/subscriptions";
 import { createPaymentAction } from "@/app/actions/payments";
 import { addCreditAction } from "@/app/actions/credits";
-import { suggestedRefund, todayDateStr } from "@/lib/utils/subscription";
-import type { MealSkip, Payment } from "@/lib/data/types";
+import { suggestedRefund, todayDateStr, localDateStr } from "@/lib/utils/subscription";
+import type { MealSkip, Payment, SubscriptionExtra } from "@/lib/data/types";
 
 type Sub = {
   id: string;
@@ -32,6 +32,7 @@ interface CancelSubscriptionFormProps {
   customerId: string;
   skips: MealSkip[];
   payments: Payment[];
+  extras: SubscriptionExtra[];
   /** Called after successful cancellation so the parent can close/refresh */
   onDone: () => void;
   /** Called when user clicks "Keep" (cancel the cancel flow) */
@@ -43,11 +44,13 @@ export function CancelSubscriptionForm({
   customerId,
   skips,
   payments,
+  extras,
   onDone,
   onCancel,
 }: CancelSubscriptionFormProps) {
   const [cancelDate, setCancelDate] = useState(todayDateStr());
-  const [reason, setReason] = useState("");
+  const [reasonPreset, setReasonPreset] = useState<string>("");
+  const [reasonCustom, setReasonCustom] = useState("");
   const [refundMethod, setRefundMethod] = useState<Payment["method"]>("transfer");
   const [refundDate, setRefundDate] = useState(todayDateStr());
   const [note, setNote] = useState("");
@@ -57,8 +60,8 @@ export function CancelSubscriptionForm({
   // Re-derive the refund calculation live as the cancellation date changes.
   const refundCalc = useMemo(() => {
     const asOf = new Date(cancelDate + "T00:00:00");
-    return suggestedRefund(sub, skips, payments, asOf);
-  }, [sub, skips, payments, cancelDate]);
+    return suggestedRefund(sub, skips, payments, asOf, extras);
+  }, [sub, skips, payments, extras, cancelDate]);
 
   const [refundAmt, setRefundAmt] = useState(String(refundCalc.suggested));
 
@@ -69,16 +72,28 @@ export function CancelSubscriptionForm({
   const parsedAmt = parseFloat(refundAmt) || 0;
   const exceedsNetPaid = parsedAmt > refundCalc.netPaid && refundCalc.netPaid > 0;
 
-  const endDate = new Date(sub.endDate);
-  endDate.setHours(0, 0, 0, 0);
+  const endDateStr = localDateStr(sub.endDate);
   const cancelDateObj = new Date(cancelDate + "T00:00:00");
+  const endDateObj = new Date(endDateStr + "T00:00:00");
+
+  const REASON_PRESETS = [
+    { value: "personal_preference", label: "Personal preference" },
+    { value: "store_mistake", label: "Store mistake" },
+    { value: "others", label: "Others (fill in)" },
+  ];
+  const effectiveReason =
+    reasonPreset === "others"
+      ? reasonCustom.trim()
+      : reasonPreset
+        ? REASON_PRESETS.find((r) => r.value === reasonPreset)?.label ?? ""
+        : "";
 
   function handleConfirm() {
     startTransition(async () => {
       await updateSubscriptionStatusAction(
         sub.id,
         "cancelled",
-        reason.trim() || undefined,
+        effectiveReason || undefined,
         cancelDate + "T00:00:00.000Z"
       );
       if (parsedAmt > 0) {
@@ -114,12 +129,12 @@ export function CancelSubscriptionForm({
           type="date"
           className="h-7 text-xs"
           value={cancelDate}
-          max={endDate.toISOString().slice(0, 10)}
+          max={endDateStr}
           onChange={(e) => {
             setCancelDate(e.target.value);
             // Snap refund amount to new suggested when user hasn't diverged
             const asOf = new Date(e.target.value + "T00:00:00");
-            const next = suggestedRefund(sub, skips, payments, asOf);
+            const next = suggestedRefund(sub, skips, payments, asOf, extras);
             setRefundAmt(String(next.suggested));
           }}
         />
@@ -132,7 +147,7 @@ export function CancelSubscriptionForm({
       <div className="rounded-lg bg-muted/60 p-3 text-xs space-y-1">
         <div className="flex justify-between text-muted-foreground">
           <span>Price/day</span>
-          <span>₫{refundCalc.pricePerDay.toLocaleString()}</span>
+          <span>{refundCalc.pricePerDay.toLocaleString()} VND</span>
         </div>
         <div className="flex justify-between text-muted-foreground">
           <span>Remaining days (from {cancelDate})</span>
@@ -156,11 +171,17 @@ export function CancelSubscriptionForm({
         </div>
         <div className="flex justify-between font-semibold">
           <span>Pro-rata refund</span>
-          <span>₫{refundCalc.proRataRefund.toLocaleString()}</span>
+          <span>{refundCalc.proRataRefund.toLocaleString()} VND</span>
         </div>
+        {refundCalc.extrasRefund > 0 && (
+          <div className="flex justify-between text-amber-700">
+            <span>+ Extras refund</span>
+            <span>{refundCalc.extrasRefund.toLocaleString()} VND</span>
+          </div>
+        )}
         {refundCalc.isCapped && (
           <p className="text-amber-600 text-[10px] pt-1">
-            Pro-rata is ₫{refundCalc.proRataRefund.toLocaleString()} but customer has only paid net ₫{refundCalc.netPaid.toLocaleString()}. Suggested capped.
+            Pro-rata is {refundCalc.proRataRefund.toLocaleString()} VND but customer has only paid net {refundCalc.netPaid.toLocaleString()} VND. Suggested capped.
           </p>
         )}
       </div>
@@ -168,12 +189,25 @@ export function CancelSubscriptionForm({
       {/* Cancel reason */}
       <div className="space-y-1">
         <Label className="text-xs">Reason (optional)</Label>
-        <Input
-          className="text-xs h-7"
-          placeholder="Why is this being cancelled?"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-        />
+        <Select value={reasonPreset} onValueChange={(v) => setReasonPreset(v ?? "")}>
+          <SelectTrigger className="h-7 text-xs">
+            <SelectValue placeholder="Select a reason…" />
+          </SelectTrigger>
+          <SelectContent>
+            {REASON_PRESETS.map((r) => (
+              <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {reasonPreset === "others" && (
+          <Input
+            className="text-xs h-7 mt-1"
+            placeholder="Describe the reason…"
+            value={reasonCustom}
+            onChange={(e) => setReasonCustom(e.target.value)}
+            autoFocus
+          />
+        )}
       </div>
 
       {/* Refund amount */}
@@ -197,7 +231,7 @@ export function CancelSubscriptionForm({
         />
         {exceedsNetPaid && (
           <p className="text-amber-600 text-[10px]">
-            Warning: ₫{parsedAmt.toLocaleString()} exceeds net paid (₫{refundCalc.netPaid.toLocaleString()}).
+            Warning: {parsedAmt.toLocaleString()} VND exceeds net paid ({refundCalc.netPaid.toLocaleString()} VND).
           </p>
         )}
       </div>
@@ -266,7 +300,7 @@ export function CancelSubscriptionForm({
           variant="destructive"
           size="sm"
           className="flex-1"
-          disabled={pending || cancelDateObj > endDate}
+          disabled={pending || cancelDateObj > endDateObj}
           onClick={handleConfirm}
         >
           {pending ? "Cancelling…" : "Confirm Cancel"}
