@@ -20,7 +20,7 @@ export function CustomerNameButton({
       >
         {name}
       </button>
-      <CustomerOverlay customerId={customerId} open={open} onOpenChange={setOpen} />
+      {open && <CustomerOverlay customerId={customerId} open={open} onOpenChange={setOpen} />}
     </>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useTableSettings } from "@/lib/utils/use-table-settings";
 import { createPaymentAction, deletePaymentAction } from "@/app/actions/payments";
 import { applyCreditToSubscriptionAction, revertCreditPaymentAction } from "@/app/actions/credits";
 import { createExtraAction, deleteExtraAction } from "@/app/actions/subscriptions";
@@ -48,6 +49,27 @@ function EndDateCell({ endDate }: { endDate: string }) {
   );
 }
 
+function TableSettingsBar({
+  zebraStripe, stickyHeader, toggle,
+}: {
+  zebraStripe: boolean;
+  stickyHeader: boolean;
+  toggle: (key: "zebraStripe" | "stickyHeader") => void;
+}) {
+  return (
+    <div className="flex items-center gap-4 px-4 py-1.5 border-b bg-muted/20 text-xs text-muted-foreground">
+      <label className="flex items-center gap-1.5 cursor-pointer select-none hover:text-foreground transition-colors">
+        <input type="checkbox" checked={zebraStripe} onChange={() => toggle("zebraStripe")} className="h-3 w-3 accent-primary" />
+        Zebra stripes
+      </label>
+      <label className="flex items-center gap-1.5 cursor-pointer select-none hover:text-foreground transition-colors">
+        <input type="checkbox" checked={stickyHeader} onChange={() => toggle("stickyHeader")} className="h-3 w-3 accent-primary" />
+        Freeze header
+      </label>
+    </div>
+  );
+}
+
 function PriceCell({ subscriptionPrice, shippingPrice, discount = 0, extrasTotal = 0 }: { subscriptionPrice: number; shippingPrice: number; discount?: number; extrasTotal?: number }) {
   const total = subscriptionPrice + shippingPrice - discount + extrasTotal;
   const parts: string[] = [];
@@ -86,64 +108,71 @@ export function ActiveSubscriptionTable({
   creditBalances: Map<string, number>;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { zebraStripe, stickyHeader, toggle } = useTableSettings();
 
   const sorted = [...subscriptions].sort((a, b) => a.customer.name.localeCompare(b.customer.name));
   const seenCustomers = new Set<string>();
 
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="border-b bg-muted/50">
-          <th className="w-6" />
-          <th className="text-left px-4 py-2 font-medium">Customer</th>
-          <th className="text-left px-4 py-2 font-medium">Plan</th>
-          <th className="text-left px-4 py-2 font-medium">Period</th>
-          <th className="text-left px-4 py-2 font-medium">End Date</th>
-          <th className="text-left px-4 py-2 font-medium">Skips</th>
-          <th className="text-left px-4 py-2 font-medium">Price</th>
-          <th className="text-left px-4 py-2 font-medium">Payment</th>
-          <th className="text-left px-4 py-2 font-medium">Credit</th>
-          <th className="w-10" />
-        </tr>
-      </thead>
-      <tbody className="divide-y">
-        {sorted.length === 0 && (
-          <tr>
-            <td colSpan={10} className="px-4 py-6 text-center text-muted-foreground">
-              No active subscriptions.
-            </td>
-          </tr>
-        )}
-        {sorted.map((sub) => {
-          const isFirstForCustomer = !seenCustomers.has(sub.customer.id);
-          seenCustomers.add(sub.customer.id);
-          const subSkips = allSkips.filter((sk) => sk.subscriptionId === sub.id);
-          const payStatus = subscriptionPaymentStatus(sub, allPayments, allExtras, subSkips, allCreditTransactions);
-          const isExpanded = expandedId === sub.id;
-          const subExtrasTotal = allExtras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
-          return (
-            <ExpandableRow
-              key={sub.id}
-              sub={sub}
-              payStatus={payStatus}
-              isExpanded={isExpanded}
-              onToggle={() => setExpandedId(isExpanded ? null : sub.id)}
-              allPayments={allPayments}
-              allExtras={allExtras}
-              allSkips={allSkips}
-              allCreditTransactions={allCreditTransactions}
-              pricingEntries={pricingEntries}
-              customerAddresses={addressesByCustomer[sub.customerId] ?? []}
-              extrasTotal={subExtrasTotal}
-              customerCredit={creditBalances.get(sub.customerId) ?? 0}
-              colSpan={10}
-              showEndDate
-              isFirstForCustomer={isFirstForCustomer}
-            />
-          );
-        })}
-      </tbody>
-    </table>
+    <>
+      <TableSettingsBar zebraStripe={zebraStripe} stickyHeader={stickyHeader} toggle={toggle} />
+      <div className={stickyHeader ? "overflow-auto max-h-[70vh]" : "overflow-x-auto"}>
+        <table className="w-full text-sm">
+          <thead className={stickyHeader ? "sticky top-0 z-10" : ""}>
+            <tr className={`border-b ${stickyHeader ? "bg-muted shadow-sm" : "bg-muted/50"}`}>
+              <th className="w-6" />
+              <th className="text-left px-4 py-2 font-medium">Customer</th>
+              <th className="text-left px-4 py-2 font-medium">Plan</th>
+              <th className="text-left px-4 py-2 font-medium">Period</th>
+              <th className="text-left px-4 py-2 font-medium">End Date</th>
+              <th className="text-left px-4 py-2 font-medium">Skips</th>
+              <th className="text-left px-4 py-2 font-medium">Price</th>
+              <th className="text-left px-4 py-2 font-medium">Payment</th>
+              <th className="text-left px-4 py-2 font-medium">Credit</th>
+              <th className="w-10" />
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {sorted.length === 0 && (
+              <tr>
+                <td colSpan={10} className="px-4 py-6 text-center text-muted-foreground">
+                  No active subscriptions.
+                </td>
+              </tr>
+            )}
+            {sorted.map((sub, i) => {
+              const isFirstForCustomer = !seenCustomers.has(sub.customer.id);
+              seenCustomers.add(sub.customer.id);
+              const subSkips = allSkips.filter((sk) => sk.subscriptionId === sub.id);
+              const payStatus = subscriptionPaymentStatus(sub, allPayments, allExtras, subSkips, allCreditTransactions);
+              const isExpanded = expandedId === sub.id;
+              const subExtrasTotal = allExtras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
+              return (
+                <ExpandableRow
+                  key={sub.id}
+                  sub={sub}
+                  payStatus={payStatus}
+                  isExpanded={isExpanded}
+                  onToggle={() => setExpandedId(isExpanded ? null : sub.id)}
+                  allPayments={allPayments}
+                  allExtras={allExtras}
+                  allSkips={allSkips}
+                  allCreditTransactions={allCreditTransactions}
+                  pricingEntries={pricingEntries}
+                  customerAddresses={addressesByCustomer[sub.customerId] ?? []}
+                  extrasTotal={subExtrasTotal}
+                  customerCredit={creditBalances.get(sub.customerId) ?? 0}
+                  colSpan={10}
+                  showEndDate
+                  isFirstForCustomer={isFirstForCustomer}
+                  isEven={zebraStripe && i % 2 !== 0}
+                />
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -165,64 +194,71 @@ export function InactiveSubscriptionTable({
   creditBalances: Map<string, number>;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { zebraStripe, stickyHeader, toggle } = useTableSettings();
 
   const sorted = [...subscriptions].sort((a, b) => a.customer.name.localeCompare(b.customer.name));
   const seenCustomers = new Set<string>();
 
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="border-b bg-muted/50">
-          <th className="w-6" />
-          <th className="text-left px-4 py-2 font-medium">Customer</th>
-          <th className="text-left px-4 py-2 font-medium">Plan</th>
-          <th className="text-left px-4 py-2 font-medium">Period</th>
-          <th className="text-left px-4 py-2 font-medium">Skips</th>
-          <th className="text-left px-4 py-2 font-medium">Price</th>
-          <th className="text-left px-4 py-2 font-medium">Payment</th>
-          <th className="text-left px-4 py-2 font-medium">Credit</th>
-          <th className="text-left px-4 py-2 font-medium">Status</th>
-          <th className="w-10" />
-        </tr>
-      </thead>
-      <tbody className="divide-y">
-        {sorted.length === 0 && (
-          <tr>
-            <td colSpan={10} className="px-4 py-6 text-center text-muted-foreground">
-              No inactive subscriptions.
-            </td>
-          </tr>
-        )}
-        {sorted.map((sub) => {
-          const isFirstForCustomer = !seenCustomers.has(sub.customer.id);
-          seenCustomers.add(sub.customer.id);
-          const subSkips = allSkips.filter((sk) => sk.subscriptionId === sub.id);
-          const payStatus = subscriptionPaymentStatus(sub, allPayments, allExtras, subSkips, allCreditTransactions);
-          const isExpanded = expandedId === sub.id;
-          const subExtrasTotal = allExtras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
-          return (
-            <ExpandableRow
-              key={sub.id}
-              sub={sub}
-              payStatus={payStatus}
-              isExpanded={isExpanded}
-              onToggle={() => setExpandedId(isExpanded ? null : sub.id)}
-              allPayments={allPayments}
-              allExtras={allExtras}
-              allSkips={allSkips}
-              allCreditTransactions={allCreditTransactions}
-              pricingEntries={pricingEntries}
-              customerAddresses={[]}
-              extrasTotal={subExtrasTotal}
-              customerCredit={creditBalances.get(sub.customerId) ?? 0}
-              colSpan={10}
-              showEndDate={false}
-              isFirstForCustomer={isFirstForCustomer}
-            />
-          );
-        })}
-      </tbody>
-    </table>
+    <>
+      <TableSettingsBar zebraStripe={zebraStripe} stickyHeader={stickyHeader} toggle={toggle} />
+      <div className={stickyHeader ? "overflow-auto max-h-[70vh]" : "overflow-x-auto"}>
+        <table className="w-full text-sm">
+          <thead className={stickyHeader ? "sticky top-0 z-10" : ""}>
+            <tr className={`border-b ${stickyHeader ? "bg-muted shadow-sm" : "bg-muted/50"}`}>
+              <th className="w-6" />
+              <th className="text-left px-4 py-2 font-medium">Customer</th>
+              <th className="text-left px-4 py-2 font-medium">Plan</th>
+              <th className="text-left px-4 py-2 font-medium">Period</th>
+              <th className="text-left px-4 py-2 font-medium">Skips</th>
+              <th className="text-left px-4 py-2 font-medium">Price</th>
+              <th className="text-left px-4 py-2 font-medium">Payment</th>
+              <th className="text-left px-4 py-2 font-medium">Credit</th>
+              <th className="text-left px-4 py-2 font-medium">Status</th>
+              <th className="w-10" />
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {sorted.length === 0 && (
+              <tr>
+                <td colSpan={10} className="px-4 py-6 text-center text-muted-foreground">
+                  No inactive subscriptions.
+                </td>
+              </tr>
+            )}
+            {sorted.map((sub, i) => {
+              const isFirstForCustomer = !seenCustomers.has(sub.customer.id);
+              seenCustomers.add(sub.customer.id);
+              const subSkips = allSkips.filter((sk) => sk.subscriptionId === sub.id);
+              const payStatus = subscriptionPaymentStatus(sub, allPayments, allExtras, subSkips, allCreditTransactions);
+              const isExpanded = expandedId === sub.id;
+              const subExtrasTotal = allExtras.filter((e) => e.subscriptionId === sub.id).reduce((s, e) => s + e.amount, 0);
+              return (
+                <ExpandableRow
+                  key={sub.id}
+                  sub={sub}
+                  payStatus={payStatus}
+                  isExpanded={isExpanded}
+                  onToggle={() => setExpandedId(isExpanded ? null : sub.id)}
+                  allPayments={allPayments}
+                  allExtras={allExtras}
+                  allSkips={allSkips}
+                  allCreditTransactions={allCreditTransactions}
+                  pricingEntries={pricingEntries}
+                  customerAddresses={[]}
+                  extrasTotal={subExtrasTotal}
+                  customerCredit={creditBalances.get(sub.customerId) ?? 0}
+                  colSpan={10}
+                  showEndDate={false}
+                  isFirstForCustomer={isFirstForCustomer}
+                  isEven={zebraStripe && i % 2 !== 0}
+                />
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -337,6 +373,7 @@ function ExpandableRow({
   colSpan,
   showEndDate,
   isFirstForCustomer = true,
+  isEven = false,
 }: {
   sub: SubRow;
   payStatus: ReturnType<typeof subscriptionPaymentStatus>;
@@ -353,6 +390,7 @@ function ExpandableRow({
   colSpan: number;
   showEndDate: boolean;
   isFirstForCustomer?: boolean;
+  isEven?: boolean;
 }) {
   const router = useRouter();
   const [saving, startSave] = useTransition();
@@ -390,7 +428,7 @@ function ExpandableRow({
   return (
     <>
       <tr
-        className={`hover:bg-accent/50 transition-colors cursor-pointer ${isExpanded ? "bg-accent/30" : ""}`}
+        className={`hover:bg-accent/50 transition-colors cursor-pointer ${isExpanded ? "bg-accent/30" : isEven ? "bg-muted/25" : ""}`}
         onClick={onToggle}
       >
         <td className="pl-2 py-2 text-muted-foreground">

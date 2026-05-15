@@ -41,10 +41,22 @@ function buildWeekData(
   const groupMap = new Map<string, WeekData["customerGroups"][number]>();
 
   for (const sub of subscriptions) {
-    if (sub.status === "cancelled") continue;
     const subStart = new Date(sub.startDate); subStart.setHours(0, 0, 0, 0);
     const subEnd = new Date(sub.endDate); subEnd.setHours(0, 0, 0, 0);
-    if (subStart > weekEnd || subEnd < weekStart) continue;
+    const effectiveEnd = new Date(subEnd);
+
+    // For cancelled subscriptions, `cancelledAt` is the first unserved day.
+    // Keep served historical days visible/countable, but hide days from the
+    // cancellation cutoff onward.
+    if (sub.status === "cancelled") {
+      if (!sub.cancelledAt) continue;
+      const lastServed = new Date(sub.cancelledAt);
+      lastServed.setHours(0, 0, 0, 0);
+      lastServed.setDate(lastServed.getDate() - 1);
+      effectiveEnd.setTime(Math.min(subEnd.getTime(), lastServed.getTime()));
+    }
+
+    if (subStart > weekEnd || effectiveEnd < weekStart) continue;
 
     const cust = customers.find((c) => c.phone === sub.customerId);
     if (!cust) continue;
@@ -73,7 +85,7 @@ function buildWeekData(
       goal: sub.goal,
       plan: sub.plan,
       startDate: sub.startDate,
-      endDate: sub.endDate,
+      endDate: effectiveEnd.toISOString(),
       skips,
     });
     groupMap.set(cust.phone, group);

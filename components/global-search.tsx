@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
 import { Search, X } from "lucide-react";
 import { getAllCustomersForSearchAction } from "@/app/actions/customers";
+import { CustomerOverlay } from "@/components/customer-overlay";
+import { recordRecentCustomer } from "@/lib/utils/use-recent-customers";
 
 type CustomerResult = {
   id: string;
@@ -15,11 +16,11 @@ type CustomerResult = {
 
 export function GlobalSearch() {
   const [open, setOpen] = useState(false);
+  const [overlayCustomerId, setOverlayCustomerId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [customers, setCustomers] = useState<CustomerResult[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Keyboard shortcut listener
@@ -61,7 +62,8 @@ export function GlobalSearch() {
 
   function select(c: CustomerResult) {
     setOpen(false);
-    router.push(`/customers?overlay=${encodeURIComponent(c.id)}`);
+    recordRecentCustomer({ id: c.id, name: c.name, phone: c.phone });
+    setOverlayCustomerId(c.id);
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -78,10 +80,18 @@ export function GlobalSearch() {
     }
   }
 
-  if (!open) return null;
+  if (!open && !overlayCustomerId) return null;
 
   return (
-    <div
+    <>
+    {overlayCustomerId && (
+      <CustomerOverlay
+        customerId={overlayCustomerId}
+        open={true}
+        onOpenChange={(o) => { if (!o) setOverlayCustomerId(null); }}
+      />
+    )}
+    {open && <div
       className="fixed inset-0 z-50 flex items-start justify-center pt-[14vh] bg-black/40 backdrop-blur-sm"
       onClick={() => setOpen(false)}
     >
@@ -152,6 +162,7 @@ export function GlobalSearch() {
           <span><kbd className="bg-muted rounded px-1.5 py-0.5">⌘K</kbd> toggle</span>
         </div>
       </div>
-    </div>
+    </div>}
+    </>
   );
 }

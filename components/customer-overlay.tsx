@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Dialog,
   DialogContent,
@@ -734,6 +734,8 @@ function PaymentPanel({
   customerCredit = 0,
   customerId,
   onReload,
+  onPaymentCreated,
+  onPaymentDeleted,
 }: {
   sub: Subscription;
   payments: Payment[];
@@ -743,6 +745,8 @@ function PaymentPanel({
   customerCredit?: number;
   customerId: string;
   onReload: () => void;
+  onPaymentCreated?: (payment: Payment) => void;
+  onPaymentDeleted?: (paymentId: string) => void;
 }) {
   const subPayments = payments.filter((p) => p.subscriptionId === sub.id);
   const { paid, refunded } = paymentsTotalForSub(payments, sub.id);
@@ -780,7 +784,7 @@ function PaymentPanel({
     const amt = parseFloat(form.amount);
     if (!amt || amt <= 0) return;
     startSave(async () => {
-      await createPaymentAction({
+      const payment = await createPaymentAction({
         subscriptionId: sub.id,
         type: form.type,
         amount: amt,
@@ -789,14 +793,16 @@ function PaymentPanel({
         note: form.note.trim() || null,
       });
       setForm((p) => ({ ...p, amount: "", note: "" }));
-      onReload();
+      if (onPaymentCreated) onPaymentCreated(payment);
+      else onReload();
     });
   }
 
   function handleDelete(id: string) {
     startSave(async () => {
-      await deletePaymentAction(id);
-      onReload();
+      const paymentId = await deletePaymentAction(id);
+      if (onPaymentDeleted) onPaymentDeleted(paymentId);
+      else onReload();
     });
   }
 
@@ -1022,7 +1028,7 @@ function fmtSince(iso: string) {
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAY_HDR = ["M","T","W","T","F","S","S"];
 
-function SchedulePanel({
+const SchedulePanel = memo(function SchedulePanel({
   subscriptions,
   addresses,
   skips,
@@ -1399,7 +1405,7 @@ function SchedulePanel({
       </div>
     </div>
   );
-}
+});
 
 export function CustomerOverlay({
   customerId,
@@ -1442,6 +1448,24 @@ export function CustomerOverlay({
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
+  const load = useCallback((id: string, clearFirst = true) => {
+    if (clearFirst) {
+      setDetails(null);
+      setRoutes(new Map());
+    }
+    getCustomerDetailsAction(id).then((d) => {
+      setDetails(d);
+      setNoteValue(d.customer?.notes ?? "");
+      if (d.customer) {
+        setInfoForm({ name: d.customer.name, phone: d.customer.phone, zone: d.customer.zone });
+      }
+    });
+  }, []);
+
+  const reload = useCallback((id?: string) => {
+    load(id ?? currentId, false);
+  }, [currentId, load]);
+
   useEffect(() => {
     if (open && !prevOpenRef.current) {
       setCurrentId(customerId);
@@ -1454,7 +1478,7 @@ export function CustomerOverlay({
       load(customerId);
     }
     prevOpenRef.current = open;
-  }, [open, customerId]);
+  }, [open, customerId, load]);
 
   // Close on Esc; if an inline edit form is open, collapse it first
   useEffect(() => {
@@ -1473,32 +1497,58 @@ export function CustomerOverlay({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, onOpenChange, editingInfo, editingAddrId, showAddAddr, showAddSub, editingSubId, cancellingId]);
 
-  function load(id: string, clearFirst = true) {
-    if (clearFirst) {
-      setDetails(null);
-      setRoutes(new Map());
-    }
-    getCustomerDetailsAction(id).then((d) => {
-      setDetails(d);
-      setNoteValue(d.customer?.notes ?? "");
-      if (d.customer) {
-        setInfoForm({ name: d.customer.name, phone: d.customer.phone, zone: d.customer.zone });
-      }
-    });
-  }
+  const handlePaymentCreated = useCallback((payment: Payment) => {
+    setDetails((prev) => prev ? { ...prev, payments: [...prev.payments, payment] } : prev);
+  }, []);
 
-  function reload(id?: string) {
-    load(id ?? currentId, false);
-  }
+  const handlePaymentDeleted = useCallback((paymentId: string) => {
+    setDetails((prev) => prev ? { ...prev, payments: prev.payments.filter((p) => p.id !== paymentId) } : prev);
+  }, []);
+
+  const handleSubscriptionCancelled = useCallback((result?: {
+    subscription: Subscription | null;
+    payment?: Payment;
+    creditTransaction?: CreditTransaction;
+  }) => {
+    setCancellingId(null);
+    if (!result?.subscription) {
+      reload();
+      return;
+    }
+    setDetails((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        subscriptions: prev.subscriptions.map((s) =>
+          s.id === result.subscription!.id ? result.subscription! : s
+        ),
+        payments: result.payment ? [...prev.payments, result.payment] : prev.payments,
+        creditTransactions: result.creditTransaction
+          ? [...prev.creditTransactions, result.creditTransaction]
+          : prev.creditTransactions,
+      };
+    });
+  }, [reload]);
 
   // ── Fetch routes from hub to all customer addresses ─────────────
+  // Stable key: only changes when address IDs or hub coords actually change,
+  // not on every setDetails call (which replaces the array reference).
+  const hubKey = details?.hub ? `${details.hub.lat},${details.hub.lng}` : null;
+  const addrKey = details?.addresses
+    .filter((a) => a.latitude != null && a.longitude != null)
+    .map((a) => a.id)
+    .join(',') ?? '';
+
   useEffect(() => {
-    if (!details || !details.hub) return;
+    if (!details?.hub || !addrKey) return;
+
     const addressesWithCoords = details.addresses.filter(
       (a) => a.latitude != null && a.longitude != null
     );
     if (addressesWithCoords.length === 0) return;
 
+    const controller = new AbortController();
+    const { signal } = controller;
     setLoadingRoutes(true);
     const hub = details.hub;
 
@@ -1513,6 +1563,7 @@ export function CustomerOverlay({
               { lat: addr.latitude!, lng: addr.longitude! },
             ],
           }),
+          signal,
         });
         if (!res.ok) return null;
         const data = await res.json();
@@ -1520,26 +1571,32 @@ export function CustomerOverlay({
           return { addrId: addr.id, data };
         }
       } catch {
-        // Ignore individual route fetch errors
+        // Ignore individual route fetch errors (including AbortError)
       }
       return null;
     };
 
     Promise.all(addressesWithCoords.map(fetchRoute)).then((results) => {
-      const newRoutes = new Map(routes);
-      results.forEach((result) => {
-        if (result) {
-          newRoutes.set(result.addrId, {
-            positions: result.data.positions,
-            distance: result.data.distance ?? 0,
-            duration: result.data.duration ?? 0,
-          });
-        }
+      if (signal.aborted) return;
+      setRoutes(() => {
+        const newRoutes = new Map<string, { positions: [number, number][]; distance: number; duration: number }>();
+        results.forEach((result) => {
+          if (result) {
+            newRoutes.set(result.addrId, {
+              positions: result.data.positions,
+              distance: result.data.distance ?? 0,
+              duration: result.data.duration ?? 0,
+            });
+          }
+        });
+        return newRoutes;
       });
-      setRoutes(newRoutes);
       setLoadingRoutes(false);
     });
-  }, [details?.hub, details?.addresses]);
+
+    return () => controller.abort();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hubKey, addrKey]);
 
   // ── Note ────────────────────────────────────────────────────────────────
   function handleNoteBlur() {
@@ -1627,6 +1684,19 @@ export function CustomerOverlay({
       reload();
     });
   }
+
+  const minimap = useMemo(() => {
+    if (!details) return null;
+    return (
+      <CustomerMinimap
+        addresses={details.addresses}
+        hub={details.hub}
+        routes={routes}
+        loading={loadingRoutes}
+      />
+    );
+  }, [details?.addresses, details?.hub, routes, loadingRoutes]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:w-[62vw] sm:max-w-[62vw] h-[88vh] max-h-[88vh] overflow-y-auto">
@@ -2020,7 +2090,7 @@ export function CustomerOverlay({
                                     skips={details.skips.filter((s) => s.subscriptionId === sub.id)}
                                     payments={details.payments.filter((p) => p.subscriptionId === sub.id)}
                                     extras={details.extras.filter((e) => e.subscriptionId === sub.id)}
-                                    onDone={() => { setCancellingId(null); reload(); }}
+                                    onDone={handleSubscriptionCancelled}
                                     onCancel={() => { setCancellingId(null); }}
                                   />
                                 </div>
@@ -2030,7 +2100,7 @@ export function CustomerOverlay({
                                 extras={details.extras.filter((e) => e.subscriptionId === sub.id)}
                                 onReload={reload}
                               />
-                              <PaymentPanel sub={sub} payments={details.payments} extras={details.extras} skips={details.skips.filter((s) => s.subscriptionId === sub.id)} creditTransactions={details.creditTransactions} customerId={currentId} customerCredit={details.creditTransactions.reduce((acc, t) => { if (t.type === "refund_credit" || t.type === "manual_topup" || t.type === "adjustment") return acc + t.amount; if (t.type === "credit_used") return acc - t.amount; return acc; }, 0)} onReload={reload} />
+                              <PaymentPanel sub={sub} payments={details.payments} extras={details.extras} skips={details.skips.filter((s) => s.subscriptionId === sub.id)} creditTransactions={details.creditTransactions} customerId={currentId} customerCredit={details.creditTransactions.reduce((acc, t) => { if (t.type === "refund_credit" || t.type === "manual_topup" || t.type === "adjustment") return acc + t.amount; if (t.type === "credit_used") return acc - t.amount; return acc; }, 0)} onReload={reload} onPaymentCreated={handlePaymentCreated} onPaymentDeleted={handlePaymentDeleted} />
                              </>
                          </li>
                       );
@@ -2055,14 +2125,7 @@ export function CustomerOverlay({
               dayAddresses={details.dayAddresses}
               customerId={currentId}
               onReload={reload}
-              minimap={
-                <CustomerMinimap
-                  addresses={details.addresses}
-                  hub={details.hub}
-                  routes={routes}
-                  loading={loadingRoutes}
-                />
-              }
+              minimap={minimap}
             />
           </>
         )}

@@ -27,7 +27,7 @@ export function CustomerOverlayTrigger({
           </span>
         )}
       </button>
-      <CustomerOverlay customerId={customerId} open={open} onOpenChange={setOpen} />
+      {open && <CustomerOverlay customerId={customerId} open={open} onOpenChange={setOpen} />}
     </>
   );
 }

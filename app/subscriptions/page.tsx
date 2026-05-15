@@ -147,18 +147,16 @@ export default async function SubscriptionsPage({
         <TabsContent value="subscriptions" className="mt-4">
           <Card>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <ActiveSubscriptionTable
-                  subscriptions={filteredActive}
-                  allPayments={allPayments}
-                  allExtras={allExtras}
-                  allSkips={allSkips}
-                  allCreditTransactions={allCreditTransactions}
-                  pricingEntries={pricingEntries}
-                  addressesByCustomer={addressesByCustomer}
-                  creditBalances={creditBalances}
-                />
-              </div>
+              <ActiveSubscriptionTable
+                subscriptions={filteredActive}
+                allPayments={allPayments}
+                allExtras={allExtras}
+                allSkips={allSkips}
+                allCreditTransactions={allCreditTransactions}
+                pricingEntries={pricingEntries}
+                addressesByCustomer={addressesByCustomer}
+                creditBalances={creditBalances}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -166,17 +164,15 @@ export default async function SubscriptionsPage({
         <TabsContent value="inactive" className="mt-4">
           <Card>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <InactiveSubscriptionTable
-                  subscriptions={filteredInactive}
-                  allPayments={allPayments}
-                  allExtras={allExtras}
-                  allSkips={allSkips}
-                  allCreditTransactions={allCreditTransactions}
-                  pricingEntries={pricingEntries}
-                  creditBalances={creditBalances}
-                />
-              </div>
+              <InactiveSubscriptionTable
+                subscriptions={filteredInactive}
+                allPayments={allPayments}
+                allExtras={allExtras}
+                allSkips={allSkips}
+                allCreditTransactions={allCreditTransactions}
+                pricingEntries={pricingEntries}
+                creditBalances={creditBalances}
+              />
             </CardContent>
           </Card>
         </TabsContent>

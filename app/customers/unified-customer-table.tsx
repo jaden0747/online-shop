@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { daysRemaining } from "@/lib/utils/subscription";
 import { recordRecentCustomer } from "@/lib/utils/use-recent-customers";
+import { useTableSettings } from "@/lib/utils/use-table-settings";
 import { Pencil, X } from "lucide-react";
 import { PhoneDisplay } from "@/components/phone-display";
 
@@ -84,6 +85,7 @@ export function UnifiedCustomerTable({
   const [planFilter, setPlanFilter] = useState<Set<string>>(new Set());
   const [expiring, setExpiring] = useState(false);
   const [sortBy, setSortBy] = useState<SortBy>("default");
+  const { zebraStripe, stickyHeader, toggle } = useTableSettings();
 
   const handleOpen = useCallback(
     (r: CustomerRow) => {
@@ -203,6 +205,16 @@ export function UnifiedCustomerTable({
             </button>
           )}
 
+          <span className="h-4 w-px bg-border ml-1" />
+          <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">
+            <input type="checkbox" checked={zebraStripe} onChange={() => toggle("zebraStripe")} className="h-3 w-3 accent-primary" />
+            Stripes
+          </label>
+          <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">
+            <input type="checkbox" checked={stickyHeader} onChange={() => toggle("stickyHeader")} className="h-3 w-3 accent-primary" />
+            Freeze header
+          </label>
+
           <span className="ml-auto text-xs text-muted-foreground tabular-nums">
             {sorted.length} of {rows.length}
           </span>
@@ -210,10 +222,10 @@ export function UnifiedCustomerTable({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
+      <div className={stickyHeader ? "overflow-auto max-h-[70vh]" : "overflow-x-auto"}>
         <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/50">
+          <thead className={stickyHeader ? "sticky top-0 z-10" : ""}>
+            <tr className={`border-b ${stickyHeader ? "bg-muted shadow-sm" : "bg-muted/50"}`}>
               <th className="w-10" />
               <th className="text-left px-4 py-2 font-medium">Customer</th>
               <th className="text-left px-4 py-2 font-medium">Address</th>
@@ -231,8 +243,8 @@ export function UnifiedCustomerTable({
                 </td>
               </tr>
             )}
-            {sorted.map((r) => (
-              <tr key={r.id} className="hover:bg-accent/50 transition-colors">
+            {sorted.map((r, i) => (
+              <tr key={r.id} className={`hover:bg-accent/50 transition-colors ${zebraStripe && i % 2 !== 0 ? "bg-muted/25" : ""}`}>
                 <td className="px-2 py-2">
                   <button
                     type="button"

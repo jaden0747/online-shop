@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Home, Users, UtensilsCrossed, Truck, MapPin, Map, Settings2, FlaskConical, CreditCard, DollarSign, BarChart3, Clock, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Popover } from "@base-ui/react/popover";
 import { useState, useEffect } from "react";
 import { getRecentCustomers, type RecentCustomer } from "@/lib/utils/use-recent-customers";
+import { CustomerOverlay } from "@/components/customer-overlay";
 
 const baseNav = [
   { href: "/", label: "Dashboard", icon: Home },
@@ -25,9 +26,9 @@ const baseNav = [
 const testingNavItem = { href: "/testing", label: "Testing", icon: FlaskConical } as const;
 
 function RecentCustomersPopover() {
-  const router = useRouter();
   const [recent, setRecent] = useState<RecentCustomer[]>([]);
   const [open, setOpen] = useState(false);
+  const [overlayCustomerId, setOverlayCustomerId] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -35,12 +36,20 @@ function RecentCustomersPopover() {
     }
   }, [open]);
 
-  function navigate(id: string) {
+  function openOverlay(id: string) {
     setOpen(false);
-    router.push(`/customers?overlay=${encodeURIComponent(id)}`);
+    setOverlayCustomerId(id);
   }
 
   return (
+    <>
+    {overlayCustomerId && (
+      <CustomerOverlay
+        customerId={overlayCustomerId}
+        open={true}
+        onOpenChange={(o) => { if (!o) setOverlayCustomerId(null); }}
+      />
+    )}
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
         className={cn(
@@ -66,7 +75,7 @@ function RecentCustomersPopover() {
                   <button
                     key={c.id}
                     type="button"
-                    onClick={() => navigate(c.id)}
+                    onClick={() => openOverlay(c.id)}
                     className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent transition-colors text-left"
                   >
                     <span className="font-medium truncate">{c.name}</span>
@@ -89,6 +98,7 @@ function RecentCustomersPopover() {
         </Popover.Positioner>
       </Popover.Portal>
     </Popover.Root>
+    </>
   );
 }
 

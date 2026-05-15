@@ -16,7 +16,7 @@ import { updateSubscriptionStatusAction } from "@/app/actions/subscriptions";
 import { createPaymentAction } from "@/app/actions/payments";
 import { addCreditAction } from "@/app/actions/credits";
 import { suggestedRefund, todayDateStr, localDateStr } from "@/lib/utils/subscription";
-import type { MealSkip, Payment, SubscriptionExtra } from "@/lib/data/types";
+import type { CreditTransaction, MealSkip, Payment, Subscription, SubscriptionExtra } from "@/lib/data/types";
 
 type Sub = {
   id: string;
@@ -34,7 +34,11 @@ interface CancelSubscriptionFormProps {
   payments: Payment[];
   extras: SubscriptionExtra[];
   /** Called after successful cancellation so the parent can close/refresh */
-  onDone: () => void;
+  onDone: (result?: {
+    subscription: Subscription | null;
+    payment?: Payment;
+    creditTransaction?: CreditTransaction;
+  }) => void;
   /** Called when user clicks "Keep" (cancel the cancel flow) */
   onCancel: () => void;
 }
@@ -90,15 +94,17 @@ export function CancelSubscriptionForm({
 
   function handleConfirm() {
     startTransition(async () => {
-      await updateSubscriptionStatusAction(
+      const subscription = await updateSubscriptionStatusAction(
         sub.id,
         "cancelled",
         effectiveReason || undefined,
         cancelDate + "T00:00:00.000Z"
       );
+      let payment: Payment | undefined;
+      let creditTransaction: CreditTransaction | undefined;
       if (parsedAmt > 0) {
         if (keepAsCredit) {
-          await addCreditAction({
+          creditTransaction = await addCreditAction({
             customerId,
             amount: parsedAmt,
             type: "refund_credit",
@@ -106,7 +112,7 @@ export function CancelSubscriptionForm({
             subscriptionId: sub.id,
           });
         } else {
-          await createPaymentAction({
+          payment = await createPaymentAction({
             subscriptionId: sub.id,
             type: "refund",
             amount: parsedAmt,
@@ -116,7 +122,7 @@ export function CancelSubscriptionForm({
           });
         }
       }
-      onDone();
+      onDone({ subscription, payment, creditTransaction });
     });
   }
 
@@ -139,7 +145,7 @@ export function CancelSubscriptionForm({
           }}
         />
         <p className="text-[10px] text-muted-foreground">
-          Set to <strong>tomorrow</strong> if today's meal was already served — refund days start from this date.
+          Set to <strong>tomorrow</strong> if today&apos;s meal was already served — refund days start from this date.
         </p>
       </div>
 

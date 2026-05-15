@@ -12,6 +12,7 @@ import {
   deleteExtrasBySubscription,
 } from "@/lib/data/subscriptions";
 import { addWorkingDays } from "@/lib/utils/subscription";
+import type { Subscription } from "@/lib/data/types";
 
 export async function createSubscriptionAction(formData: FormData): Promise<{ id: string }> {
   const customerId = formData.get("customerId") as string;
@@ -65,13 +66,17 @@ export async function updateSubscriptionStatusAction(
   status: string,
   cancelReason?: string,
   cancelledAt?: string
-) {
+): Promise<Subscription | null> {
+  const sub = getSubscriptionById(id);
+  if (!sub) return null;
   const resolvedCancelledAt = status === "cancelled"
     ? (cancelledAt ?? new Date().toISOString())
     : null;
+  const updated = { ...sub, status, cancelReason: cancelReason ?? null, cancelledAt: resolvedCancelledAt };
   updateSubscription(id, { status, cancelReason: cancelReason ?? null, cancelledAt: resolvedCancelledAt });
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
+  return updated;
 }
 
 export async function updateSubscriptionAction(

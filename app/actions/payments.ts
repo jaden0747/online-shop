@@ -11,8 +11,8 @@ export async function createPaymentAction(data: {
   paidAt: string;
   method: Payment["method"];
   note?: string | null;
-}): Promise<void> {
-  createPayment({
+}): Promise<Payment> {
+  const payment = createPayment({
     subscriptionId: data.subscriptionId,
     type: data.type,
     amount: data.amount,
@@ -22,6 +22,7 @@ export async function createPaymentAction(data: {
   });
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
+  return payment;
 }
 
 export async function updatePaymentAction(
@@ -38,8 +39,9 @@ export async function updatePaymentAction(
   revalidatePath("/subscriptions");
 }
 
-export async function deletePaymentAction(id: string): Promise<void> {
+export async function deletePaymentAction(id: string): Promise<string> {
   deletePayment(id);
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
+  return id;
 }

@@ -59,20 +59,44 @@ export function MenuTabs({ thisWeek, nextWeek }: { thisWeek: WeekData; nextWeek:
 
   const byDaySlot = new Map(data.menuItems.map((item) => [`${item.day}-${item.slot}`, item]));
 
-  // Build set of (subscriptionId, dayNum) pairs that are skipped, so totals
-  // match what actually ships (same as the Shipping page filtering).
+  const weekDates = Array.from({ length: 5 }, (_, i) => {
+    const d = new Date(data.weekMondayISO);
+    d.setDate(d.getDate() + i);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+
+  // Build the exact set of meal cells rendered in the selection grid. This
+  // prevents stale selections from cancelled/out-of-range subscriptions from
+  // inflating the production totals.
   const skippedKeys = new Set<string>();
+  const eligibleSelectionKeys = new Set<string>();
   for (const group of data.customerGroups) {
     for (const sub of group.subscriptions) {
+      const subStart = new Date(sub.startDate);
+      subStart.setHours(0, 0, 0, 0);
+      const subEnd = new Date(sub.endDate);
+      subEnd.setHours(0, 0, 0, 0);
+
       for (const sk of sub.skips) {
         skippedKeys.add(`${sub.subscriptionId}-${sk.dayNum}`);
+      }
+
+      for (const { num } of DAYS) {
+        const dayDate = weekDates[num - 1];
+        if (dayDate < subStart || dayDate > subEnd) continue;
+        if (skippedKeys.has(`${sub.subscriptionId}-${num}`)) continue;
+
+        for (let mealNum = 1; mealNum <= sub.mealsPerDay; mealNum += 1) {
+          eligibleSelectionKeys.add(`${sub.subscriptionId}-${num}-${mealNum}`);
+        }
       }
     }
   }
 
   const totals = new Map<string, number>();
   for (const sel of data.selections) {
-    if (skippedKeys.has(`${sel.subscriptionId}-${sel.day}`)) continue;
+    if (!eligibleSelectionKeys.has(`${sel.subscriptionId}-${sel.day}-${sel.mealNum}`)) continue;
     const key = `${sel.day}-${sel.menuSlot}`;
     totals.set(key, (totals.get(key) || 0) + 1);
   }
