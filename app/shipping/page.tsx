@@ -1,7 +1,7 @@
 import { getAllCustomers, getAllAddresses } from "@/lib/data/customers";
 import { getAllSubscriptions, getAllSkips } from "@/lib/data/subscriptions";
 import { getAllOrderDayAddresses } from "@/lib/data/order-day-addresses";
-import { isSubscriptionLive } from "@/lib/utils/subscription";
+import { isSubscriptionLive, localDateStr } from "@/lib/utils/subscription";
 import { getMenuItemsByWeek } from "@/lib/data/menu";
 import { getSelectionsByWeek } from "@/lib/data/selections";
 import { getNotesByWeek } from "@/lib/data/notes";
@@ -14,10 +14,6 @@ import { ShippingTable } from "./shipping-table";
 import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
-
-function localDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 function defaultDateStr(): string {
   const now = new Date();

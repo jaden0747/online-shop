@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FormattedAmountInput } from "@/components/ui/formatted-amount-input";
 import { RotateCcw } from "lucide-react";
+import { localDateStr } from "@/lib/utils/subscription";
 
 type LastSub = {
   plan: string;
@@ -17,10 +18,6 @@ type LastSub = {
   subscriptionPrice: number;
   shippingPrice: number;
 };
-
-function localDateStr(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 export function QuickRenewDialog({
   customerId,

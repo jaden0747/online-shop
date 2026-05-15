@@ -5,17 +5,13 @@ import { getSettings } from "@/lib/data/settings";
 import { getMenuItemsByWeek } from "@/lib/data/menu";
 import { getSelectionsByWeek } from "@/lib/data/selections";
 import { getNotesByWeek } from "@/lib/data/notes";
-import { isSubscriptionLive } from "@/lib/utils/subscription";
+import { isSubscriptionLive, localDateStr } from "@/lib/utils/subscription";
 import { weekLabelForDate } from "@/lib/utils/week";
 import { DayPicker } from "@/components/day-picker";
 import { RouteMap } from "./route-map";
 import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
-
-function localDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 function defaultDateStr(): string {
   const now = new Date();

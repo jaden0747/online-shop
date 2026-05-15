@@ -7,7 +7,9 @@ import { createPaymentAction, deletePaymentAction } from "@/app/actions/payments
 import { applyCreditToSubscriptionAction, revertCreditPaymentAction } from "@/app/actions/credits";
 import { createExtraAction, deleteExtraAction } from "@/app/actions/subscriptions";
 import { paymentsTotalForSub, subscriptionPaymentStatus, subscriptionCompensation } from "@/lib/utils/payments";
-import { calculateProratedTotalDue, daysRemaining, formatDate } from "@/lib/utils/subscription";
+import { calculateProratedTotalDue, formatDate, localDateStr } from "@/lib/utils/subscription";
+import { PAYMENT_METHODS } from "@/lib/constants";
+import { SubscriptionEndDateCell } from "@/components/subscription-end-date-cell";
 import { EditSubscriptionRow } from "./edit-subscription-row";
 import { CustomerOverlayTrigger } from "@/components/customer-overlay-trigger";
 import { Badge } from "@/components/ui/badge";
@@ -16,12 +18,6 @@ import { X, Check, ChevronDown, ChevronRight, Banknote } from "lucide-react";
 import { Popover } from "@base-ui/react/popover";
 import type { Payment, SubscriptionExtra, MealSkip, Subscription, CreditTransaction } from "@/lib/data/types";
 
-function localDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-const PAYMENT_METHODS: Payment["method"][] = ["cash", "transfer", "momo", "other"];
-
 type SubRow = Subscription & {
   customer: { id: string; name: string; phone: string };
   _count: { mealSkips: number };
@@ -29,25 +25,6 @@ type SubRow = Subscription & {
 
 type PricingEntry = { goal: string; plan: string; mealsPerDay: number; totalPrice: number };
 type CustomerAddress = { id: string; label: string; isDefault: boolean };
-
-function EndDateCell({ endDate }: { endDate: string }) {
-  const days = daysRemaining(endDate);
-  let textClass: string;
-  let barClass: string;
-  if (days >= 14) { textClass = "text-green-600"; barClass = "bg-green-500"; }
-  else if (days >= 7) { textClass = "text-yellow-600"; barClass = "bg-yellow-500"; }
-  else if (days >= 3) { textClass = "text-orange-600"; barClass = "bg-orange-500"; }
-  else { textClass = "text-red-600"; barClass = "bg-red-500"; }
-  const fillPct = Math.min(100, Math.round((days / 14) * 100));
-  return (
-    <div className="min-w-[70px]">
-      <span className={`text-xs font-medium ${textClass}`}>{days} days</span>
-      <div className="mt-0.5 h-1 w-full rounded-full bg-muted">
-        <div className={`h-1 rounded-full ${barClass}`} style={{ width: `${fillPct}%` }} />
-      </div>
-    </div>
-  );
-}
 
 function TableSettingsBar({
   zebraStripe, stickyHeader, toggle,
@@ -455,7 +432,7 @@ function ExpandableRow({
         </td>
         {showEndDate && (
           <td className="px-4 py-2">
-            <EndDateCell endDate={sub.endDate} />
+            <SubscriptionEndDateCell endDate={sub.endDate} />
           </td>
         )}
         <td className="px-4 py-2">{sub._count.mealSkips > 0 ? sub._count.mealSkips : "—"}</td>

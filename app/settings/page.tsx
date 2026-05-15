@@ -10,6 +10,7 @@ import { ImportCustomersForm } from "@/app/customers/import-customers-form";
 import { UpsertPricingForm } from "@/app/subscriptions/upsert-pricing-form";
 import { DeletePricingButton } from "@/app/subscriptions/delete-pricing-button";
 import { planTotalMeals } from "@/lib/utils/subscription";
+import { PLANS, GOALS } from "@/lib/constants";
 import { DataDirectoryPicker } from "@/components/data-directory-picker";
 import { MealPriceForm } from "./meal-price-form";
 import { CostCategoriesCard } from "./cost-categories-card";
@@ -17,8 +18,6 @@ import { FormulaPricingForm } from "./formula-pricing-form";
 
 export const dynamic = "force-dynamic";
 
-const PLANS = ["trial", "weekly", "monthly"];
-const GOALS = ["cutting", "maintenance", "bulking", "keto"];
 const MEALS_PER_DAY = [1, 2];
 
 export default async function SettingsPage() {

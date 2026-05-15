@@ -14,17 +14,6 @@ import {
   type Constraints,
 } from "../route/clustering";
 
-// Must match the getWeekLabel algorithm in route-map.tsx (ISO-based)
-function getWeekLabel(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00");
-  const jan4 = new Date(d.getFullYear(), 0, 4);
-  const startOfWeek1 = new Date(jan4);
-  startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
-  const diffMs = d.getTime() - startOfWeek1.getTime();
-  const week = Math.floor(diffMs / (7 * 24 * 3600 * 1000)) + 1;
-  return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
-}
-
 type AddressOption = {
   id: string;
   label: string;

@@ -1,6 +1,5 @@
-export const PLANS = ["trial", "weekly", "monthly"] as const;
-export const GOALS = ["cutting", "maintenance", "bulking", "keto"] as const;
-export const PAY_STATUSES = ["paid", "partial", "unpaid"] as const;
+import { PLANS, GOALS, PAY_STATUSES } from "@/lib/constants";
+export { PLANS, GOALS, PAY_STATUSES };
 
 export interface FilterState {
   q: string;

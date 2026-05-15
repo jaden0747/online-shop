@@ -4,6 +4,8 @@ import { useState, useCallback } from "react";
 import { daysRemaining } from "@/lib/utils/subscription";
 import { recordRecentCustomer } from "@/lib/utils/use-recent-customers";
 import { useTableSettings } from "@/lib/utils/use-table-settings";
+import { PLANS } from "@/lib/constants";
+import { SubscriptionEndDateCell } from "@/components/subscription-end-date-cell";
 import { Pencil, X } from "lucide-react";
 import { PhoneDisplay } from "@/components/phone-display";
 
@@ -36,7 +38,6 @@ export type CustomerRow = {
 
 type StatusFilter = "all" | "active" | "inactive" | "none";
 type SortBy = "default" | "newest" | "revenue-desc" | "revenue-asc";
-const PLANS = ["trial", "weekly", "monthly"] as const;
 
 function PillToggle({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
@@ -52,24 +53,6 @@ function PillToggle({ label, active, onClick }: { label: string; active: boolean
     >
       {label}
     </button>
-  );
-}
-
-function EndDateCell({ endDate }: { endDate: string }) {
-  const days = daysRemaining(endDate);
-  let textClass = "text-green-600";
-  let barClass = "bg-green-500";
-  if (days < 3) { textClass = "text-red-600"; barClass = "bg-red-500"; }
-  else if (days < 7) { textClass = "text-orange-600"; barClass = "bg-orange-500"; }
-  else if (days < 14) { textClass = "text-yellow-600"; barClass = "bg-yellow-500"; }
-  const fillPct = Math.min(100, Math.round((days / 14) * 100));
-  return (
-    <div className="min-w-[70px]">
-      <span className={`text-xs font-medium ${textClass}`}>{days}d</span>
-      <div className="mt-0.5 h-1 w-full rounded-full bg-muted">
-        <div className={`h-1 rounded-full ${barClass}`} style={{ width: `${fillPct}%` }} />
-      </div>
-    </div>
   );
 }
 
@@ -293,7 +276,7 @@ export function UnifiedCustomerTable({
                             <span className="text-xs text-muted-foreground">
                               · {s.goal} · {total.toLocaleString()} VND
                             </span>
-                            <EndDateCell endDate={s.endDate} />
+                            <SubscriptionEndDateCell endDate={s.endDate} compact />
                           </div>
                         );
                       })}

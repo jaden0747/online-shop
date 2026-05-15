@@ -1,0 +1,35 @@
+import type {
+  Customer,
+  CustomerAddress,
+  Subscription,
+  SubscriptionExtra,
+  Pricing,
+  MealSkip,
+  MealSelection,
+  MenuItem,
+  KitchenNote,
+  OrderDayAddress,
+  Payment,
+  CreditTransaction,
+} from "@/lib/data/types";
+
+export type Details = {
+  customer: Customer | null;
+  addresses: CustomerAddress[];
+  subscriptions: Subscription[];
+  skipCounts: Record<string, number>;
+  totalSpend: number;
+  pricing: Pricing[];
+  skips: MealSkip[];
+  allSelections: MealSelection[];
+  allMenuItems: MenuItem[];
+  kitchenNotes: KitchenNote[];
+  dayAddresses: OrderDayAddress[];
+  hub: { lat: number; lng: number };
+  mealPrices: Record<string, number>;
+  payments: Payment[];
+  extras: SubscriptionExtra[];
+  creditTransactions: CreditTransaction[];
+};
+
+export type RouteMap = Map<string, { positions: [number, number][]; distance: number; duration: number }>;

@@ -18,16 +18,6 @@ import {
   type ClusterResult,
 } from "./clustering";
 
-function getWeekLabel(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00");
-  const jan4 = new Date(d.getFullYear(), 0, 4);
-  const startOfWeek1 = new Date(jan4);
-  startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
-  const diffMs = d.getTime() - startOfWeek1.getTime();
-  const week = Math.floor(diffMs / (7 * 24 * 3600 * 1000)) + 1;
-  return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
-}
-
 type Delivery = {
   id: string;
   name: string;
@@ -128,8 +118,6 @@ export function RouteMap({ deliveries, date, hubLat, hubLng }: RouteMapProps) {
   const [manualK, setManualK] = useState<number | null>(null);
   const [manualAssign, setManualAssign] = useState<Map<string, number>>(new Map());
   const [manualOrder, setManualOrder] = useState<Map<number, string[]>>(new Map());
-
-  const weekLabel = useMemo(() => getWeekLabel(date), [date]);
 
   const zoomToFitRef = useRef<(() => void) | null>(null);
   // Tracks the hub+k state recorded after the first post-hydration render so we

@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { planTotalMeals, daysRemaining, isSubscriptionLive } from "@/lib/utils/subscription";
+import { PLANS, GOALS } from "@/lib/constants";
 import { UpsertPricingForm } from "./upsert-pricing-form";
 import { DeletePricingButton } from "./delete-pricing-button";
 import { OpenInFinderButton } from "@/components/open-in-finder-button";
@@ -21,8 +22,6 @@ import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
-const PLANS = ["trial", "weekly", "monthly"];
-const GOALS = ["cutting", "maintenance", "bulking", "keto"];
 const MEALS_PER_DAY = [1, 2];
 
 export default async function SubscriptionsPage({

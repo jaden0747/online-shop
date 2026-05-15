@@ -5,11 +5,12 @@ import {
 } from "@/lib/data/subscriptions";
 import { getCustomerById } from "@/lib/data/customers";
 import { addWorkingDays } from "@/lib/utils/subscription";
+import { PLANS, GOALS } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
-const VALID_PLANS = ["trial", "weekly", "monthly"];
-const VALID_GOALS = ["cutting", "maintenance", "bulking", "keto"];
+const VALID_PLANS = PLANS as readonly string[];
+const VALID_GOALS = GOALS as readonly string[];
 
 export async function GET(req: NextRequest) {
   const customerId = req.nextUrl.searchParams.get("customerId");

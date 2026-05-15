@@ -12,10 +12,11 @@ import {
 import { getAllSubscriptions, createSubscription } from "@/lib/data/subscriptions";
 import { getAllPricing } from "@/lib/data/pricing";
 import { addWorkingDays } from "@/lib/utils/subscription";
+import { PLANS, GOALS } from "@/lib/constants";
 import { revalidatePath } from "next/cache";
 
-const VALID_PLANS = ["trial", "weekly", "monthly"];
-const VALID_GOALS = ["cutting", "maintenance", "bulking", "keto"];
+const VALID_PLANS = PLANS as readonly string[];
+const VALID_GOALS = GOALS as readonly string[];
 
 /** Lower-case, collapse spaces/slashes/dots into underscores, strip trailing underscores. */
 function normalizeKey(k: string): string {
