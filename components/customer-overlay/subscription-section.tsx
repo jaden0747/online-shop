@@ -15,6 +15,7 @@ import type {
   Pricing,
 } from "@/lib/data/types";
 import type { SectionRef } from "./section-ref";
+import { creditBalance } from "@/lib/utils/credits";
 import { SubForm } from "./sub-form";
 import { ExtrasPanel } from "./extras-panel";
 import { PaymentPanel } from "./payment-panel";
@@ -29,18 +30,6 @@ function fmt(iso: string) {
   });
 }
 
-function creditBalance(creditTransactions: CreditTransaction[]) {
-  return creditTransactions.reduce((acc, t) => {
-    if (
-      t.type === "refund_credit" ||
-      t.type === "manual_topup" ||
-      t.type === "adjustment"
-    )
-      return acc + t.amount;
-    if (t.type === "credit_used") return acc - t.amount;
-    return acc;
-  }, 0);
-}
 
 export const SubscriptionSection = forwardRef<
   SectionRef,

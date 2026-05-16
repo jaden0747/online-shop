@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Home, Users, UtensilsCrossed, Truck, MapPin, Map, Settings2, FlaskConical, CreditCard, DollarSign, BarChart3, Clock, Search } from "lucide-react";
+import { Home, Users, UtensilsCrossed, Truck, MapPin, Map, Settings2, FlaskConical, CreditCard, DollarSign, BarChart3, Clock, Search, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Popover } from "@base-ui/react/popover";
 import { useState, useEffect } from "react";
@@ -21,6 +21,7 @@ const baseNav = [
   { href: "/route", label: "Route", icon: MapPin },
   { href: "/coverage", label: "Coverage Map", icon: Map },
   { href: "/settings", label: "Settings", icon: Settings2 },
+  { href: "/assistant", label: "Assistant", icon: Bot },
 ] as const;
 
 const testingNavItem = { href: "/testing", label: "Testing", icon: FlaskConical } as const;

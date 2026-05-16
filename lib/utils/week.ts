@@ -1,37 +1,17 @@
+/** ISO 8601 week label for a given date, e.g. "2026-W21". */
 export function weekLabelForDate(date: Date): string {
-  const year = date.getFullYear();
-  const startOfYear = new Date(year, 0, 1);
-  const dayOfYear = Math.floor((date.getTime() - startOfYear.getTime()) / 86400000);
-  const week = Math.ceil((dayOfYear + startOfYear.getDay() + 1) / 7);
-  return `${year}-W${String(week).padStart(2, "0")}`;
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay() || 7; // Sun = 7
+  d.setDate(d.getDate() + 4 - day); // shift to Thursday of this ISO week
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  const weekNum = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${d.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
 }
 
+/** Human-readable date range for a week label, e.g. "12 – 16 May 2026". */
 export function weekLabelToDateRange(label: string): string {
-  const [yearStr, weekPart] = label.split("-W");
-  const year = parseInt(yearStr, 10);
-  const weekNum = parseInt(weekPart, 10);
-
-  const jan1 = new Date(year, 0, 1);
-  jan1.setHours(0, 0, 0, 0);
-  // Find the first Monday of the year
-  const jan1Dow = jan1.getDay(); // 0=Sun
-  const daysToFirstMon = jan1Dow === 0 ? 1 : jan1Dow === 1 ? 0 : 8 - jan1Dow;
-  const firstMonday = new Date(jan1);
-  firstMonday.setDate(jan1.getDate() + daysToFirstMon);
-
-  // Week 1 starts on or before Jan 1 when Jan 1 is Mon–Thu;
-  // when Jan 1 is Fri–Sun the first Monday is already in week 2 per the custom formula.
-  // The formula week = ceil((dayOfYear + startOfYear.getDay() + 1) / 7) gives week 1 for Jan 1
-  // regardless, so Monday of week N = Jan 1 + (N-1)*7 - (jan1Dow) days, adjusted to hit Monday.
-  // Simpler: iterate from Jan 1 until weekLabelForDate matches.
-  const monday = new Date(jan1);
-  monday.setHours(0, 0, 0, 0);
-  // Walk to the Monday whose weekLabelForDate equals the target label
-  // Start from firstMonday and offset by weekNum-1 weeks, then verify.
-  // Use the inverse: Monday of weekN = firstMonday + (weekNum - weekLabelForDate(firstMonday week)) * 7
-  const firstMondayWeek = parseInt(weekLabelForDate(firstMonday).split("-W")[1], 10);
-  monday.setDate(firstMonday.getDate() + (weekNum - firstMondayWeek) * 7);
-
+  const monday = weekLabelToMonday(label);
   const friday = new Date(monday);
   friday.setDate(monday.getDate() + 4);
 
@@ -48,38 +28,39 @@ export function weekLabelToDateRange(label: string): string {
   return `${monDay} ${monMonth} – ${friDay} ${friMonth} ${friYear}`;
 }
 
-/** Returns the Monday Date for a given week label (e.g. "2026-W21"). */
+/** Returns the Monday Date for a given ISO week label (e.g. "2026-W21"). */
 export function weekLabelToMonday(label: string): Date {
   const [yearStr, weekPart] = label.split("-W");
   const year = parseInt(yearStr, 10);
   const weekNum = parseInt(weekPart, 10);
-  const jan1 = new Date(year, 0, 1);
-  jan1.setHours(0, 0, 0, 0);
-  const jan1Dow = jan1.getDay();
-  const daysToFirstMon = jan1Dow === 0 ? 1 : jan1Dow === 1 ? 0 : 8 - jan1Dow;
-  const firstMonday = new Date(jan1);
-  firstMonday.setDate(jan1.getDate() + daysToFirstMon);
-  const firstMondayWeek = parseInt(weekLabelForDate(firstMonday).split("-W")[1], 10);
-  const monday = new Date(firstMonday);
-  monday.setDate(firstMonday.getDate() + (weekNum - firstMondayWeek) * 7);
-  monday.setHours(0, 0, 0, 0);
+  // Jan 4 is always in ISO week 1
+  const jan4 = new Date(year, 0, 4);
+  jan4.setHours(0, 0, 0, 0);
+  const day = jan4.getDay() || 7; // Mon=1 … Sun=7
+  const monday = new Date(jan4);
+  monday.setDate(jan4.getDate() - (day - 1) + (weekNum - 1) * 7);
   return monday;
 }
 
+/** ISO week label for the current week. Treats Sunday as the last day of the
+ *  current week (not the first of the next), matching currentWeekMonday(). */
 export function currentWeekLabel(): string {
-  return weekLabelForDate(new Date());
+  return weekLabelForDate(currentWeekMonday());
 }
 
+/** "Week 21, 2026" display label. */
 export function formatWeekLabel(label: string): string {
   const [year, weekPart] = label.split("-W");
   return `Week ${weekPart}, ${year}`;
 }
 
+/** Monday of the current ISO week. On Sundays returns the upcoming Monday
+ *  so that the app always shows the active/upcoming delivery week. */
 export function currentWeekMonday(): Date {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const dow = today.getDay(); // 0=Sun
-  // Sunday belongs to the UPCOMING week (same as weekLabelForDate), so advance by +1
+  const dow = today.getDay(); // 0 = Sun
+  // Sunday → advance to upcoming Monday; other days → back to this Monday
   const daysToMon = dow === 0 ? 1 : 1 - dow;
   today.setDate(today.getDate() + daysToMon);
   return today;
@@ -95,4 +76,16 @@ export function nextWeekMonday(): Date {
   const mon = currentWeekMonday();
   mon.setDate(mon.getDate() + 7);
   return mon;
+}
+
+/** Shift a week label by ±N weeks. Handles ISO year-boundary rollovers correctly. */
+export function shiftWeekLabel(label: string, weeks: number): string {
+  const monday = weekLabelToMonday(label);
+  monday.setDate(monday.getDate() + weeks * 7);
+  return weekLabelForDate(monday);
+}
+
+/** ISO day-of-week: Mon=1, Tue=2, …, Sat=6, Sun=7. */
+export function isoDayOfWeek(date: Date): number {
+  return date.getDay() || 7;
 }

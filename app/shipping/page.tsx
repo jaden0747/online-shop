@@ -8,7 +8,7 @@ import { getNotesByWeek } from "@/lib/data/notes";
 import { getSettings } from "@/lib/data/settings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { weekLabelForDate, weekLabelToDateRange } from "@/lib/utils/week";
+import { weekLabelForDate, weekLabelToDateRange, isoDayOfWeek } from "@/lib/utils/week";
 import { DayPicker } from "@/components/day-picker";
 import { ShippingTable } from "./shipping-table";
 import { cookies } from "next/headers";
@@ -42,7 +42,7 @@ export default async function ShippingPage({
   const selectedDateStr = dateParam ?? (cookieDate && isValidDateStr(cookieDate) ? cookieDate : defaultDateStr());
   const selectedDate = new Date(selectedDateStr + "T00:00:00");
 
-  const dayNum = selectedDate.getDay() === 0 ? 7 : selectedDate.getDay();
+  const dayNum = isoDayOfWeek(selectedDate);
   const weekLabel = weekLabelForDate(selectedDate);
   const weekDateRange = weekLabelToDateRange(weekLabel);
 

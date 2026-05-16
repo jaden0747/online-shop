@@ -166,3 +166,49 @@ export interface CreditTransaction {
   note: string;
   createdAt: string; // ISO string
 }
+
+export interface CustomerLead {
+  id: string;
+  source: string; // e.g. "zalo-bot", "manual"
+  externalUserId: string | null;
+  name: string;
+  phone: string;
+  address: string | null;
+  goal: string | null;
+  mealsPerDay: number | null;
+  planInterest: string | null;
+  note: string | null;
+  status: "pending" | "converted" | "rejected";
+  createdAt: string; // ISO string
+}
+
+export interface PendingReview {
+  id: string;
+  type:
+    | "new_address"
+    | "cancellation_request"
+    | "refund_request"
+    | "renewal_request"
+    | "payment_proof"
+    | "phone_change"
+    | "price_change";
+  source: string; // e.g. "zalo-bot"
+  externalUserId: string | null;
+  customerId: string | null;
+  subscriptionId: string | null;
+  payload: Record<string, unknown>; // the proposed change
+  status: "pending" | "approved" | "rejected";
+  managerNote: string | null;
+  createdAt: string; // ISO string
+}
+
+export interface AssistantActionLog {
+  id: string;
+  source: string; // e.g. "zalo-bot", "admin-test"
+  externalUserId: string | null;
+  customerId: string | null;
+  action: string; // e.g. "skip_day", "update_selection", "customer_lookup"
+  request: Record<string, unknown>;
+  result: Record<string, unknown>;
+  createdAt: string; // ISO string
+}

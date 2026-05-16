@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { FormattedAmountInput } from "@/components/ui/formatted-amount-input";
 import { addCreditAction, deleteCreditTransactionAction } from "@/app/actions/credits";
 import type { CreditTransaction, Subscription } from "@/lib/data/types";
+import { creditBalance } from "@/lib/utils/credits";
 import { Plus, Check, X } from "lucide-react";
 
 const TYPE_LABELS: Record<CreditTransaction["type"], string> = {
@@ -30,11 +31,7 @@ export function CreditPanel({
   const [addNote, setAddNote] = useState("");
   const [deleteWarning, setDeleteWarning] = useState<string | null>(null);
 
-  const balance = creditTransactions.reduce((acc, t) => {
-    if (t.type === "refund_credit" || t.type === "manual_topup" || t.type === "adjustment") return acc + t.amount;
-    if (t.type === "credit_used") return acc - t.amount;
-    return acc;
-  }, 0);
+  const balance = creditBalance(creditTransactions);
 
   const sorted = [...creditTransactions].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()

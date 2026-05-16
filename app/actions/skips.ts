@@ -1,48 +1,34 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createSkip, deleteSkip, getAllSkips } from "@/lib/data/subscriptions";
-import { updateSubscription, getSubscriptionById } from "@/lib/data/subscriptions";
-import { nextWorkingDay, addWorkingDays } from "@/lib/utils/subscription";
+import { deleteSkip, getSubscriptionById } from "@/lib/data/subscriptions";
+import { createSkip } from "@/lib/data/subscriptions";
+import { nextWorkingDay } from "@/lib/utils/subscription";
+import {
+  createSkipWithExtension,
+  skipAndExtend,
+  removeSkipAndRevert,
+} from "@/lib/business/skip";
 
-/** If `d` falls on a weekend, advance to the next Monday. Otherwise return as-is. */
-function toWeekday(d: Date): Date {
-  const r = new Date(d);
-  r.setHours(0, 0, 0, 0);
-  while (r.getDay() === 0 || r.getDay() === 6) r.setDate(r.getDate() + 1);
-  return r;
+function revalidateAll() {
+  revalidatePath("/customers");
+  revalidatePath("/subscriptions");
 }
 
 export async function createMealSkipAction(formData: FormData) {
   const subscriptionId = formData.get("subscriptionId") as string;
-  const originalDay = new Date(formData.get("originalDay") as string);
+  const originalDay = formData.get("originalDay") as string;
   const replacementDayRaw = formData.get("replacementDay") as string;
   const reason = (formData.get("reason") as string) || null;
-  const replacementDay = replacementDayRaw ? toWeekday(new Date(replacementDayRaw)) : null;
 
-  createSkip({
+  createSkipWithExtension({
     subscriptionId,
-    originalDay: originalDay.toISOString(),
-    replacementDay: replacementDay?.toISOString() ?? null,
+    originalDay,
+    replacementDay: replacementDayRaw || null,
     reason,
   });
 
-  // Only extend end date for present/future skips with no replacement.
-  // Past skips are historical records — endDate already reflects the original plan.
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const skipDay = new Date(originalDay);
-  skipDay.setHours(0, 0, 0, 0);
-  if (!replacementDay && skipDay >= today) {
-    const sub = getSubscriptionById(subscriptionId);
-    if (sub) {
-      const extended = nextWorkingDay(new Date(sub.endDate));
-      updateSubscription(subscriptionId, { endDate: extended.toISOString() });
-    }
-  }
-
-  revalidatePath("/customers");
-  revalidatePath("/subscriptions");
+  revalidateAll();
 }
 
 /** Skip today (or next working day if called on a weekend); reschedule to end of subscription. */
@@ -64,8 +50,6 @@ export async function skipTodayToNextAction(subscriptionId: string) {
     reason: "quick skip",
   });
 
-  updateSubscription(subscriptionId, { endDate: replacement.toISOString() });
-
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
   revalidatePath("/menu");
@@ -73,25 +57,10 @@ export async function skipTodayToNextAction(subscriptionId: string) {
 
 /** Create a skip directly from the menu grid (no replacement day). */
 export async function skipDayFromMenuAction(subscriptionId: string, originalDay: string) {
-  createSkip({ subscriptionId, originalDay, replacementDay: null, reason: null });
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const skipDay = new Date(originalDay);
-  skipDay.setHours(0, 0, 0, 0);
-
-  if (skipDay >= today) {
-    const sub = getSubscriptionById(subscriptionId);
-    if (sub) {
-      const extended = nextWorkingDay(new Date(sub.endDate));
-      updateSubscription(subscriptionId, { endDate: extended.toISOString() });
-    }
-  }
-
+  createSkipWithExtension({ subscriptionId, originalDay, replacementDay: null, reason: null });
   revalidatePath("/menu");
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
-  revalidatePath("/menu");
 }
 
 export async function createSkipDirectAction(data: {
@@ -100,30 +69,8 @@ export async function createSkipDirectAction(data: {
   replacementDay: string | null;
   reason: string | null;
 }): Promise<void> {
-  const originalDay = new Date(data.originalDay);
-  const replacementDay = data.replacementDay ? toWeekday(new Date(data.replacementDay)) : null;
-
-  createSkip({
-    subscriptionId: data.subscriptionId,
-    originalDay: originalDay.toISOString(),
-    replacementDay: replacementDay?.toISOString() ?? null,
-    reason: data.reason,
-  });
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const skipDay = new Date(data.originalDay);
-  skipDay.setHours(0, 0, 0, 0);
-  if (!replacementDay && skipDay >= today) {
-    const sub = getSubscriptionById(data.subscriptionId);
-    if (sub) {
-      const extended = nextWorkingDay(new Date(sub.endDate));
-      updateSubscription(data.subscriptionId, { endDate: extended.toISOString() });
-    }
-  }
-
-  revalidatePath("/customers");
-  revalidatePath("/subscriptions");
+  createSkipWithExtension(data);
+  revalidateAll();
 }
 
 export async function deleteMealSkipAction(id: string) {
@@ -131,8 +78,10 @@ export async function deleteMealSkipAction(id: string) {
   if (!skip) return;
 
   // Only revert end date extension for present/future skips — past skips never extended it.
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const skipDay = new Date(skip.originalDay); skipDay.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const skipDay = new Date(skip.originalDay);
+  skipDay.setHours(0, 0, 0, 0);
   const didExtend = skipDay >= today && (!skip.replacementDay || skip.reason === "quick skip");
   if (didExtend) {
     const sub = getSubscriptionById(skip.subscriptionId);
@@ -142,62 +91,32 @@ export async function deleteMealSkipAction(id: string) {
       while (prevEnd.getDay() === 0 || prevEnd.getDay() === 6) {
         prevEnd.setDate(prevEnd.getDate() - 1);
       }
+      const { updateSubscription } = await import("@/lib/data/subscriptions");
       updateSubscription(skip.subscriptionId, { endDate: prevEnd.toISOString() });
     }
   }
 
-  revalidatePath("/customers");
-  revalidatePath("/subscriptions");
+  revalidateAll();
 }
 
-/**
- * Skip a specific day and auto-extend the subscription end date by +1 working day.
- * replacementDay is set to the new endDate (before extension).
- */
+/** Skip a specific day and auto-extend end date by +1 working day. */
 export async function skipDayAndExtendAction(
   subscriptionId: string,
   originalDay: string,
   reason?: string | null
 ): Promise<void> {
-  const sub = getSubscriptionById(subscriptionId);
-  if (!sub) return;
-
-  const newEnd = addWorkingDays(new Date(sub.endDate), 1);
-
-  createSkip({
-    subscriptionId,
-    originalDay,
-    replacementDay: newEnd.toISOString(),
-    reason: reason ?? null,
-  });
-
-  updateSubscription(subscriptionId, { endDate: newEnd.toISOString() });
-
+  skipAndExtend({ subscriptionId, originalDay, reason });
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
   revalidatePath("/menu");
 }
 
 /**
- * Remove a skip and safely roll back the subscription end date by -1 working day,
- * but only when endDate still matches the skip's replacementDay (i.e. not manually edited).
+ * Remove a skip and roll back the end date by -1 working day if the
+ * end date still matches the skip's replacement day.
  */
 export async function unskipDayAndShortenAction(skipId: string): Promise<void> {
-  const skip = deleteSkip(skipId);
-  if (!skip) return;
-
-  const sub = getSubscriptionById(skip.subscriptionId);
-  if (sub && skip.replacementDay) {
-    const subEnd = new Date(sub.endDate);
-    subEnd.setHours(0, 0, 0, 0);
-    const skipReplacement = new Date(skip.replacementDay);
-    skipReplacement.setHours(0, 0, 0, 0);
-    if (subEnd.getTime() === skipReplacement.getTime()) {
-      const shortenedEnd = addWorkingDays(subEnd, -1);
-      updateSubscription(sub.id, { endDate: shortenedEnd.toISOString() });
-    }
-  }
-
+  removeSkipAndRevert(skipId);
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
   revalidatePath("/menu");

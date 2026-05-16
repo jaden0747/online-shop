@@ -6,7 +6,7 @@ import { getMenuItemsByWeek } from "@/lib/data/menu";
 import { getSelectionsByWeek } from "@/lib/data/selections";
 import { getNotesByWeek } from "@/lib/data/notes";
 import { isSubscriptionLive, localDateStr } from "@/lib/utils/subscription";
-import { weekLabelForDate } from "@/lib/utils/week";
+import { weekLabelForDate, isoDayOfWeek } from "@/lib/utils/week";
 import { DayPicker } from "@/components/day-picker";
 import { RouteMap } from "./route-map";
 import { cookies } from "next/headers";
@@ -46,7 +46,7 @@ export default async function RoutePage({
   const skips = getAllSkips();
   const settings = getSettings();
 
-  const dayNum = selectedDate.getDay() === 0 ? 7 : selectedDate.getDay();
+  const dayNum = isoDayOfWeek(selectedDate);
   const weekLabel = weekLabelForDate(selectedDate);
   const menuItems = getMenuItemsByWeek(weekLabel);
   const selections = getSelectionsByWeek(weekLabel);
