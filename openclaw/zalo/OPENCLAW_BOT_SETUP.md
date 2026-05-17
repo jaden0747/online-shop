@@ -142,30 +142,15 @@ openclaw logs --follow
 
 Current allowed direct actions:
 
-- look up customer by phone
-- summarize customer overview
-- show menu by date/week
-- read meal selections
-- update meal selections after confirmation
-- skip delivery day after confirmation
-- cancel an upcoming skip after confirmation
-- set temporary day address from saved addresses after confirmation
-- create new customer lead
-- update a pending customer lead
-- create renewal request
-- create manager-review requests for sensitive changes
+- answer shipping fee questions
+- answer questions about how the shop operates
 
-Manager review is required for:
+Everything else is out of scope for the current phase.
 
-- new permanent address
-- new address without coordinates
-- cancellation
-- refund
-- payment proof
-- price change
-- phone change
-- unclear customer identity
-- complaints
+Detailed requirements for the 2 tasks should be filled into:
+
+- `openclaw/zalo/AGENTS.md`
+- `openclaw/zalo/TOOLS.md`
 
 ## Operating Checklist
 

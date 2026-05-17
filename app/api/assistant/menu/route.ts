@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMenuItemsByWeek } from "@/lib/data/menu";
+import { appendAssistantLog } from "@/lib/data/assistant-log";
 import {
   weekLabelForDate,
   weekLabelToDateRange,
@@ -67,8 +68,19 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  // Menu is complete when every weekday has at least one slot defined
   const isComplete = days.every((d) => d.slots.length > 0);
+
+  const source = req.headers.get("x-source") ?? "unknown";
+  const externalUserId = req.headers.get("x-external-user-id") ?? null;
+
+  appendAssistantLog({
+    source,
+    externalUserId,
+    customerId: null,
+    action: "menu_lookup",
+    request: { weekLabel },
+    result: { isComplete, dayCount: days.length },
+  });
 
   return NextResponse.json({
     weekLabel,

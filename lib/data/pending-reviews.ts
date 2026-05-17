@@ -64,6 +64,10 @@ export function getPendingReviews(): PendingReview[] {
   return readAll().filter((r) => r.status === "pending");
 }
 
+export function getReviewById(id: string): PendingReview | null {
+  return readAll().find((r) => r.id === id) ?? null;
+}
+
 export function updateReviewStatus(
   id: string,
   status: PendingReview["status"],

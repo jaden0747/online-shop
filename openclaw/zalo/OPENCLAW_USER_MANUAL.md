@@ -16,19 +16,15 @@ The bot should use these endpoints instead of the older unauthenticated app endp
 
 Main API abilities:
 
-- look up customer by phone
-- get customer overview
-- get menu by date or week
-- read meal selections
-- update meal selections after customer confirmation
-- skip a delivery day after customer confirmation
-- cancel an upcoming skip after customer confirmation
-- set temporary delivery address from saved addresses
-- create new customer lead
-- update a pending customer lead
-- create renewal request
-- create manager-review requests for sensitive changes
+- support the current bot phase
 - log assistant actions
+
+Current bot phase scope:
+
+- answer shipping fee questions
+- answer questions about how the shop operates
+
+Everything else is intentionally out of scope for now.
 
 The app manager UI is available at:
 
@@ -116,6 +112,11 @@ The bot should call:
 ```text
 /api/assistant/*
 ```
+
+However, the current phase does not approve general use of those endpoints yet. The detailed allowed behavior should be defined in:
+
+- `openclaw/zalo/AGENTS.md`
+- `openclaw/zalo/TOOLS.md`
 
 ## Important OpenClaw Paths
 

@@ -16,6 +16,13 @@ const DEFAULTS: Settings = {
   goalMultiplierMaintenance: 1.0,
   goalMultiplierBulking: 1.0,
   goalMultiplierKeto: 1.0,
+  shippingFeeZone1MaxKm: 3,
+  shippingFeeZone1: 15000,
+  shippingFeeZone2MaxKm: 6,
+  shippingFeeZone2: 25000,
+  shippingFeeZone3MaxKm: 10,
+  shippingFeeZone3: 35000,
+  shippingFeeZone4PerKm: 5000,
 };
 
 function parseNum(r: Record<string, unknown>, key: string, fallback: number): number {
@@ -41,6 +48,13 @@ export function getSettings(): Settings {
     goalMultiplierMaintenance: parseNum(r, "goalMultiplierMaintenance", DEFAULTS.goalMultiplierMaintenance),
     goalMultiplierBulking: parseNum(r, "goalMultiplierBulking", DEFAULTS.goalMultiplierBulking),
     goalMultiplierKeto: parseNum(r, "goalMultiplierKeto", DEFAULTS.goalMultiplierKeto),
+    shippingFeeZone1MaxKm: parseNum(r, "shippingFeeZone1MaxKm", DEFAULTS.shippingFeeZone1MaxKm),
+    shippingFeeZone1: parseNum(r, "shippingFeeZone1", DEFAULTS.shippingFeeZone1),
+    shippingFeeZone2MaxKm: parseNum(r, "shippingFeeZone2MaxKm", DEFAULTS.shippingFeeZone2MaxKm),
+    shippingFeeZone2: parseNum(r, "shippingFeeZone2", DEFAULTS.shippingFeeZone2),
+    shippingFeeZone3MaxKm: parseNum(r, "shippingFeeZone3MaxKm", DEFAULTS.shippingFeeZone3MaxKm),
+    shippingFeeZone3: parseNum(r, "shippingFeeZone3", DEFAULTS.shippingFeeZone3),
+    shippingFeeZone4PerKm: parseNum(r, "shippingFeeZone4PerKm", DEFAULTS.shippingFeeZone4PerKm),
   };
 }
 

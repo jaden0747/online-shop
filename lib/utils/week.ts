@@ -66,16 +66,14 @@ export function currentWeekMonday(): Date {
   return today;
 }
 
-export function nextWeekLabel(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 7);
-  return weekLabelForDate(d);
-}
-
 export function nextWeekMonday(): Date {
   const mon = currentWeekMonday();
   mon.setDate(mon.getDate() + 7);
   return mon;
+}
+
+export function nextWeekLabel(): string {
+  return weekLabelForDate(nextWeekMonday());
 }
 
 /** Shift a week label by ±N weeks. Handles ISO year-boundary rollovers correctly. */

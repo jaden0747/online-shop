@@ -1,18 +1,38 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { updateLeadStatus } from "@/lib/data/leads";
-import { updateReviewStatus } from "@/lib/data/pending-reviews";
+import { updateLeadStatus, getLeadById } from "@/lib/data/leads";
+import { updateReviewStatus, getReviewById } from "@/lib/data/pending-reviews";
 import { getAllCustomers, createCustomer, createAddress } from "@/lib/data/customers";
 import { createSubscription } from "@/lib/data/subscriptions";
 import { addWorkingDays } from "@/lib/utils/subscription";
+import { setConversationControl, clearConversationControl } from "@/lib/data/conversation-control";
+import { getAllLeads } from "@/lib/data/leads";
 import type { CustomerLead, PendingReview } from "@/lib/data/types";
+
+function handoffByExternalUserId(externalUserId: string | null) {
+  if (!externalUserId) return;
+  setConversationControl({
+    channel: "zalouser",
+    externalUserId,
+    mode: "human_active",
+    source: "manager_app_action",
+  });
+}
+
+function handoffByCustomerId(customerId: string | null) {
+  if (!customerId) return;
+  const lead = getAllLeads().find((l) => l.phone === customerId && l.externalUserId);
+  if (lead?.externalUserId) handoffByExternalUserId(lead.externalUserId);
+}
 
 export async function updateLeadStatusAction(formData: FormData) {
   const id = formData.get("id") as string;
   const status = formData.get("status") as CustomerLead["status"];
   if (!id || !status) return;
+  const lead = getLeadById(id);
   updateLeadStatus(id, status);
+  handoffByExternalUserId(lead?.externalUserId ?? null);
   revalidatePath("/assistant");
 }
 
@@ -27,13 +47,23 @@ export async function convertLeadAction(formData: FormData): Promise<{ error?: s
 
   if (!leadId || !name || !phone) return { error: "Name and phone are required" };
 
+  const lead = getLeadById(leadId);
+
   let customer = getAllCustomers().find((c) => c.phone === phone);
   if (!customer) {
     customer = createCustomer({ name, phone, address, zone, notes });
   }
 
   if (address) {
-    createAddress({ customerId: customer.id, label: addressLabel, address, zone, isDefault: true });
+    createAddress({
+      customerId: customer.id,
+      label: addressLabel,
+      address,
+      zone,
+      isDefault: true,
+      latitude: lead?.geocodedLat ?? null,
+      longitude: lead?.geocodedLng ?? null,
+    });
   }
 
   if (formData.get("createSubscription") === "1") {
@@ -76,6 +106,7 @@ export async function convertLeadAction(formData: FormData): Promise<{ error?: s
   }
 
   updateLeadStatus(leadId, "converted");
+  handoffByExternalUserId(lead?.externalUserId ?? null);
   revalidatePath("/assistant");
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
@@ -87,6 +118,30 @@ export async function updateReviewStatusAction(formData: FormData) {
   const status = formData.get("status") as PendingReview["status"];
   const note = formData.get("note") as string | null;
   if (!id || !status) return;
+  const review = getReviewById(id);
   updateReviewStatus(id, status, note?.trim() || undefined);
+  // Manager handled this review — silence the bot for this customer's conversation
+  if (review?.externalUserId) {
+    handoffByExternalUserId(review.externalUserId);
+  } else {
+    handoffByCustomerId(review?.customerId ?? null);
+  }
   revalidatePath("/assistant");
 }
+
+export async function releaseHandoffAction(channel: string, externalUserId: string) {
+  clearConversationControl(channel, externalUserId);
+  revalidatePath("/assistant");
+}
+
+export async function takeOverHandoffAction(channel: string, externalUserId: string) {
+  if (!channel || !externalUserId) return;
+  setConversationControl({
+    channel,
+    externalUserId,
+    mode: "human_active",
+    source: "manager_app_action",
+  });
+  revalidatePath("/assistant");
+}
+

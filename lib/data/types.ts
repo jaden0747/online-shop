@@ -63,6 +63,14 @@ export interface Settings {
   goalMultiplierMaintenance: number;
   goalMultiplierBulking: number;
   goalMultiplierKeto: number;
+  // Shipping fee zones (distance-based)
+  shippingFeeZone1MaxKm: number; // upper bound of zone 1 in km
+  shippingFeeZone1: number;       // flat fee for zone 1
+  shippingFeeZone2MaxKm: number;
+  shippingFeeZone2: number;
+  shippingFeeZone3MaxKm: number;
+  shippingFeeZone3: number;
+  shippingFeeZone4PerKm: number;  // per-km rate for distances beyond zone 3
 }
 
 export interface MealSkip {
@@ -174,6 +182,8 @@ export interface CustomerLead {
   name: string;
   phone: string;
   address: string | null;
+  geocodedLat: number | null;
+  geocodedLng: number | null;
   goal: string | null;
   mealsPerDay: number | null;
   planInterest: string | null;
@@ -200,6 +210,17 @@ export interface PendingReview {
   status: "pending" | "approved" | "rejected";
   managerNote: string | null;
   createdAt: string; // ISO string
+}
+
+export interface ConversationControl {
+  id: string; // `${channel}:${externalUserId}`
+  channel: string; // e.g. "zalouser"
+  externalUserId: string;
+  mode: "bot" | "human_active";
+  source: "human_outbound_zalo" | "manager_app_action" | "bot_escalation" | null;
+  lastHumanMessageAt: string | null; // ISO string
+  lockExpiresAt: string | null; // ISO string
+  updatedAt: string; // ISO string
 }
 
 export interface AssistantActionLog {

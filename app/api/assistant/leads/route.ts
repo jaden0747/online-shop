@@ -8,6 +8,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const phone = searchParams.get("phone");
   const externalUserId = searchParams.get("externalUserId");
+  const source = req.headers.get("x-source") ?? "unknown";
+  const extUser = req.headers.get("x-external-user-id") ?? externalUserId ?? null;
 
   if (!phone && !externalUserId) {
     return NextResponse.json(
@@ -19,6 +21,15 @@ export async function GET(req: NextRequest) {
   let leads = getAllLeads();
   if (phone) leads = leads.filter((l) => l.phone === phone);
   if (externalUserId) leads = leads.filter((l) => l.externalUserId === externalUserId);
+
+  appendAssistantLog({
+    source,
+    externalUserId: extUser,
+    customerId: null,
+    action: "leads_lookup",
+    request: { phone: phone ?? undefined, externalUserId: externalUserId ?? undefined },
+    result: { count: leads.length },
+  });
 
   return NextResponse.json({ leads });
 }
@@ -33,6 +44,8 @@ export async function POST(req: NextRequest) {
     name,
     phone,
     address,
+    lat,
+    lng,
     goal,
     mealsPerDay,
     planInterest,
@@ -46,12 +59,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "phone is required" }, { status: 400 });
   }
 
+  const geocodedLat = typeof lat === "number" ? lat : null;
+  const geocodedLng = typeof lng === "number" ? lng : null;
+
   const lead = createLead({
     source: String(source ?? "unknown"),
     externalUserId: typeof externalUserId === "string" ? externalUserId : null,
     name: name.trim(),
     phone: phone.trim(),
     address: typeof address === "string" ? address.trim() || null : null,
+    geocodedLat,
+    geocodedLng,
     goal: typeof goal === "string" ? goal.trim() || null : null,
     mealsPerDay: typeof mealsPerDay === "number" ? mealsPerDay : null,
     planInterest: typeof planInterest === "string" ? planInterest.trim() || null : null,

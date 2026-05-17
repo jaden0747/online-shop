@@ -243,6 +243,8 @@ export function CustomerOverlay({
                   setCurrentId(newId);
                   reload(newId);
                 }}
+                externalUserId={details.externalUserId}
+                handoffActive={details.handoffActive}
               />
             </DialogHeader>
 

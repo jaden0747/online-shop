@@ -3,6 +3,7 @@
 import { forwardRef, useImperativeHandle, useState, useTransition } from "react";
 import { DialogTitle } from "@/components/ui/dialog";
 import { updateCustomerInfoAction } from "@/app/actions/customers";
+import { takeOverHandoffAction, releaseHandoffAction } from "@/app/actions/assistant";
 import type { Customer } from "@/lib/data/types";
 import type { SectionRef } from "./section-ref";
 import { Check, Copy, Pencil, X } from "lucide-react";
@@ -13,12 +14,29 @@ export const CustomerHeader = forwardRef<
     customer: Customer;
     customerId: string;
     onSaved: (newId: string) => void;
+    externalUserId: string | null;
+    handoffActive: boolean;
   }
->(function CustomerHeader({ customer, customerId, onSaved }, ref) {
+>(function CustomerHeader({ customer, customerId, onSaved, externalUserId, handoffActive: initialHandoffActive }, ref) {
   const [editingInfo, setEditingInfo] = useState(false);
   const [infoForm, setInfoForm] = useState({ name: "", phone: "", zone: "" });
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [handoffActive, setHandoffActive] = useState(initialHandoffActive);
+  const [handoffPending, startHandoffTransition] = useTransition();
+
+  function toggleHandoff() {
+    if (!externalUserId) return;
+    startHandoffTransition(async () => {
+      if (handoffActive) {
+        await releaseHandoffAction("zalouser", externalUserId);
+        setHandoffActive(false);
+      } else {
+        await takeOverHandoffAction("zalouser", externalUserId);
+        setHandoffActive(true);
+      }
+    });
+  }
 
   useImperativeHandle(ref, () => ({
     closeOpenForm: () => {
@@ -99,7 +117,7 @@ export const CustomerHeader = forwardRef<
 
   return (
     <div className="space-y-0.5 pr-12">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <DialogTitle>{customer.name}</DialogTitle>
         <button
           type="button"
@@ -120,6 +138,25 @@ export const CustomerHeader = forwardRef<
           ) : (
             <Copy size={12} />
           )}
+        </button>
+        <button
+          type="button"
+          onClick={toggleHandoff}
+          disabled={handoffPending || !externalUserId}
+          className={`shrink-0 text-xs px-2 py-0.5 rounded font-medium transition-colors disabled:opacity-40 ${
+            handoffActive
+              ? "bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/40 dark:text-orange-300"
+              : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
+          }`}
+          title={
+            !externalUserId
+              ? "No Zalo ID yet — customer must message the bot first"
+              : handoffActive
+              ? "Bot paused — click to resume"
+              : "Take over this conversation (pauses bot for 2h)"
+          }
+        >
+          {handoffPending ? "…" : handoffActive ? "Bot paused" : "Take over"}
         </button>
       </div>
       <div className="flex items-center gap-1.5">

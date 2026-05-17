@@ -23,6 +23,8 @@ import { getAllOrderDayAddresses } from "@/lib/data/order-day-addresses";
 import { getSettings, getMealPrices } from "@/lib/data/settings";
 import { getAllPayments } from "@/lib/data/payments";
 import { getCreditTransactionsByCustomer } from "@/lib/data/credits";
+import { getAllLeads } from "@/lib/data/leads";
+import { getConversationControl } from "@/lib/data/conversation-control";
 import type { Customer, CustomerAddress, Subscription, SubscriptionExtra, Pricing, MealSkip, MealSelection, MenuItem, KitchenNote, OrderDayAddress, Payment, CreditTransaction } from "@/lib/data/types";
 
 export async function createCustomerAction(formData: FormData) {
@@ -98,6 +100,8 @@ export async function getCustomerDetailsAction(customerId: string): Promise<{
   payments: Payment[];
   extras: SubscriptionExtra[];
   creditTransactions: CreditTransaction[];
+  externalUserId: string | null;
+  handoffActive: boolean;
 }> {
   const customer = getCustomerById(customerId);
   const addresses = getAllAddresses().filter((a) => a.customerId === customerId);
@@ -125,7 +129,20 @@ export async function getCustomerDetailsAction(customerId: string): Promise<{
   const extras = getAllExtras().filter((e) => subIds.has(e.subscriptionId));
   const creditTransactions = getCreditTransactionsByCustomer(customerId);
 
-  return { customer, addresses, subscriptions, skipCounts, totalSpend, pricing, skips, allSelections, allMenuItems, kitchenNotes, dayAddresses, hub: { lat: settings.hubLat, lng: settings.hubLng }, mealPrices: getMealPrices(settings), payments, extras, creditTransactions };
+  const digitsOnly = customerId.replace(/\D/g, "");
+  const lead = getAllLeads().find(
+    (l) => l.externalUserId && l.phone.replace(/\D/g, "") === digitsOnly
+  );
+  const externalUserId = lead?.externalUserId ?? null;
+  const handoff = externalUserId
+    ? getConversationControl("zalouser", externalUserId)
+    : null;
+  const handoffActive =
+    handoff?.mode === "human_active" &&
+    handoff.lockExpiresAt != null &&
+    new Date(handoff.lockExpiresAt) > new Date();
+
+  return { customer, addresses, subscriptions, skipCounts, totalSpend, pricing, skips, allSelections, allMenuItems, kitchenNotes, dayAddresses, hub: { lat: settings.hubLat, lng: settings.hubLng }, mealPrices: getMealPrices(settings), payments, extras, creditTransactions, externalUserId, handoffActive };
 }
 
 export async function updateCustomerNoteAction(id: string, notes: string | null) {

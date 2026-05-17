@@ -12,7 +12,7 @@ export async function PATCH(
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
 
-  const { source, externalUserId, name, phone, address, goal, mealsPerDay, planInterest, note } =
+  const { source, externalUserId, name, phone, address, lat, lng, goal, mealsPerDay, planInterest, note } =
     body as Record<string, unknown>;
 
   const lead = getLeadById(leadId);
@@ -29,6 +29,8 @@ export async function PATCH(
   if (typeof name === "string" && name.trim()) updates.name = name.trim();
   if (typeof phone === "string" && phone.trim()) updates.phone = phone.trim();
   if (typeof address === "string") updates.address = address.trim() || null;
+  if (typeof lat === "number") updates.geocodedLat = lat;
+  if (typeof lng === "number") updates.geocodedLng = lng;
   if (typeof goal === "string") updates.goal = goal.trim() || null;
   if (typeof mealsPerDay === "number") updates.mealsPerDay = mealsPerDay;
   if (typeof planInterest === "string") updates.planInterest = planInterest.trim() || null;

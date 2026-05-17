@@ -31,6 +31,25 @@ export async function updateMealPriceAction(formData: FormData) {
   revalidatePath("/subscriptions");
 }
 
+export async function updateShippingFeeAction(formData: FormData) {
+  const current = getSettings();
+  const parsePos = (key: string, fallback: number) => {
+    const v = parseFloat(formData.get(key) as string);
+    return isNaN(v) || v < 0 ? fallback : v;
+  };
+  saveSettings({
+    ...current,
+    shippingFeeZone1MaxKm: parsePos("zone1MaxKm", current.shippingFeeZone1MaxKm),
+    shippingFeeZone1: parsePos("zone1", current.shippingFeeZone1),
+    shippingFeeZone2MaxKm: parsePos("zone2MaxKm", current.shippingFeeZone2MaxKm),
+    shippingFeeZone2: parsePos("zone2", current.shippingFeeZone2),
+    shippingFeeZone3MaxKm: parsePos("zone3MaxKm", current.shippingFeeZone3MaxKm),
+    shippingFeeZone3: parsePos("zone3", current.shippingFeeZone3),
+    shippingFeeZone4PerKm: parsePos("zone4PerKm", current.shippingFeeZone4PerKm),
+  });
+  revalidatePath("/settings");
+}
+
 export async function updateFormulaSettingsAction(data: {
   basePricePerMeal: number;
   goalMultiplierCutting: number;

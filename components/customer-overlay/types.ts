@@ -30,6 +30,8 @@ export type Details = {
   payments: Payment[];
   extras: SubscriptionExtra[];
   creditTransactions: CreditTransaction[];
+  externalUserId: string | null;
+  handoffActive: boolean;
 };
 
 export type RouteMap = Map<string, { positions: [number, number][]; distance: number; duration: number }>;

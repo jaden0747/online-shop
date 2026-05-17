@@ -5,6 +5,7 @@ import { getAllCostCategories } from "@/lib/data/cost-categories";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { HubForm } from "./hub-form";
+import { ShippingFeeForm } from "./shipping-fee-form";
 import { TestingToggle } from "./testing-toggle";
 import { ImportCustomersForm } from "@/app/customers/import-customers-form";
 import { UpsertPricingForm } from "@/app/subscriptions/upsert-pricing-form";
@@ -55,6 +56,26 @@ export default async function SettingsPage() {
             Current: {settings.hubLat.toFixed(6)}, {settings.hubLng.toFixed(6)}
           </div>
           <HubForm hubLat={settings.hubLat} hubLng={settings.hubLng} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Shipping Fee Zones</CardTitle>
+          <CardDescription>
+            Distance-based fee tiers. The bot uses these to estimate shipping fee for customers.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ShippingFeeForm
+            zone1MaxKm={settings.shippingFeeZone1MaxKm}
+            zone1={settings.shippingFeeZone1}
+            zone2MaxKm={settings.shippingFeeZone2MaxKm}
+            zone2={settings.shippingFeeZone2}
+            zone3MaxKm={settings.shippingFeeZone3MaxKm}
+            zone3={settings.shippingFeeZone3}
+            zone4PerKm={settings.shippingFeeZone4PerKm}
+          />
         </CardContent>
       </Card>
 

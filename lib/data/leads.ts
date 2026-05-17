@@ -12,6 +12,8 @@ function parse(raw: Record<string, unknown>): CustomerLead {
     name: toStr(raw.name),
     phone: toStr(raw.phone),
     address: toStr(raw.address) || null,
+    geocodedLat: raw.geocodedLat != null && raw.geocodedLat !== "" ? toNum(raw.geocodedLat) : null,
+    geocodedLng: raw.geocodedLng != null && raw.geocodedLng !== "" ? toNum(raw.geocodedLng) : null,
     goal: toStr(raw.goal) || null,
     mealsPerDay: raw.mealsPerDay != null ? toNum(raw.mealsPerDay) : null,
     planInterest: toStr(raw.planInterest) || null,
@@ -67,7 +69,7 @@ export function updateLeadStatus(
 
 export function updateLead(
   id: string,
-  data: Partial<Pick<CustomerLead, "name" | "phone" | "address" | "goal" | "mealsPerDay" | "planInterest" | "note">>
+  data: Partial<Pick<CustomerLead, "name" | "phone" | "address" | "geocodedLat" | "geocodedLng" | "goal" | "mealsPerDay" | "planInterest" | "note">>
 ): CustomerLead | null {
   const all = readAll();
   const idx = all.findIndex((l) => l.id === id);

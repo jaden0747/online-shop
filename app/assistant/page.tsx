@@ -3,11 +3,14 @@ import { getPendingReviews, getAllPendingReviews } from "@/lib/data/pending-revi
 import { getAssistantLogs } from "@/lib/data/assistant-log";
 import { getAllCustomers } from "@/lib/data/customers";
 import { getAllPricing } from "@/lib/data/pricing";
+import { getAllConversationControls } from "@/lib/data/conversation-control";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { updateLeadStatusAction } from "@/app/actions/assistant";
 import { ReviewActions } from "./review-form";
 import { ConvertLeadDialog } from "./convert-lead-dialog";
+import { HandoffReleaseButton } from "./handoff-release-button";
+import { HandoffTakeoverButton } from "./handoff-takeover-button";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +49,12 @@ function PayloadDisplay({ payload }: { payload: Record<string, unknown> }) {
   );
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  human_outbound_zalo: "Manager Zalo reply",
+  manager_app_action: "Manager app action",
+  bot_escalation: "Bot escalation",
+};
+
 export default async function AssistantPage() {
   const pendingLeads = getPendingLeads();
   const allLeads = getAllLeads();
@@ -55,6 +64,13 @@ export default async function AssistantPage() {
   const customers = getAllCustomers();
   const pricing = getAllPricing();
   const customerMap = new Map(customers.map((c) => [c.id, c]));
+
+  const now = new Date();
+  const allHandoffs = getAllConversationControls();
+  const activeHandoffs = allHandoffs.filter(
+    (h) => h.mode === "human_active" && h.lockExpiresAt && new Date(h.lockExpiresAt) > now
+  );
+  const activeHandoffIds = new Set(activeHandoffs.map((h) => h.externalUserId));
 
   const recentLeads = allLeads
     .filter((l) => l.status !== "pending")
@@ -91,6 +107,14 @@ export default async function AssistantPage() {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="handoffs">
+            Handoffs
+            {activeHandoffs.length > 0 && (
+              <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0 h-4 bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+                {activeHandoffs.length}
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="logs">API Logs</TabsTrigger>
         </TabsList>
 
@@ -113,6 +137,7 @@ export default async function AssistantPage() {
                       <th className="text-left px-3 py-2 font-medium">Plan interest</th>
                       <th className="text-left px-3 py-2 font-medium">Note</th>
                       <th className="text-left px-3 py-2 font-medium">Created</th>
+                      <th className="px-3 py-2 font-medium">Bot</th>
                       <th className="px-3 py-2 font-medium">Actions</th>
                     </tr>
                   </thead>
@@ -127,6 +152,13 @@ export default async function AssistantPage() {
                         <td className="px-3 py-2 text-xs">{lead.planInterest ?? "—"}</td>
                         <td className="px-3 py-2 text-xs text-muted-foreground max-w-[160px] truncate">{lead.note ?? "—"}</td>
                         <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{fmtDate(lead.createdAt)}</td>
+                        <td className="px-3 py-2 text-center">
+                          {lead.externalUserId && activeHandoffIds.has(lead.externalUserId) ? (
+                            <HandoffReleaseButton channel="zalouser" externalUserId={lead.externalUserId} />
+                          ) : (
+                            <HandoffTakeoverButton channel="zalouser" externalUserId={lead.externalUserId ?? null} />
+                          )}
+                        </td>
                         <td className="px-3 py-2">
                           <div className="flex gap-1">
                             <ConvertLeadDialog lead={lead} pricing={pricing} />
@@ -294,6 +326,157 @@ export default async function AssistantPage() {
 
           {pendingReviews.length === 0 && recentReviews.length === 0 && (
             <p className="text-sm text-muted-foreground py-6 text-center">No reviews yet.</p>
+          )}
+        </TabsContent>
+
+        {/* HANDOFFS TAB */}
+        <TabsContent value="handoffs" className="space-y-6">
+          {/* All customers — quick take-over */}
+          {(() => {
+            // Build phone (digits only) → externalUserId from most-recent lead per phone
+            const phoneToExtId = new Map<string, string>();
+            allLeads
+              .filter((l) => l.externalUserId)
+              .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+              .forEach((l) => {
+                const digits = l.phone.replace(/\D/g, "");
+                if (!phoneToExtId.has(digits)) phoneToExtId.set(digits, l.externalUserId!);
+              });
+
+            if (customers.length === 0) return null;
+            return (
+              <section>
+                <h2 className="text-sm font-semibold mb-1">All customers</h2>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Click <strong>Take Over</strong> before you reply to a customer in Zalo to silence the bot. Click <strong>Release</strong> when you&apos;re done.
+                  Customers without a Zalo ID haven&apos;t messaged the bot yet.
+                </p>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 text-muted-foreground text-xs">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium">Name</th>
+                        <th className="text-left px-3 py-2 font-medium">Phone</th>
+                        <th className="text-left px-3 py-2 font-medium">Zalo ID</th>
+                        <th className="text-left px-3 py-2 font-medium">Status</th>
+                        <th className="px-3 py-2 font-medium">Bot control</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {customers.map((customer) => {
+                        const extId = phoneToExtId.get(customer.phone.replace(/\D/g, "")) ?? null;
+                        const isActive = !!extId && activeHandoffIds.has(extId);
+                        return (
+                          <tr key={customer.id} className={`hover:bg-muted/30 ${isActive ? "bg-orange-50/40 dark:bg-orange-950/10" : ""}`}>
+                            <td className="px-3 py-2 font-medium">{customer.name}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{customer.phone}</td>
+                            <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{extId ?? <span className="opacity-40">—</span>}</td>
+                            <td className="px-3 py-2">
+                              {isActive ? (
+                                <Badge className="text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 border-0">
+                                  Human active
+                                </Badge>
+                              ) : (
+                                <Badge variant="secondary" className="text-xs">Bot</Badge>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {isActive ? (
+                                <HandoffReleaseButton channel="zalouser" externalUserId={extId!} />
+                              ) : (
+                                <HandoffTakeoverButton channel="zalouser" externalUserId={extId} />
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            );
+          })()}
+
+          {activeHandoffs.length > 0 && (
+            <section>
+              <h2 className="text-sm font-semibold mb-2 text-orange-600 dark:text-orange-400">
+                Active ({activeHandoffs.length})
+              </h2>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-muted-foreground text-xs">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium">Channel</th>
+                      <th className="text-left px-3 py-2 font-medium">Zalo User ID</th>
+                      <th className="text-left px-3 py-2 font-medium">Trigger</th>
+                      <th className="text-left px-3 py-2 font-medium">Expires</th>
+                      <th className="px-3 py-2 font-medium">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {activeHandoffs.map((h) => (
+                      <tr key={h.id} className="hover:bg-muted/30 bg-orange-50/40 dark:bg-orange-950/10">
+                        <td className="px-3 py-2 text-xs">{h.channel}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{h.externalUserId}</td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground">
+                          {SOURCE_LABELS[h.source ?? ""] ?? h.source ?? "—"}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                          {h.lockExpiresAt ? fmtDate(h.lockExpiresAt) : "—"}
+                        </td>
+                        <td className="px-3 py-2">
+                          <HandoffReleaseButton channel={h.channel} externalUserId={h.externalUserId} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {allHandoffs.length > activeHandoffs.length && (
+            <section>
+              <h2 className="text-sm font-semibold mb-2 text-muted-foreground">
+                Expired / Bot mode ({allHandoffs.length - activeHandoffs.length})
+              </h2>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-muted-foreground text-xs">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium">Channel</th>
+                      <th className="text-left px-3 py-2 font-medium">Zalo User ID</th>
+                      <th className="text-left px-3 py-2 font-medium">Mode</th>
+                      <th className="text-left px-3 py-2 font-medium">Last trigger</th>
+                      <th className="text-left px-3 py-2 font-medium">Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {allHandoffs
+                      .filter((h) => !activeHandoffs.includes(h))
+                      .map((h) => (
+                        <tr key={h.id} className="hover:bg-muted/30">
+                          <td className="px-3 py-2 text-xs">{h.channel}</td>
+                          <td className="px-3 py-2 font-mono text-xs">{h.externalUserId}</td>
+                          <td className="px-3 py-2">
+                            <Badge variant="secondary" className="text-xs">{h.mode}</Badge>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">
+                            {SOURCE_LABELS[h.source ?? ""] ?? h.source ?? "—"}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                            {fmtDate(h.updatedAt)}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {allHandoffs.length === 0 && (
+            <p className="text-sm text-muted-foreground py-6 text-center">No handoff records yet.</p>
           )}
         </TabsContent>
 
