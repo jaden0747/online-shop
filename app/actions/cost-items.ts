@@ -7,6 +7,8 @@ export async function createCostItemAction(data: {
   weekLabel: string;
   categoryId: string;
   amount: number;
+  date?: string | null;
+  source?: string | null;
   note?: string | null;
 }): Promise<void> {
   createCostItem(data);
@@ -15,7 +17,7 @@ export async function createCostItemAction(data: {
 
 export async function updateCostItemAction(
   id: string,
-  data: { amount?: number; note?: string | null; categoryId?: string }
+  data: { amount?: number; note?: string | null; categoryId?: string; date?: string | null; source?: string | null }
 ): Promise<void> {
   updateCostItem(id, data);
   revalidatePath("/costs");

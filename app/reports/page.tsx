@@ -9,6 +9,8 @@ import { weekLabelForDate, weekLabelToMonday } from "@/lib/utils/week";
 import { earnedRevenueInRange, deferredRevenue } from "@/lib/utils/revenue";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ReportsCharts } from "./reports-charts";
+import { TrendChart, CategoryDonut } from "@/app/costs/cost-charts";
+import type { WeekSummary } from "@/app/costs/cost-types";
 
 export const dynamic = "force-dynamic";
 
@@ -164,6 +166,30 @@ export default async function ReportsPage() {
     return mon >= monthStart && mon <= monthEnd;
   }).reduce((s, i) => s + i.amount, 0);
 
+  // ── Cost summaries for TrendChart + CategoryDonut ────────────────────────────
+  const allCostWeeks = [...new Set(allCostItems.map((i) => i.weekLabel))].sort();
+  const costSummaries: WeekSummary[] = allCostWeeks.map((wl) => {
+    const monday = weekLabelToMonday(wl);
+    const friday = new Date(monday);
+    friday.setDate(monday.getDate() + 4);
+    const weekItems = allCostItems.filter((i) => i.weekLabel === wl);
+    const totalCost = weekItems.reduce((s, i) => s + i.amount, 0);
+    const weekOps = allOps.find((o) => o.weekLabel === wl);
+    const mealsDelivered = weekOps?.mealsDelivered ?? 0;
+    const revenue = Math.round(
+      subscriptions.reduce((s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, monday, friday), 0)
+    );
+    return {
+      weekLabel: wl,
+      dateRange: "",
+      totalCost,
+      mealsDelivered,
+      costPerMeal: mealsDelivered > 0 ? Math.round(totalCost / mealsDelivered) : null,
+      revenue,
+      profit: revenue - totalCost,
+    };
+  });
+
   const pnlRows = [
     { label: "All time",   revenue: totalEarned,      cost: totalCostAll,    profit: totalEarned - totalCostAll },
     { label: "This month", revenue: thisMonthEarned,  cost: thisMonthCost,   profit: thisMonthEarned - thisMonthCost },
@@ -281,6 +307,26 @@ export default async function ReportsPage() {
             costByCategory={costByCategory}
             weeklyWaste={weeklyWaste}
           />
+        </CardContent>
+      </Card>
+
+      {/* Cost Analysis */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Cost Analysis</CardTitle>
+          <CardDescription>Weekly cost trend and all-time category breakdown</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-6 divide-x">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Cost Trend</p>
+              <TrendChart summaries={costSummaries} />
+            </div>
+            <div className="pl-6">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">All-time by Category</p>
+              <CategoryDonut items={allCostItems} categories={categories} />
+            </div>
+          </div>
         </CardContent>
       </Card>
 

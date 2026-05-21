@@ -151,6 +151,8 @@ export interface CostItem {
   weekLabel: string; // e.g. "2025-W21"
   categoryId: string;
   amount: number;
+  date: string | null;   // ISO string — actual purchase date
+  source: string | null; // store/place, e.g. "chợ", "BHX"
   note: string | null;
   createdAt: string; // ISO string
 }

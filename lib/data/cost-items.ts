@@ -10,6 +10,8 @@ function parseCostItem(raw: Record<string, unknown>): CostItem {
     weekLabel: toStr(raw.weekLabel),
     categoryId: toStr(raw.categoryId),
     amount: toNum(raw.amount),
+    date: toStrOrNull(raw.date),
+    source: toStrOrNull(raw.source),
     note: toStrOrNull(raw.note),
     createdAt: toStr(raw.createdAt) || new Date().toISOString(),
   };
@@ -33,6 +35,8 @@ export function createCostItem(data: {
   weekLabel: string;
   categoryId: string;
   amount: number;
+  date?: string | null;
+  source?: string | null;
   note?: string | null;
 }): CostItem {
   const items = getAllCostItems();
@@ -41,6 +45,8 @@ export function createCostItem(data: {
     weekLabel: data.weekLabel,
     categoryId: data.categoryId,
     amount: data.amount,
+    date: data.date ?? null,
+    source: data.source ?? null,
     note: data.note ?? null,
     createdAt: new Date().toISOString(),
   };
@@ -51,7 +57,7 @@ export function createCostItem(data: {
 
 export function updateCostItem(
   id: string,
-  data: Partial<Pick<CostItem, "amount" | "note" | "categoryId">>
+  data: Partial<Pick<CostItem, "amount" | "note" | "categoryId" | "date" | "source">>
 ): void {
   saveCostItems(getAllCostItems().map((c) => (c.id === id ? { ...c, ...data } : c)));
 }
