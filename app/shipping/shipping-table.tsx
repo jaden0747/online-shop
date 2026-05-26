@@ -821,10 +821,16 @@ function AddressCell({
   function handleChange(id: string) {
     onChange(id);
     startPersist(async () => {
-      if (!id) {
-        await deleteDayAddressAction(delivery.subscriptionId, delivery.weekLabel, delivery.day);
-      } else {
-        await upsertDayAddressAction(delivery.subscriptionId, delivery.weekLabel, delivery.day, id);
+      try {
+        if (!id) {
+          await deleteDayAddressAction(delivery.subscriptionId, delivery.weekLabel, delivery.day);
+        } else {
+          await upsertDayAddressAction(delivery.subscriptionId, delivery.weekLabel, delivery.day, id);
+        }
+      } catch (error) {
+        console.error("Failed to update day address:", error);
+        // Revert optimistic update on error
+        onChange(selectedId ?? "");
       }
     });
   }

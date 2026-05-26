@@ -12,6 +12,7 @@ export async function upsertDayAddressAction(
   upsertDayAddress(subscriptionId, weekLabel, day, addressId);
   revalidatePath("/customers");
   revalidatePath("/menu");
+  revalidatePath("/shipping");
 }
 
 export async function deleteDayAddressAction(
@@ -22,4 +23,5 @@ export async function deleteDayAddressAction(
   deleteDayAddress(subscriptionId, weekLabel, day);
   revalidatePath("/customers");
   revalidatePath("/menu");
+  revalidatePath("/shipping");
 }

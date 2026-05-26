@@ -243,8 +243,14 @@ ipcMain.handle("check-for-updates", async () => {
 
 ipcMain.handle("install-update", () => {
   if (isDev) return;
+  forceQuit = true;
   killServer();
-  getAutoUpdater().quitAndInstall(true, true);
+  // Close all windows first for clean shutdown
+  BrowserWindow.getAllWindows().forEach(w => w.close());
+  // Small delay to ensure clean shutdown before restart
+  setTimeout(() => {
+    getAutoUpdater().quitAndInstall(true, true);
+  }, 500);
 });
 
 ipcMain.handle("get-data-directory", () => {
@@ -327,6 +333,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  forceQuit = true;
   killServer();
 });
 

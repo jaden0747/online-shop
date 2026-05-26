@@ -112,7 +112,7 @@ function DonutChart({
     <div className="flex flex-col">
       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">{title}</p>
       <div className="h-[160px]">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <PieChart>
             <Pie
               data={data}
@@ -192,7 +192,7 @@ export function DashboardCharts({
             <EmptyState />
           ) : (
             <div className="h-[160px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={weekdayDeliveries} barSize={24}>
                   <CartesianGrid strokeDasharray="3 3" stroke={border} vertical={false} />
                   <XAxis dataKey="day" tick={axisStyle} axisLine={false} tickLine={false} />
@@ -216,7 +216,7 @@ export function DashboardCharts({
             <EmptyState />
           ) : (
             <div className="h-[160px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={mealsPerDayData} barSize={32}>
                   <CartesianGrid strokeDasharray="3 3" stroke={border} vertical={false} />
                   <XAxis dataKey="meals" tick={axisStyle} axisLine={false} tickLine={false} />
@@ -252,7 +252,7 @@ export function DashboardCharts({
                 ))}
               </div>
               <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                   <BarChart data={mealSelections} layout="vertical" barSize={16}>
                     <CartesianGrid strokeDasharray="3 3" stroke={border} horizontal={false} />
                     <XAxis type="number" tick={axisStyle} axisLine={false} tickLine={false} allowDecimals={false} />
@@ -289,7 +289,7 @@ export function DashboardCharts({
             <EmptyState />
           ) : (
             <div className="h-[180px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={zoneData} layout="vertical" barSize={16}>
                   <CartesianGrid strokeDasharray="3 3" stroke={border} horizontal={false} />
                   <XAxis type="number" tick={axisStyle} axisLine={false} tickLine={false} allowDecimals={false} />
@@ -325,7 +325,7 @@ export function DashboardCharts({
             <EmptyState />
           ) : (
             <div className="h-[180px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={renewalData} barSize={28}>
                   <CartesianGrid strokeDasharray="3 3" stroke={border} vertical={false} />
                   <XAxis dataKey="bucket" tick={axisStyle} axisLine={false} tickLine={false} />

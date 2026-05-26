@@ -18,15 +18,17 @@ export function CustomerOverlayTrigger({
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" className="text-left" onClick={() => setOpen(true)}>
-        <span className="font-medium leading-none block hover:underline">{name}</span>
+      <div className="text-left">
+        <button type="button" className="text-left" onClick={() => setOpen(true)}>
+          <span className="font-medium leading-none block hover:underline">{name}</span>
+          {permanentNote && (
+            <span className="text-xs text-blue-600 dark:text-blue-400 block whitespace-pre-wrap">
+              · {permanentNote}
+            </span>
+          )}
+        </button>
         <PhoneDisplay phone={phone} />
-        {permanentNote && (
-          <span className="text-xs text-blue-600 dark:text-blue-400 block whitespace-pre-wrap">
-            · {permanentNote}
-          </span>
-        )}
-      </button>
+      </div>
       {open && <CustomerOverlay customerId={customerId} open={open} onOpenChange={setOpen} />}
     </>
   );

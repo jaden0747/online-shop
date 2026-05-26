@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Plus, X, Check } from "lucide-react";
-import { createCostItemAction, deleteCostItemAction } from "@/app/actions/cost-items";
+import { createCostItemAction, deleteCostItemAction, updateCostItemAction } from "@/app/actions/cost-items";
 import { upsertWeeklyOpsAction } from "@/app/actions/operations";
 import type { CostCategory, CostItem, WeeklyOps } from "@/lib/data/types";
 import { FormattedAmountInput } from "@/components/ui/formatted-amount-input";
@@ -157,16 +157,39 @@ function parsePortionCount(source: string | null): number | null {
   return m ? parseInt(m[1], 10) : null;
 }
 
+function dateInputValue(date: string | null): string {
+  if (!date) return "";
+  const isoDate = date.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoDate) return isoDate[1];
+
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString().slice(0, 10);
+}
+
 function CostItemRow({
   item,
   isShipping,
   onDelete,
+  onUpdate,
+  categories,
 }: {
   item: CostItem;
   isShipping: boolean;
   onDelete: (id: string) => void;
+  onUpdate: (id: string, updated: CostItem) => void;
+  categories: CostCategory[];
 }) {
   const [deleting, startDelete] = useTransition();
+  const [saving, startSave] = useTransition();
+  const [isEditing, setIsEditing] = useState(false);
+  
+  // Edit state
+  const [editCategoryId, setEditCategoryId] = useState(item.categoryId);
+  const [editAmount, setEditAmount] = useState(String(item.amount));
+  const [editDate, setEditDate] = useState(dateInputValue(item.date));
+  const [editNote, setEditNote] = useState(item.note ?? "");
+  const [editSource, setEditSource] = useState(item.source ?? "");
 
   const dateLabel = item.date
     ? new Date(item.date).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })
@@ -175,8 +198,131 @@ function CostItemRow({
   const portionCount = isShipping ? parsePortionCount(item.source) : null;
   const costPerBox = portionCount && portionCount > 0 ? Math.round(item.amount / portionCount) : null;
 
+  function handleEdit() {
+    setEditCategoryId(item.categoryId);
+    setEditAmount(String(item.amount));
+    setEditDate(dateInputValue(item.date));
+    setEditNote(item.note ?? "");
+    setEditSource(item.source ?? "");
+    setIsEditing(true);
+  }
+
+  function handleCancel() {
+    setIsEditing(false);
+  }
+
+  function handleSave() {
+    const amt = parseFloat(editAmount);
+    if (!amt || !editCategoryId) return;
+    
+    startSave(async () => {
+      await updateCostItemAction(item.id, {
+        categoryId: editCategoryId,
+        amount: amt,
+        date: editDate.trim() || null,
+        note: editNote.trim() || null,
+        source: editSource.trim() || null,
+      });
+      onUpdate(item.id, {
+        ...item,
+        categoryId: editCategoryId,
+        amount: amt,
+        date: editDate.trim() || null,
+        note: editNote.trim() || null,
+        source: editSource.trim() || null,
+      });
+      setIsEditing(false);
+    });
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSave();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      handleCancel();
+    }
+  }
+
+  if (isEditing) {
+    return (
+      <tr className="bg-accent/30">
+        <td className="py-1 pr-2">
+          <input
+            type="date"
+            className={`${inp} w-full`}
+            value={editDate}
+            onChange={(e) => setEditDate(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+        </td>
+        <td className="py-1 pr-2">
+          <FormattedAmountInput
+            className="w-20 h-auto py-0.5 px-2 text-xs rounded"
+            value={editAmount}
+            onChange={(raw) => setEditAmount(raw)}
+            onKeyDown={handleKeyDown}
+          />
+        </td>
+        <td className="py-1 pr-2">
+          <input
+            type="text"
+            className={`${inp} w-full`}
+            value={editNote}
+            onChange={(e) => setEditNote(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Note"
+          />
+        </td>
+        <td className="py-1 pr-2">
+          <input
+            type="text"
+            className={`${inp} w-full`}
+            value={editSource}
+            onChange={(e) => setEditSource(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Source"
+          />
+        </td>
+        <td className="py-1 pr-2">
+          <select
+            className={`${inp} w-full`}
+            value={editCategoryId}
+            onChange={(e) => setEditCategoryId(e.target.value)}
+            onKeyDown={handleKeyDown}
+          >
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </td>
+        <td className="py-1 flex gap-1">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-1.5 py-0.5 text-[10px] rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            title="Save (Enter)"
+          >
+            <Check size={10} />
+          </button>
+          <button
+            type="button"
+            onClick={handleCancel}
+            disabled={saving}
+            className="px-1.5 py-0.5 text-[10px] rounded border hover:bg-accent disabled:opacity-50"
+            title="Cancel (Esc)"
+          >
+            <X size={10} />
+          </button>
+        </td>
+      </tr>
+    );
+  }
+
   return (
-    <tr className="group">
+    <tr className="group" onDoubleClick={handleEdit} title="Double-click to edit">
       <td className="py-px pr-2 text-muted-foreground whitespace-nowrap">{dateLabel ?? ""}</td>
       <td className="py-px pr-2 font-medium tabular-nums text-right whitespace-nowrap">{item.amount.toLocaleString()}₫</td>
       <td className="py-px pr-2 text-muted-foreground max-w-[8rem] truncate">{item.note ?? ""}</td>
@@ -185,6 +331,11 @@ function CostItemRow({
         {costPerBox && (
           <span className="ml-1 not-italic font-medium text-foreground">· {costPerBox.toLocaleString()}₫/hộp</span>
         )}
+      </td>
+      <td className="py-px pr-2">
+        <span className="text-[9px] text-muted-foreground/60 italic">
+          {categories.find((c) => c.id === item.categoryId)?.name ?? ""}
+        </span>
       </td>
       <td className="py-px w-4">
         <button
@@ -264,7 +415,7 @@ export function CostsPanel({
                 <>
                   {/* Category header row */}
                   <tr key={`hd-${g.category.id}`} className="border-t first:border-t-0">
-                    <td colSpan={4} className="pt-2 pb-0.5 font-semibold">{g.category.name}</td>
+                    <td colSpan={5} className="pt-2 pb-0.5 font-semibold">{g.category.name}</td>
                     <td className="pt-2 pb-0.5 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                       {g.total.toLocaleString()}₫
                     </td>
@@ -276,13 +427,15 @@ export function CostsPanel({
                       item={item}
                       isShipping={item.categoryId === shippingCategoryId}
                       onDelete={(id) => setItems((prev) => prev.filter((i) => i.id !== id))}
+                      onUpdate={(id, updated) => setItems((prev) => prev.map((i) => i.id === id ? updated : i))}
+                      categories={categories}
                     />
                   ))}
                 </>
               ))}
               {/* Grand total */}
               <tr className="border-t">
-                <td colSpan={3} className="pt-1.5 font-semibold">Total</td>
+                <td colSpan={4} className="pt-1.5 font-semibold">Total</td>
                 <td colSpan={2} className="pt-1.5 font-semibold text-right tabular-nums whitespace-nowrap">
                   {grandTotal.toLocaleString()}₫
                 </td>
