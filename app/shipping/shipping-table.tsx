@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Copy, Check } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { CustomerOverlayTrigger } from "@/components/customer-overlay-trigger";
+import { CustomerOverlay } from "@/components/customer-overlay";
 import { upsertDayAddressAction, deleteDayAddressAction } from "@/app/actions/order-day-addresses";
 import {
   depotAwareClusters,
@@ -60,6 +59,145 @@ function distanceColor(km: number): { text: string; bar: string } {
   if (km <= 7) return { text: "text-yellow-600", bar: "bg-yellow-500" };
   if (km <= 12) return { text: "text-orange-600", bar: "bg-orange-500" };
   return { text: "text-red-600", bar: "bg-red-500" };
+}
+
+function CopyActions({
+  customerId,
+  name,
+  phone,
+  address,
+  copiedKey,
+  onCopy,
+}: {
+  customerId: string;
+  name: string;
+  phone: string;
+  address: string;
+  copiedKey: string | null;
+  onCopy: (text: string, key: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1 pt-2">
+      {([
+        ["name", "Name", name],
+        ["phone", "Phone", phone],
+        ["addr", "Address", address],
+      ] as const).map(([type, label, value]) => {
+        const key = `${customerId}-${type}`;
+        return (
+          <button
+            key={type}
+            type="button"
+            onClick={() => onCopy(value, key)}
+            title={`Copy ${type === "addr" ? "address" : type}`}
+            aria-label={`Copy ${type === "addr" ? "address" : type}`}
+            className="inline-flex h-6 items-center gap-1 rounded border border-transparent px-1.5 text-[11px] text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground"
+          >
+            {copiedKey === key ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+            <span>{label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function CustomerCell({
+  customerId,
+  name,
+  phone,
+  address,
+  copiedKey,
+  onCopy,
+}: {
+  customerId: string;
+  name: string;
+  phone: string;
+  address: string;
+  copiedKey: string | null;
+  onCopy: (text: string, key: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="space-y-1">
+        <button type="button" className="block text-left" onClick={() => setOpen(true)}>
+          <span className="block text-sm font-semibold leading-snug hover:underline">{name}</span>
+        </button>
+        <a
+          href={`https://zalo.me/${phone}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block text-xs leading-none text-muted-foreground hover:text-blue-500"
+        >
+          {phone}
+        </a>
+      </div>
+      <CopyActions
+        customerId={customerId}
+        name={name}
+        phone={phone}
+        address={address}
+        copiedKey={copiedKey}
+        onCopy={onCopy}
+      />
+      {open && <CustomerOverlay customerId={customerId} open={open} onOpenChange={setOpen} />}
+    </div>
+  );
+}
+
+function NotesCell({ permanentNote, note }: { permanentNote: string | null; note: string | null }) {
+  if (!permanentNote && !note) {
+    return <span className="text-xs text-muted-foreground/40">—</span>;
+  }
+
+  return (
+    <div className="space-y-1.5 text-xs leading-snug">
+      {permanentNote && (
+        <div>
+          <span className="block text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+            Permanent
+          </span>
+          <span className="block whitespace-pre-wrap break-words text-blue-600 dark:text-blue-400">
+            {permanentNote}
+          </span>
+        </div>
+      )}
+      {note && (
+        <div>
+          <span className="block text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+            Today
+          </span>
+          <span className="block whitespace-pre-wrap break-words text-blue-600 dark:text-blue-400">
+            {note}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MealsCell({ meals }: { meals: string[] }) {
+  if (meals.length === 0) {
+    return <span className="text-xs italic text-muted-foreground">not selected</span>;
+  }
+
+  return (
+    <ol className="space-y-1">
+      {meals.map((meal, index) => (
+        <li
+          key={`${meal}-${index}`}
+          className="flex items-start gap-1.5 rounded-md border bg-secondary/50 px-2 py-1 text-xs leading-snug text-secondary-foreground"
+        >
+          <span className="mt-0.5 min-w-4 rounded bg-background/70 px-1 text-center text-[10px] font-medium text-muted-foreground">
+            {index + 1}
+          </span>
+          <span className="min-w-0 whitespace-normal break-words">{meal}</span>
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 export function ShippingTable({
@@ -626,23 +764,22 @@ export function ShippingTable({
         </div>
       </div>
 
-       <div className="overflow-x-auto" ref={tableRef}>
-         <table className="w-full text-sm">
+       <div className="overflow-x-auto px-3 pb-3" ref={tableRef}>
+         <table className="w-full min-w-[1080px] table-fixed text-sm">
            <thead>
              <tr className="border-b bg-muted/50">
-               <th className="text-left px-2 py-1.5 font-medium w-8">#</th>
-               <th className="text-left px-2 py-1.5 font-medium w-16">Shipper</th>
-               <th className="text-left px-2 py-1.5 font-medium">Customer</th>
-               <th className="text-left px-2 py-1.5 font-medium">Permanent Note</th>
-               <th className="text-left px-2 py-1.5 font-medium">Today&apos;s Note</th>
-               <th className="text-left px-2 py-1.5 font-medium">Today&apos;s Meals</th>
-               <th className="text-left px-2 py-1.5 font-medium">Address</th>
+               <th className="w-10 px-3 py-2 text-left font-medium">#</th>
+               <th className="w-20 px-3 py-2 text-left font-medium">Shipper</th>
+               <th className="w-[220px] px-3 py-2 text-left font-medium">Customer</th>
+               <th className="w-[220px] px-3 py-2 text-left font-medium">Notes</th>
+               <th className="w-[260px] px-3 py-2 text-left font-medium">Today&apos;s Meals</th>
+               <th className="w-[350px] px-3 py-2 text-left font-medium">Address</th>
              </tr>
            </thead>
            <tbody className="divide-y">
              {deliveries.length === 0 && (
                <tr>
-                 <td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">
+                 <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
                    No deliveries scheduled for today.
                  </td>
                </tr>
@@ -653,9 +790,9 @@ export function ShippingTable({
               const note = notes.find((n) => n.customerId === d.phone)?.note ?? null;
               const permanentNote = permanentNotes.find((n) => n.customerId === d.customerId)?.note ?? null;
               return (
-                <tr key={d.subscriptionId} className="hover:bg-accent/50 transition-colors">
-                  <td className="px-2 py-1.5 text-muted-foreground text-xs">{idx + 1}</td>
-                  <td className="px-2 py-1.5">
+                <tr key={d.subscriptionId} className="align-top hover:bg-accent/50 transition-colors">
+                  <td className="px-3 py-2 align-top text-xs text-muted-foreground">{idx + 1}</td>
+                  <td className="px-3 py-2 align-top">
                     {row.shipper !== null ? (
                       <span
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold text-white"
@@ -669,55 +806,23 @@ export function ShippingTable({
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="px-2 py-1.5">
-                    <CustomerOverlayTrigger
+                  <td className="px-3 py-2 align-top">
+                    <CustomerCell
                       customerId={d.customerId}
                       name={d.name}
                       phone={d.phone}
-                      permanentNote={permanentNote}
+                      address={d.address}
+                      copiedKey={copiedKey}
+                      onCopy={copyToClipboard}
                     />
-                    <div className="flex items-center gap-1 mt-0.5">
-                      {([["name", d.name], ["phone", d.phone], ["addr", d.address]] as const).map(([type, value]) => {
-                        const key = `${d.customerId}-${type}`;
-                        return (
-                          <button key={type} type="button" onClick={() => copyToClipboard(value, key)}
-                            title={`Copy ${type === "addr" ? "address" : type}`}
-                            className="flex items-center gap-1 px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border border-transparent hover:border-border">
-                            {copiedKey === key ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
-                            <span>{type === "addr" ? "addr" : type}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
                   </td>
-                  <td className="px-2 py-1.5 max-w-[120px]">
-                    {permanentNote ? (
-                      <span className="text-xs text-blue-600 dark:text-blue-400 whitespace-pre-wrap">{permanentNote}</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground/40">—</span>
-                    )}
+                  <td className="px-3 py-2 align-top">
+                    <NotesCell permanentNote={permanentNote} note={note} />
                   </td>
-                  <td className="px-2 py-1.5 max-w-[120px]">
-                    {note ? (
-                      <span className="text-xs text-blue-600 dark:text-blue-400 whitespace-pre-wrap">{note}</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground/40">—</span>
-                    )}
+                  <td className="px-3 py-2 align-top">
+                    <MealsCell meals={d.meals} />
                   </td>
-                  <td className="px-2 py-1.5 max-w-[110px]">
-                    {d.meals.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {d.meals.map((m, i) => (
-                          <Badge key={i} variant="secondary" className="text-[11px] font-normal">
-                            {m}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground italic">not selected</span>
-                    )}
-                  </td>
-                  <td className="px-2 py-1.5 max-w-[200px]">
+                  <td className="px-3 py-2 align-top">
                     <AddressCell
                       delivery={d}
                       selectedId={selectedAddressIds.get(d.subscriptionId) ?? d.defaultAddressId}
@@ -732,58 +837,28 @@ export function ShippingTable({
               const note = notes.find((n) => n.customerId === d.phone)?.note ?? null;
               const permanentNote = permanentNotes.find((n) => n.customerId === d.customerId)?.note ?? null;
               return (
-                <tr key={d.subscriptionId} className="hover:bg-accent/50 transition-colors bg-amber-50/30">
-                  <td className="px-2 py-1.5 text-muted-foreground text-xs">—</td>
-                  <td className="px-2 py-1.5">
+                <tr key={d.subscriptionId} className="align-top bg-amber-50/30 hover:bg-accent/50 transition-colors">
+                  <td className="px-3 py-2 align-top text-xs text-muted-foreground">—</td>
+                  <td className="px-3 py-2 align-top">
                     <span className="text-[10px] text-amber-700" title="No coordinates set">no coord</span>
                   </td>
-                  <td className="px-2 py-1.5">
-                    <CustomerOverlayTrigger
+                  <td className="px-3 py-2 align-top">
+                    <CustomerCell
                       customerId={d.customerId}
                       name={d.name}
                       phone={d.phone}
-                      permanentNote={permanentNote}
+                      address={d.address}
+                      copiedKey={copiedKey}
+                      onCopy={copyToClipboard}
                     />
-                    <div className="flex items-center gap-1 mt-0.5">
-                      {([["name", d.name], ["phone", d.phone], ["addr", d.address]] as const).map(([type, value]) => {
-                        const key = `${d.customerId}-${type}`;
-                        return (
-                          <button key={type} type="button" onClick={() => copyToClipboard(value, key)}
-                            title={`Copy ${type === "addr" ? "address" : type}`}
-                            className="flex items-center gap-1 px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border border-transparent hover:border-border">
-                            {copiedKey === key ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
-                            <span>{type === "addr" ? "addr" : type}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
                   </td>
-                  <td className="px-2 py-1.5 max-w-[120px]">
-                    {permanentNote ? (
-                      <span className="text-xs text-blue-600 dark:text-blue-400 whitespace-pre-wrap">{permanentNote}</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground/40">—</span>
-                    )}
+                  <td className="px-3 py-2 align-top">
+                    <NotesCell permanentNote={permanentNote} note={note} />
                   </td>
-                  <td className="px-2 py-1.5 max-w-[120px]">
-                    {note ? (
-                      <span className="text-xs text-blue-600 dark:text-blue-400 whitespace-pre-wrap">{note}</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground/40">—</span>
-                    )}
+                  <td className="px-3 py-2 align-top">
+                    <MealsCell meals={d.meals} />
                   </td>
-                  <td className="px-2 py-1.5 max-w-[110px]">
-                    {d.meals.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {d.meals.map((m, i) => (
-                          <Badge key={i} variant="secondary" className="text-[11px] font-normal">{m}</Badge>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground italic">not selected</span>
-                    )}
-                  </td>
-                  <td className="px-2 py-1.5 max-w-[200px]">
+                  <td className="px-3 py-2 align-top">
                     <AddressCell
                       delivery={d}
                       selectedId={selectedAddressIds.get(d.subscriptionId) ?? d.defaultAddressId}
@@ -813,7 +888,7 @@ function AddressCell({
   const [persisting, startPersist] = useTransition();
 
   if (addresses.length <= 1) {
-    return <span className="text-xs">{delivery.address}</span>;
+    return <span className="block text-xs leading-snug break-words">{delivery.address}</span>;
   }
 
   const selected = addresses.find((a) => a.id === selectedId) ?? addresses.find((a) => a.isDefault) ?? addresses[0];
@@ -836,20 +911,45 @@ function AddressCell({
   }
 
   return (
-    <div className="space-y-1">
-      <select
-        value={selected?.id ?? ""}
-        onChange={(e) => handleChange(e.target.value)}
-        disabled={persisting}
-        className="w-full text-xs border rounded px-1.5 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-      >
-        <option value="">Use customer default</option>
-        {addresses.map((a) => (
-          <option key={a.id} value={a.id} title={a.label}>
-            {a.address}{a.isDefault ? " (default)" : ""}
-          </option>
-        ))}
-      </select>
+    <div className="space-y-1.5">
+      {addresses.map((address) => {
+        const isSelected = address.id === selected?.id;
+        return (
+          <button
+            key={address.id}
+            type="button"
+            onClick={() => handleChange(address.id)}
+            disabled={persisting}
+            className={`w-full rounded-md border px-2.5 py-2 text-left text-xs transition-colors disabled:opacity-50 ${
+              isSelected
+                ? "border-primary bg-primary/10 text-foreground shadow-sm"
+                : "border-border bg-background hover:bg-accent"
+            }`}
+          >
+            <span className="flex items-center justify-between gap-2">
+              <span className="font-medium">
+                {address.label || "Address"}
+                {address.isDefault && (
+                  <span className="ml-1 text-[10px] font-normal text-muted-foreground">(default)</span>
+                )}
+              </span>
+              {isSelected && (
+                <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
+                  Selected
+                </span>
+              )}
+            </span>
+            <span className="mt-1 block leading-snug text-muted-foreground break-words">
+              {address.address}
+            </span>
+            {address.zone && (
+              <span className="mt-1 block text-[10px] text-muted-foreground/70">
+                {address.zone}
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -59,6 +59,7 @@ type ChartProps = {
   zoneData: { zone: string; count: number }[];
   renewalData: { bucket: string; count: number }[];
   mealsPerDayData: { meals: string; count: number }[];
+  weeklyMeals: { week: string; weekLabel: string; meals: number }[];
   totalMealsThisWeek: number;
 };
 
@@ -158,6 +159,7 @@ export function DashboardCharts({
   zoneData,
   renewalData,
   mealsPerDayData,
+  weeklyMeals,
   totalMealsThisWeek,
 }: ChartProps) {
   const mutedFg = useCssColor("--muted-foreground");
@@ -230,8 +232,35 @@ export function DashboardCharts({
         </CardContent>
       </Card>
 
+      {/* Weekly Meals */}
+      <Card className="col-span-2">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm">Weekly Meals</CardTitle>
+          <span className="text-sm font-semibold tabular-nums">
+            {totalMealsThisWeek} <span className="text-xs font-normal text-muted-foreground">this week</span>
+          </span>
+        </CardHeader>
+        <CardContent>
+          {weeklyMeals.every((w) => w.meals === 0) ? (
+            <EmptyState />
+          ) : (
+            <div className="h-[180px]">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                <BarChart data={weeklyMeals} barSize={28}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={border} vertical={false} />
+                  <XAxis dataKey="week" tick={axisStyle} axisLine={false} tickLine={false} />
+                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} allowDecimals={false} width={32} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: accent }} />
+                  <Bar dataKey="meals" name="Meals" fill="#06b6d4" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Meal Selections — full width */}
-      <Card className="col-span-2 lg:col-span-4">
+      <Card className="col-span-2">
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-sm">Meal Selections This Week</CardTitle>
           <span className="text-sm font-semibold tabular-nums">
@@ -262,8 +291,8 @@ export function DashboardCharts({
                       tick={axisStyle}
                       axisLine={false}
                       tickLine={false}
-                      width={160}
-                      tickFormatter={(v: string) => v.length > 26 ? v.slice(0, 25) + "…" : v}
+                      width={140}
+                      tickFormatter={(v: string) => v.length > 22 ? v.slice(0, 21) + "…" : v}
                     />
                     <Tooltip content={<ChartTooltip />} cursor={{ fill: accent }} />
                     <Bar dataKey="count" name="Selections" radius={[0, 4, 4, 0]}>

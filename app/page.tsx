@@ -6,7 +6,7 @@ import { getMenuItemsByWeek } from "@/lib/data/menu";
 import { getCostItemsByWeek } from "@/lib/data/cost-items";
 import { getWeeklyOpsByLabel } from "@/lib/data/operations";
 import { isSubscriptionLive, daysRemaining, isTodayWeekday } from "@/lib/utils/subscription";
-import { currentWeekLabel, currentWeekMonday } from "@/lib/utils/week";
+import { currentWeekLabel, currentWeekMonday, weekLabelForDate } from "@/lib/utils/week";
 import { earnedRevenueInRange } from "@/lib/utils/revenue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardCharts } from "./dashboard-charts";
@@ -86,15 +86,38 @@ export default async function DashboardPage() {
   const topMealEntry = [...mealSelectionsPerDay].sort((a, b) => b.count - a.count)[0];
   const topMeals = topMealEntry ? [topMealEntry] : [];
 
-  // Total meals to prepare this week (mealsPerDay × active delivery days, no skips factored)
-  let totalMealsThisWeek = 0;
-  for (const d of weekDates) {
-    for (const s of subscriptions) {
-      if (isSubscriptionLive(s.status, s.startDate, s.endDate, d)) {
-        totalMealsThisWeek += s.mealsPerDay;
+  function scheduledMealsForWeek(weekMonday: Date): number {
+    const dates: Date[] = [];
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(weekMonday);
+      d.setDate(weekMonday.getDate() + i);
+      dates.push(d);
+    }
+
+    let total = 0;
+    for (const d of dates) {
+      for (const s of subscriptions) {
+        if (isSubscriptionLive(s.status, s.startDate, s.endDate, d)) {
+          total += s.mealsPerDay;
+        }
       }
     }
+    return total;
   }
+
+  // Total meals to prepare this week (mealsPerDay × active delivery days, no skips factored)
+  const totalMealsThisWeek = scheduledMealsForWeek(monday);
+
+  const weeklyMeals = Array.from({ length: 8 }, (_, i) => {
+    const weekMonday = new Date(monday);
+    weekMonday.setDate(monday.getDate() - (7 - i) * 7);
+    const label = weekLabelForDate(weekMonday);
+    return {
+      week: label.replace(/^\d+-/, ""),
+      weekLabel: label,
+      meals: scheduledMealsForWeek(weekMonday),
+    };
+  });
 
   // ── Chart data ──────────────────────────────────────────────────────────────
 
@@ -410,6 +433,7 @@ export default async function DashboardPage() {
         zoneData={zoneData}
         renewalData={renewalData}
         mealsPerDayData={mealsPerDayData}
+        weeklyMeals={weeklyMeals}
         totalMealsThisWeek={totalMealsThisWeek}
       />
     </div>
