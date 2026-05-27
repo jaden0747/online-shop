@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Copy, Check } from "lucide-react";
 import { CustomerOverlay } from "@/components/customer-overlay";
 import { upsertDayAddressAction, deleteDayAddressAction } from "@/app/actions/order-day-addresses";
@@ -118,6 +119,12 @@ function CustomerCell({
   onCopy: (text: string, key: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const router = useRouter();
+
+  function handleOpenChange(isOpen: boolean) {
+    setOpen(isOpen);
+    if (!isOpen) router.refresh();
+  }
 
   return (
     <div className="space-y-1.5">
@@ -142,7 +149,7 @@ function CustomerCell({
         copiedKey={copiedKey}
         onCopy={onCopy}
       />
-      {open && <CustomerOverlay customerId={customerId} open={open} onOpenChange={setOpen} />}
+      {open && <CustomerOverlay customerId={customerId} open={open} onOpenChange={handleOpenChange} />}
     </div>
   );
 }
@@ -239,6 +246,22 @@ export function ShippingTable({
     }
     return m;
   });
+
+  // Sync selectedAddressIds when server data changes (e.g. after router.refresh() on overlay close)
+  const addressRevision = useMemo(
+    () => deliveries.map((d) => `${d.subscriptionId}:${d.effectiveAddressId ?? ""}`).join("|"),
+    [deliveries]
+  );
+  useEffect(() => {
+    setSelectedAddressIds(() => {
+      const m = new Map<string, string>();
+      for (const d of deliveries) {
+        if (d.effectiveAddressId) m.set(d.subscriptionId, d.effectiveAddressId);
+      }
+      return m;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addressRevision]);
 
   // Load route settings from localStorage (shared with /route page)
   useEffect(() => {
