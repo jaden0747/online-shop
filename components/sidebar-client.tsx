@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { Home, Users, UtensilsCrossed, Truck, MapPin, Map, Settings2, FlaskConical, CreditCard, DollarSign, BarChart3, Clock, Search, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Popover } from "@base-ui/react/popover";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { getRecentCustomers, type RecentCustomer } from "@/lib/utils/use-recent-customers";
 import { CustomerOverlay } from "@/components/customer-overlay";
 
@@ -31,11 +31,12 @@ function RecentCustomersPopover() {
   const [open, setOpen] = useState(false);
   const [overlayCustomerId, setOverlayCustomerId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (open) {
+  function handleOpenChange(nextOpen: boolean) {
+    if (nextOpen) {
       setRecent(getRecentCustomers().slice(0, 6));
     }
-  }, [open]);
+    setOpen(nextOpen);
+  }
 
   function openOverlay(id: string) {
     setOpen(false);
@@ -51,7 +52,7 @@ function RecentCustomersPopover() {
         onOpenChange={(o) => { if (!o) setOverlayCustomerId(null); }}
       />
     )}
-    <Popover.Root open={open} onOpenChange={setOpen}>
+    <Popover.Root open={open} onOpenChange={handleOpenChange}>
       <Popover.Trigger
         className={cn(
           "flex items-center gap-1.5 px-3 h-8 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
@@ -119,19 +120,34 @@ export function SidebarClient({ testingMode }: { testingMode: boolean }) {
       <nav className="flex items-center gap-0.5">
         {nav.map(({ href, label, icon: Icon }) => {
           const active = href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
+          const className = cn(
+            "flex items-center gap-1.5 px-3 h-8 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
+            active
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          );
+          const content = (
+            <>
+              <Icon size={15} />
+              {label}
+            </>
+          );
+
+          if (href === "/customers" || href === "/subscriptions") {
+            return (
+              <a key={href} href={href} className={className}>
+                {content}
+              </a>
+            );
+          }
+
           return (
             <Link
               key={href}
               href={href}
-              className={cn(
-                "flex items-center gap-1.5 px-3 h-8 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
-                active
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              )}
+              className={className}
             >
-              <Icon size={15} />
-              {label}
+              {content}
             </Link>
           );
         })}

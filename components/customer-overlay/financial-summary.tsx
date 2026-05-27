@@ -8,7 +8,7 @@ export function FinancialSummary({ details }: { details: Details }) {
   today.setHours(0, 0, 0, 0);
 
   const totalEarned = details.subscriptions.reduce(
-    (s, sub) => s + earnedRevenueAsOf(sub, details.skips, details.extras, today),
+    (s, sub) => s + earnedRevenueAsOf(sub, details.skips, details.extras, today, details.mealDeliveryPlans),
     0
   );
   const totalCollected = details.payments
@@ -38,16 +38,16 @@ export function FinancialSummary({ details }: { details: Details }) {
   }, 0);
 
   return (
-    <div className="grid grid-cols-3 gap-2 text-[11px] bg-muted/30 rounded-lg p-2.5">
-      <div>
+    <div className="grid grid-cols-3 gap-2 text-[11px] bg-muted/30 rounded-lg p-2.5 text-center items-center">
+      <div className="min-w-0">
         <p className="text-[10px] text-muted-foreground">Recognized Revenue</p>
         <p className="font-semibold">{totalEarned.toLocaleString()} VND</p>
       </div>
-      <div>
+      <div className="min-w-0 border-x border-border/60 px-2">
         <p className="text-[10px] text-muted-foreground">Net Collected</p>
         <p className="font-semibold">{netCollected.toLocaleString()} VND</p>
       </div>
-      <div>
+      <div className="min-w-0">
         <p className="text-[10px] text-muted-foreground">
           {totalBalance > 0 ? "Balance Due" : totalBalance < 0 ? "Refund Owed" : "Balance"}
         </p>

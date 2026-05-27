@@ -1,7 +1,7 @@
 import { getAllCostCategories } from "@/lib/data/cost-categories";
 import { getCostItemsByWeek, getAllCostItems } from "@/lib/data/cost-items";
 import { getWeeklyOpsByLabel, getAllWeeklyOps } from "@/lib/data/operations";
-import { getAllSubscriptions, getAllSkips, getAllExtras } from "@/lib/data/subscriptions";
+import { getAllSubscriptions, getAllSkips, getAllExtras, getAllMealDeliveryPlans } from "@/lib/data/subscriptions";
 import { currentWeekLabel, weekLabelToDateRange, weekLabelToMonday, shiftWeekLabel } from "@/lib/utils/week";
 import { earnedRevenueInRange } from "@/lib/utils/revenue";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -31,6 +31,7 @@ export default async function CostsPage({
   const allSubs = getAllSubscriptions();
   const allSkips = getAllSkips();
   const allExtras = getAllExtras();
+  const mealDeliveryPlans = getAllMealDeliveryPlans();
 
   const weeks = [...new Set(allItems.map((i) => i.weekLabel))].sort().reverse();
 
@@ -43,7 +44,7 @@ export default async function CostsPage({
     const weekOps = allOps.find((o) => o.weekLabel === wl);
     const mealsDelivered = weekOps?.mealsDelivered ?? 0;
     const revenue = Math.round(
-      allSubs.reduce((s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, monday, friday), 0)
+      allSubs.reduce((s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, monday, friday, mealDeliveryPlans), 0)
     );
     return {
       weekLabel: wl,

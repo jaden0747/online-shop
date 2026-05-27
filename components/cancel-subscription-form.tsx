@@ -21,10 +21,14 @@ import type { CreditTransaction, MealSkip, Payment, Subscription, SubscriptionEx
 type Sub = {
   id: string;
   plan: string;
+  startDate: string;
   subscriptionPrice: number;
   shippingPrice: number;
   discount: number;
   endDate: string;
+  endDateNoSkip?: string | null;
+  mealsPerDay: number;
+  weeklyScheduleJson?: string | null;
 };
 
 interface CancelSubscriptionFormProps {
@@ -152,28 +156,20 @@ export function CancelSubscriptionForm({
       {/* Refund breakdown */}
       <div className="rounded-lg bg-muted/60 p-3 text-xs space-y-1">
         <div className="flex justify-between text-muted-foreground">
-          <span>Price/day</span>
-          <span>{refundCalc.pricePerDay.toLocaleString()} VND</span>
+          <span>Price/meal</span>
+          <span>{refundCalc.pricePerMeal.toLocaleString()} VND</span>
         </div>
         <div className="flex justify-between text-muted-foreground">
-          <span>Remaining days (from {cancelDate})</span>
-          <span>{refundCalc.remainingDays}</span>
+          <span>Total meals</span>
+          <span>{refundCalc.totalMeals}</span>
         </div>
-        {refundCalc.futureSkipsNoReplace > 0 && (
-          <div className="flex justify-between text-muted-foreground">
-            <span>− Future skips (no replace)</span>
-            <span>{refundCalc.futureSkipsNoReplace}</span>
-          </div>
-        )}
-        {refundCalc.pastSkipsNoReplace > 0 && (
-          <div className="flex justify-between text-muted-foreground">
-            <span>+ Past skips (no replace)</span>
-            <span>{refundCalc.pastSkipsNoReplace}</span>
-          </div>
-        )}
+        <div className="flex justify-between text-muted-foreground">
+          <span>Meals delivered</span>
+          <span>{refundCalc.mealsDelivered}</span>
+        </div>
         <div className="flex justify-between text-muted-foreground border-t pt-1">
-          <span>Refund days</span>
-          <span>{refundCalc.refundDays}</span>
+          <span>Remaining meals</span>
+          <span>{refundCalc.remainingMeals}</span>
         </div>
         <div className="flex justify-between font-semibold">
           <span>Pro-rata refund</span>

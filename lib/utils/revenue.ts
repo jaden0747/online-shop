@@ -1,5 +1,5 @@
-import type { Subscription, MealSkip, SubscriptionExtra, Payment, CreditTransaction } from "@/lib/data/types";
-import { countWorkingDays } from "./subscription";
+import type { Subscription, MealSkip, MealDeliveryPlan, SubscriptionExtra, Payment, CreditTransaction } from "@/lib/data/types";
+import { totalMealEntitlement, servedMealsInRange } from "./schedule";
 
 type SubForRevenue = Pick<
   Subscription,
@@ -12,84 +12,102 @@ type SubForRevenue = Pick<
   | "endDateNoSkip"
   | "cancelledAt"
   | "status"
+  | "mealsPerDay"
+  | "totalMeals"
+  | "weeklyScheduleJson"
 >;
 
-/**
- * Cost per delivered day for a subscription.
- *
- * Uses the actual working days from startDate to endDateNoSkip (the period the customer
- * paid for, excluding skip extensions) so prorated first periods yield the correct
- * per-day rate. Falls back to 1 to avoid division by zero on degenerate subs.
- */
-export function pricePerDay(sub: SubForRevenue): number {
-  const effectiveTotal = sub.subscriptionPrice + sub.shippingPrice - sub.discount;
-  const start = normalizeDate(sub.startDate);
-  const endNoSkip = new Date(normalizeDate(sub.endDateNoSkip));
-  endNoSkip.setDate(endNoSkip.getDate() + 1); // make inclusive
-  const days = Math.max(1, countWorkingDays(start, endNoSkip));
-  return effectiveTotal / days;
-}
+// ── Price per meal ────────────────────────────────────────────────────────────
 
 /**
- * Working days actually delivered from startDate through `asOf` (inclusive),
+ * Price per single meal for a subscription.
+ *
+ * Uses the actual scheduled meals from startDate to endDateNoSkip (the period
+ * the customer paid for, excluding skip extensions). Falls back to 1 to avoid
+ * division by zero on degenerate subs.
+ *
+ * Backward compat: for uniform subscriptions (no weeklyScheduleJson),
+ *   totalScheduledMeals = workingDays × mealsPerDay
+ *   → pricePerMeal = effectiveTotal / (workingDays × mealsPerDay)
+ *   → same as old pricePerDay / mealsPerDay
+ */
+export function pricePerMeal(sub: SubForRevenue): number {
+  const effectiveTotal = sub.subscriptionPrice + sub.shippingPrice - sub.discount;
+  const start = normalizeDate(sub.startDate);
+  const endNoSkip = normalizeDate(sub.endDateNoSkip);
+  const total = Math.max(1, totalMealEntitlement({ ...sub, startDate: start.toISOString(), endDateNoSkip: endNoSkip.toISOString() }));
+  return effectiveTotal / total;
+}
+
+/** Backward-compatible day price for older callers/tests. */
+export function pricePerDay(sub: SubForRevenue): number {
+  return pricePerMeal(sub) * Math.max(1, sub.mealsPerDay);
+}
+
+// ── Meals delivered ───────────────────────────────────────────────────────────
+
+/**
+ * Meals actually served from startDate through `asOf` (inclusive),
  * accounting for skips.
  *
- * Formula:
- *   workingDays([startDate, cutoff])
- *   − skips where originalDay ∈ [startDate, cutoff]  (those days were not served)
- *
- * Replacement days are already working days counted by countWorkingDays if they fall
- * within [startDate, cutoff], so no explicit addition is needed for them.
- * The original skip day being subtracted correctly nets to: original skipped − replacement served = 0
- * when both are in the range. When replacement is outside the range, only the subtraction applies.
+ * A skipped day contributes 0 meals; replacement days are ordinary weekdays
+ * and are counted at their own scheduled meal count.
  */
-export function daysDeliveredAsOf(
+export function mealsDeliveredAsOf(
   sub: SubForRevenue,
   skips: Pick<MealSkip, "subscriptionId" | "originalDay">[],
-  asOf: Date
+  asOf: Date,
+  mealPlans: Pick<MealDeliveryPlan, "subscriptionId" | "date" | "plannedMeals">[] = []
 ): number {
   const start = normalizeDate(sub.startDate);
   // cancelledAt is the FIRST UNSERVED day (exclusive upper bound).
   // For non-cancelled subs endDate is the last served day (inclusive).
-  const cutoffRaw = sub.status === "cancelled" && sub.cancelledAt
-    ? (() => { const d = normalizeDate(sub.cancelledAt); d.setDate(d.getDate() - 1); return d; })()
-    : normalizeDate(sub.endDate);
+  const cutoffRaw =
+    sub.status === "cancelled" && sub.cancelledAt
+      ? (() => {
+          const d = normalizeDate(sub.cancelledAt);
+          d.setDate(d.getDate() - 1);
+          return d;
+        })()
+      : normalizeDate(sub.endDate);
   const cutoff = new Date(Math.min(asOf.getTime(), cutoffRaw.getTime()));
 
   if (cutoff < start) return 0;
 
-  // Working days in [start, cutoff] inclusive
-  const cutoffExcl = new Date(cutoff);
-  cutoffExcl.setDate(cutoffExcl.getDate() + 1);
-  const scheduled = countWorkingDays(start, cutoffExcl);
-
-  // Skips whose original day was in the scheduled window (those days were not served)
   const subSkips = skips.filter((sk) => sk.subscriptionId === sub.id);
-  const skipped = subSkips.filter((sk) => {
-    const d = normalizeDate(sk.originalDay);
-    return d >= start && d <= cutoff;
-  }).length;
-
-  return Math.max(0, scheduled - skipped);
+  const plans = mealPlans.filter((p) => p.subscriptionId === sub.id);
+  return servedMealsInRange(sub, subSkips, start, cutoff, plans);
 }
+
+/** Backward-compatible delivered-day count for older callers/tests. */
+export function daysDeliveredAsOf(
+  sub: SubForRevenue,
+  skips: Pick<MealSkip, "subscriptionId" | "originalDay">[],
+  asOf: Date,
+  mealPlans: Pick<MealDeliveryPlan, "subscriptionId" | "date" | "plannedMeals">[] = []
+): number {
+  return mealsDeliveredAsOf(sub, skips, asOf, mealPlans) / Math.max(1, sub.mealsPerDay);
+}
+
+// ── Earned revenue ────────────────────────────────────────────────────────────
 
 /**
  * Recognized (earned) revenue for a subscription as of `asOf`.
  *
- * = pricePerDay × daysDeliveredAsOf + extras whose recognition date ≤ asOf.
- * Extra recognition date: forDate if set, otherwise createdAt.
+ * = pricePerMeal × mealsDeliveredAsOf + extras whose recognition date ≤ asOf.
  */
 export function earnedRevenueAsOf(
   sub: SubForRevenue,
   skips: Pick<MealSkip, "subscriptionId" | "originalDay">[],
   extras: Pick<SubscriptionExtra, "subscriptionId" | "amount" | "startDate" | "endDate" | "createdAt">[],
-  asOf: Date
+  asOf: Date,
+  mealPlans: Pick<MealDeliveryPlan, "subscriptionId" | "date" | "plannedMeals">[] = []
 ): number {
-  const ppd = pricePerDay(sub);
-  const days = daysDeliveredAsOf(sub, skips, asOf);
+  const ppm = pricePerMeal(sub);
+  const meals = mealsDeliveredAsOf(sub, skips, asOf, mealPlans);
   const subExtras = extras.filter((e) => e.subscriptionId === sub.id);
   const extrasRecognized = subExtras.reduce((s, e) => s + extraEarnedAsOf(e, asOf), 0);
-  return Math.round(ppd * days) + extrasRecognized;
+  return Math.round(ppm * meals) + extrasRecognized;
 }
 
 /**
@@ -102,13 +120,19 @@ export function earnedRevenueInRange(
   skips: Pick<MealSkip, "subscriptionId" | "originalDay">[],
   extras: Pick<SubscriptionExtra, "subscriptionId" | "amount" | "startDate" | "endDate" | "createdAt">[],
   from: Date,
-  to: Date
+  to: Date,
+  mealPlans: Pick<MealDeliveryPlan, "subscriptionId" | "date" | "plannedMeals">[] = []
 ): number {
   const start = normalizeDate(sub.startDate);
   // cancelledAt is the FIRST UNSERVED day (exclusive). Last served = cancelledAt - 1.
-  const cutoffRaw = sub.status === "cancelled" && sub.cancelledAt
-    ? (() => { const d = normalizeDate(sub.cancelledAt); d.setDate(d.getDate() - 1); return d; })()
-    : normalizeDate(sub.endDate);
+  const cutoffRaw =
+    sub.status === "cancelled" && sub.cancelledAt
+      ? (() => {
+          const d = normalizeDate(sub.cancelledAt);
+          d.setDate(d.getDate() - 1);
+          return d;
+        })()
+      : normalizeDate(sub.endDate);
 
   // Intersect [from, to] with [startDate, cutoff]
   const rangeStart = new Date(Math.max(from.getTime(), start.getTime()));
@@ -116,21 +140,10 @@ export function earnedRevenueInRange(
 
   if (rangeStart > rangeEnd) return 0;
 
-  const ppd = pricePerDay(sub);
+  const ppm = pricePerMeal(sub);
   const subSkips = skips.filter((sk) => sk.subscriptionId === sub.id);
-
-  // Working days in [rangeStart, rangeEnd] inclusive
-  const rangeEndExcl = new Date(rangeEnd);
-  rangeEndExcl.setDate(rangeEndExcl.getDate() + 1);
-  const scheduled = countWorkingDays(rangeStart, rangeEndExcl);
-
-  // Skips whose original day falls in the range
-  const skipped = subSkips.filter((sk) => {
-    const d = normalizeDate(sk.originalDay);
-    return d >= rangeStart && d <= rangeEnd;
-  }).length;
-
-  const deliveredInRange = Math.max(0, scheduled - skipped);
+  const plans = mealPlans.filter((p) => p.subscriptionId === sub.id);
+  const deliveredInRange = servedMealsInRange(sub, subSkips, rangeStart, rangeEnd, plans);
 
   // Extras: recognize the portion of each extra that falls within [from, to]
   const subExtras = extras.filter((e) => e.subscriptionId === sub.id);
@@ -139,8 +152,10 @@ export function earnedRevenueInRange(
     return s + earned;
   }, 0);
 
-  return Math.round(ppd * deliveredInRange) + extrasInRange;
+  return Math.round(ppm * deliveredInRange) + extrasInRange;
 }
+
+// ── Deferred revenue ──────────────────────────────────────────────────────────
 
 /**
  * Deferred revenue for a subscription as of `asOf`.
@@ -156,7 +171,8 @@ export function deferredRevenue(
   credits: Pick<CreditTransaction, "subscriptionId" | "type" | "amount">[],
   skips: Pick<MealSkip, "subscriptionId" | "originalDay">[],
   extras: Pick<SubscriptionExtra, "subscriptionId" | "amount" | "startDate" | "endDate" | "createdAt">[],
-  asOf: Date
+  asOf: Date,
+  mealPlans: Pick<MealDeliveryPlan, "subscriptionId" | "date" | "plannedMeals">[] = []
 ): number {
   const subPayments = payments.filter((p) => p.subscriptionId === sub.id);
   const collected = subPayments
@@ -168,7 +184,7 @@ export function deferredRevenue(
   const refundedToCredit = credits
     .filter((t) => t.subscriptionId === sub.id && t.type === "refund_credit")
     .reduce((s, t) => s + t.amount, 0);
-  const earned = earnedRevenueAsOf(sub, skips, extras, asOf);
+  const earned = earnedRevenueAsOf(sub, skips, extras, asOf, mealPlans);
   return Math.max(0, collected - cashRefunded - refundedToCredit - earned);
 }
 
@@ -190,9 +206,25 @@ function extraEarnedAsOf(
   const end = e.endDate ? normalizeDate(e.endDate) : start;
   if (start > asOf) return 0;
   const effectiveEnd = new Date(Math.min(end.getTime(), asOf.getTime()));
+  // Extras remain day-based (they are independent flat charges, not tied to meal counts).
   const totalDays = Math.max(1, countWorkingDays(start, nextDay(end)));
   const earnedDays = countWorkingDays(start, nextDay(effectiveEnd));
   return Math.round((e.amount * earnedDays) / totalDays);
+}
+
+/** Count Mon–Fri days in [from, to) */
+function countWorkingDays(from: Date, to: Date): number {
+  let count = 0;
+  const cur = new Date(from);
+  cur.setHours(0, 0, 0, 0);
+  const end = new Date(to);
+  end.setHours(0, 0, 0, 0);
+  while (cur < end) {
+    const day = cur.getDay();
+    if (day >= 1 && day <= 5) count++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
 }
 
 function nextDay(d: Date): Date {

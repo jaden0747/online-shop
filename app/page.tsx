@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getAllCustomers } from "@/lib/data/customers";
-import { getAllSubscriptions, getAllExtras, getAllSkips } from "@/lib/data/subscriptions";
+import { getAllSubscriptions, getAllExtras, getAllSkips, getAllMealDeliveryPlans } from "@/lib/data/subscriptions";
 import { getSelectionsByWeek } from "@/lib/data/selections";
 import { getMenuItemsByWeek } from "@/lib/data/menu";
 import { getCostItemsByWeek } from "@/lib/data/cost-items";
@@ -8,6 +8,7 @@ import { getWeeklyOpsByLabel } from "@/lib/data/operations";
 import { isSubscriptionLive, daysRemaining, isTodayWeekday } from "@/lib/utils/subscription";
 import { currentWeekLabel, currentWeekMonday, weekLabelForDate } from "@/lib/utils/week";
 import { earnedRevenueInRange } from "@/lib/utils/revenue";
+import { plannedMealsForDate } from "@/lib/utils/schedule";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardCharts } from "./dashboard-charts";
 import { CustomerNameButton } from "./customer-name-button";
@@ -21,6 +22,8 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const customers = getAllCustomers();
   const subscriptions = getAllSubscriptions();
+  const allSkips = getAllSkips();
+  const mealDeliveryPlans = getAllMealDeliveryPlans();
   const weekLabel = currentWeekLabel();
   const monday = currentWeekMonday();
 
@@ -98,7 +101,7 @@ export default async function DashboardPage() {
     for (const d of dates) {
       for (const s of subscriptions) {
         if (isSubscriptionLive(s.status, s.startDate, s.endDate, d)) {
-          total += s.mealsPerDay;
+          total += plannedMealsForDate(s, d, mealDeliveryPlans, allSkips);
         }
       }
     }
@@ -186,7 +189,6 @@ export default async function DashboardPage() {
 
   // ── Financial metrics ────────────────────────────────────────────────────────
   const allExtras = getAllExtras();
-  const allSkips = getAllSkips();
   const weekCostItems = getCostItemsByWeek(weekLabel);
   const weekOps = getWeeklyOpsByLabel(weekLabel);
 
@@ -194,7 +196,7 @@ export default async function DashboardPage() {
   const friday = new Date(monday);
   friday.setDate(monday.getDate() + 4);
   const weekRevenue = subscriptions.reduce(
-    (s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, monday, friday),
+    (s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, monday, friday, mealDeliveryPlans),
     0
   );
 

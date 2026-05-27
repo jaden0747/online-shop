@@ -5,6 +5,7 @@
 
 import { createSkip, deleteSkip, getSubscriptionById, updateSubscription, getAllSkips } from "@/lib/data/subscriptions";
 import { nextWorkingDay, addWorkingDays } from "@/lib/utils/subscription";
+import { mealsForDate } from "@/lib/utils/schedule";
 
 function toWeekday(d: Date): Date {
   const r = new Date(d);
@@ -106,14 +107,13 @@ export function removeSkipAndRevert(skipId: string): { ok: boolean; error?: stri
   return { ok: true };
 }
 
-/** Validation helpers for the assistant API. */
-
 export type SkipValidationError =
   | "subscription_not_found"
   | "subscription_not_live"
   | "not_a_weekday"
   | "outside_subscription_period"
-  | "skip_already_exists";
+  | "skip_already_exists"
+  | "zero_meal_day";
 
 export function validateSkipDate(subscriptionId: string, dateStr: string): SkipValidationError | null {
   const sub = getSubscriptionById(subscriptionId);
@@ -132,6 +132,9 @@ export function validateSkipDate(subscriptionId: string, dateStr: string): SkipV
 
   if (sub.status !== "active") return "subscription_not_live";
   if (d < start || d > end) return "outside_subscription_period";
+
+  // Cannot skip a day that has 0 meals scheduled — nothing to skip.
+  if (mealsForDate(sub, d) === 0) return "zero_meal_day";
 
   const existing = getAllSkips().find(
     (s) => s.subscriptionId === subscriptionId &&

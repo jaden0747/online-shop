@@ -4,14 +4,17 @@
  */
 
 import { upsertSelection, deleteSelection } from "@/lib/data/selections";
-import { getSubscriptionById } from "@/lib/data/subscriptions";
+import { getAllMealDeliveryPlans, getAllSkips, getSubscriptionById } from "@/lib/data/subscriptions";
 import { getMenuItemsByWeek } from "@/lib/data/menu";
+import { plannedMealsForDate } from "@/lib/utils/schedule";
+import { weekLabelToMonday } from "@/lib/utils/week";
 import type { MealSelection } from "@/lib/data/types";
 
 export type SelectionValidationError =
   | "subscription_not_found"
   | "subscription_not_active"
   | "invalid_day"
+  | "no_delivery_on_day"
   | "invalid_meal_num"
   | "invalid_menu_slot"
   | "menu_not_found";
@@ -27,7 +30,17 @@ export function validateAndUpsertSelection(data: {
   if (!sub) return { ok: false, error: "subscription_not_found" };
   if (sub.status !== "active") return { ok: false, error: "subscription_not_active" };
   if (data.day < 1 || data.day > 5) return { ok: false, error: "invalid_day" };
-  if (data.mealNum < 1 || data.mealNum > sub.mealsPerDay) return { ok: false, error: "invalid_meal_num" };
+
+  const date = weekLabelToMonday(data.weekLabel);
+  date.setDate(date.getDate() + data.day - 1);
+  const maxMeals = plannedMealsForDate(
+    sub,
+    date,
+    getAllMealDeliveryPlans().filter((p) => p.subscriptionId === sub.id),
+    getAllSkips().filter((sk) => sk.subscriptionId === sub.id)
+  );
+  if (maxMeals === 0) return { ok: false, error: "no_delivery_on_day" };
+  if (data.mealNum < 1 || data.mealNum > maxMeals) return { ok: false, error: "invalid_meal_num" };
 
   const menuItems = getMenuItemsByWeek(data.weekLabel);
   const slotExists = menuItems.some((m) => m.day === data.day && m.slot === data.menuSlot);

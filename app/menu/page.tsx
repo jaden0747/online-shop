@@ -1,6 +1,6 @@
 import { getMenuItemsByWeek } from "@/lib/data/menu";
 import { getAllCustomers } from "@/lib/data/customers";
-import { getAllSubscriptions, getAllSkips } from "@/lib/data/subscriptions";
+import { getAllSubscriptions, getAllSkips, getAllMealDeliveryPlans } from "@/lib/data/subscriptions";
 import { getSelectionsByWeek } from "@/lib/data/selections";
 import { getNotesByWeek } from "@/lib/data/notes";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/lib/utils/week";
 import { OpenInFinderButton } from "@/components/open-in-finder-button";
 import { MenuTabs, type WeekData } from "./menu-tabs";
+import { plannedMealsForDate } from "@/lib/utils/schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,7 @@ function buildWeekData(
   customers: ReturnType<typeof getAllCustomers>,
   subscriptions: ReturnType<typeof getAllSubscriptions>,
   allSkips: ReturnType<typeof getAllSkips>,
+  allMealPlans: ReturnType<typeof getAllMealDeliveryPlans>,
 ): WeekData {
   const items = getMenuItemsByWeek(weekLabel);
   const selections = getSelectionsByWeek(weekLabel);
@@ -62,6 +64,10 @@ function buildWeekData(
     if (!cust) continue;
 
     const subSkips = allSkips.filter((sk) => sk.subscriptionId === sub.id);
+    const mealCounts: Record<number, number> = {};
+    for (let i = 0; i < weekDates.length; i++) {
+      mealCounts[i + 1] = plannedMealsForDate(sub, weekDates[i], allMealPlans, allSkips);
+    }
     const skips = weekDates
       .map((dayDate, i) => {
         const sk = subSkips.find((sk) => {
@@ -82,6 +88,7 @@ function buildWeekData(
     group.subscriptions.push({
       subscriptionId: sub.id,
       mealsPerDay: sub.mealsPerDay,
+      mealCounts,
       goal: sub.goal,
       plan: sub.plan,
       startDate: sub.startDate,
@@ -112,6 +119,7 @@ export default async function MenuPage() {
   const customers = getAllCustomers();
   const subscriptions = getAllSubscriptions();
   const allSkips = getAllSkips();
+  const allMealPlans = getAllMealDeliveryPlans();
 
   const thisWeek = buildWeekData(
     currentWeekLabel(),
@@ -120,6 +128,7 @@ export default async function MenuPage() {
     customers,
     subscriptions,
     allSkips,
+    allMealPlans,
   );
   const nextWeek = buildWeekData(
     nextWeekLabel(),
@@ -128,6 +137,7 @@ export default async function MenuPage() {
     customers,
     subscriptions,
     allSkips,
+    allMealPlans,
   );
 
   return (

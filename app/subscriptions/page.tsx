@@ -8,7 +8,6 @@ import { subscriptionPaymentStatus } from "@/lib/utils/payments";
 import { allCustomerCreditBalances } from "@/lib/utils/credits";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { planTotalMeals, daysRemaining, isSubscriptionLive } from "@/lib/utils/subscription";
 import { PLANS, GOALS } from "@/lib/constants";
 import { UpsertPricingForm } from "./upsert-pricing-form";
@@ -19,6 +18,7 @@ import { SubscriptionFilters } from "./subscription-filters";
 import { parseFilters } from "./subscription-filters-shared";
 import { ActiveSubscriptionTable, InactiveSubscriptionTable } from "./subscription-table";
 import { Suspense } from "react";
+import { SubscriptionPageTabs } from "./subscription-page-tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -126,24 +126,10 @@ export default async function SubscriptionsPage({
         <SubscriptionFilters totalCount={totalAll} matchCount={totalFiltered} />
       </Suspense>
 
-      <Tabs defaultValue="subscriptions">
-        <TabsList>
-          <TabsTrigger value="subscriptions">
-            Active
-            <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-xs font-medium tabular-nums">
-              {filteredActive.length}
-            </span>
-          </TabsTrigger>
-          <TabsTrigger value="inactive">
-            Inactive
-            <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium tabular-nums">
-              {filteredInactive.length}
-            </span>
-          </TabsTrigger>
-          <TabsTrigger value="pricing">Pricing</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="subscriptions" className="mt-4">
+      <SubscriptionPageTabs
+        activeCount={filteredActive.length}
+        inactiveCount={filteredInactive.length}
+        subscriptionsContent={
           <Card>
             <CardContent className="p-0">
               <ActiveSubscriptionTable
@@ -158,9 +144,8 @@ export default async function SubscriptionsPage({
               />
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="inactive" className="mt-4">
+        }
+        inactiveContent={
           <Card>
             <CardContent className="p-0">
               <InactiveSubscriptionTable
@@ -174,9 +159,9 @@ export default async function SubscriptionsPage({
               />
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="pricing" className="mt-4 max-w-3xl">
+        }
+        pricingContent={
+          <>
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-muted-foreground">
               Package prices used when creating subscriptions
@@ -248,8 +233,9 @@ export default async function SubscriptionsPage({
               </CardContent>
             </Card>
           ))}
-        </TabsContent>
-      </Tabs>
+          </>
+        }
+      />
     </div>
   );
 }

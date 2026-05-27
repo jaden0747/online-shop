@@ -9,6 +9,7 @@ import { upsertKitchenNoteAction } from "../actions/notes";
 type SubRow = {
   subscriptionId: string;
   mealsPerDay: number;
+  mealCounts: Record<number, number>;
   goal: string;
   plan: string;
   startDate: string;
@@ -188,6 +189,7 @@ export function MealSelectionGrid({ weekLabel, weekMonday, customerGroups, menuI
                       </div>
                     </td>
                     {DAYS.map(({ num }) => {
+                      const mealCount = sub.mealCounts[num] ?? sub.mealsPerDay;
                       const inRange = isDayInRange(sub, num);
                       const skipEntry = sub.skips.find((s) => s.dayNum === num);
                       const isSkipped = !!skipEntry;
@@ -198,7 +200,7 @@ export function MealSelectionGrid({ weekLabel, weekMonday, customerGroups, menuI
                         return (
                           <td key={num} className="px-2 py-2">
                             <div className="flex flex-col gap-0.5">
-                              {Array.from({ length: sub.mealsPerDay }, (_, i) => (
+                              {Array.from({ length: mealCount }, (_, i) => (
                                 <div key={i} className="px-1 py-0.5 rounded text-[10px] text-center text-muted-foreground/30 bg-muted/10 select-none">
                                   —
                                 </div>
@@ -212,7 +214,7 @@ export function MealSelectionGrid({ weekLabel, weekMonday, customerGroups, menuI
                         return (
                           <td key={num} className="px-2 py-2">
                             <div className="flex flex-col gap-0.5">
-                              {Array.from({ length: sub.mealsPerDay }, (_, i) => (
+                              {Array.from({ length: mealCount }, (_, i) => (
                                 <button
                                   key={i}
                                   disabled={isSkipPending}
@@ -238,7 +240,7 @@ export function MealSelectionGrid({ weekLabel, weekMonday, customerGroups, menuI
                             <div className="flex gap-0.5 items-stretch">
                               {/* Meal selection columns */}
                               <div className="flex flex-col gap-0.5 flex-1">
-                                {Array.from({ length: sub.mealsPerDay }, (_, mealIdx) => {
+                                {Array.from({ length: mealCount }, (_, mealIdx) => {
                                   const mealNum = mealIdx + 1;
                                   const sel = getSelection(sub.subscriptionId, num, mealNum);
                                   const selPendingKey = `${sub.subscriptionId}-${num}-${mealNum}-sel`;

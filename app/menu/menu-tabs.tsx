@@ -22,6 +22,7 @@ type Selection = { subscriptionId: string; day: number; mealNum: number; menuSlo
 type SubRow = {
   subscriptionId: string;
   mealsPerDay: number;
+  mealCounts: Record<number, number>;
   goal: string;
   plan: string;
   startDate: string;
@@ -87,7 +88,8 @@ export function MenuTabs({ thisWeek, nextWeek }: { thisWeek: WeekData; nextWeek:
         if (dayDate < subStart || dayDate > subEnd) continue;
         if (skippedKeys.has(`${sub.subscriptionId}-${num}`)) continue;
 
-        for (let mealNum = 1; mealNum <= sub.mealsPerDay; mealNum += 1) {
+        const mealCount = sub.mealCounts[num] ?? sub.mealsPerDay;
+        for (let mealNum = 1; mealNum <= mealCount; mealNum += 1) {
           eligibleSelectionKeys.add(`${sub.subscriptionId}-${num}-${mealNum}`);
         }
       }

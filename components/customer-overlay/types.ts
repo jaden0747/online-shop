@@ -6,6 +6,7 @@ import type {
   Pricing,
   MealSkip,
   MealSelection,
+  MealDeliveryPlan,
   MenuItem,
   KitchenNote,
   OrderDayAddress,
@@ -22,6 +23,7 @@ export type Details = {
   pricing: Pricing[];
   skips: MealSkip[];
   allSelections: MealSelection[];
+  mealDeliveryPlans: MealDeliveryPlan[];
   allMenuItems: MenuItem[];
   kitchenNotes: KitchenNote[];
   dayAddresses: OrderDayAddress[];

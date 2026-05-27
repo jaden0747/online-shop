@@ -1,7 +1,8 @@
 import { getAllCustomers, getAllAddresses } from "@/lib/data/customers";
-import { getAllSubscriptions, getAllSkips } from "@/lib/data/subscriptions";
+import { getAllSubscriptions, getAllSkips, getAllMealDeliveryPlans } from "@/lib/data/subscriptions";
 import { getAllOrderDayAddresses } from "@/lib/data/order-day-addresses";
 import { isSubscriptionLive, localDateStr } from "@/lib/utils/subscription";
+import { plannedMealsForDate } from "@/lib/utils/schedule";
 import { getMenuItemsByWeek } from "@/lib/data/menu";
 import { getSelectionsByWeek } from "@/lib/data/selections";
 import { getNotesByWeek } from "@/lib/data/notes";
@@ -52,6 +53,7 @@ export default async function ShippingPage({
   const allAddresses = getAllAddresses();
   const subscriptions = getAllSubscriptions();
   const skips = getAllSkips();
+  const mealDeliveryPlans = getAllMealDeliveryPlans();
   const menuItems = getMenuItemsByWeek(weekLabel);
   const selections = getSelectionsByWeek(weekLabel);
   const dayNotes = getNotesByWeek(weekLabel).filter((n) => n.day === dayNum);
@@ -129,9 +131,16 @@ export default async function ShippingPage({
       .filter((sel) => sel.subscriptionId === sub.id && sel.day === dayNum)
       .sort((a, b) => a.mealNum - b.mealNum);
 
+    // Use the schedule-aware count for this specific date, not the uniform mealsPerDay.
+    const mealsThisDay = plannedMealsForDate(sub, selectedDate, mealDeliveryPlans, skips);
+
+    // If this day has 0 meals scheduled (and it's not an ad-hoc replacement from a skip),
+    // skip building a delivery row for it.
+    if (mealsThisDay === 0 && !isReplacement) continue;
+
     const meals: string[] = [];
     const mealSlots: number[] = [];
-    for (let mealNum = 1; mealNum <= sub.mealsPerDay; mealNum++) {
+    for (let mealNum = 1; mealNum <= mealsThisDay; mealNum++) {
       const sel = subSelections.find((s) => s.mealNum === mealNum);
       if (sel) {
         const name = menuName(dayNum, sel.menuSlot);
@@ -179,7 +188,7 @@ export default async function ShippingPage({
       address: effectiveAddr?.address ?? customer.address,
       zone: effectiveAddr?.zone ?? customer.zone,
       plan: latest.sub.plan,
-      mealsPerDay: group.reduce((sum, d) => sum + d.sub.mealsPerDay, 0),
+      mealsPerDay: group.reduce((sum, d) => sum + plannedMealsForDate(d.sub, selectedDate, mealDeliveryPlans, skips), 0),
       isReplacement: group.some((d) => d.isReplacement),
       meals,
       mealSlots,

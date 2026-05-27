@@ -6,8 +6,24 @@ import { createSubscriptionAction, updateSubscriptionAction } from "@/app/action
 import { applyCreditToSubscriptionAction } from "@/app/actions/credits";
 import type { Subscription, Pricing, MealSkip } from "@/lib/data/types";
 import { planTotalMeals, addWorkingDays, localDateStr } from "@/lib/utils/subscription";
+import {
+  defaultWeeklySchedule,
+  parseWeeklySchedule,
+  serializeWeeklySchedule,
+  weeklyScheduleTotal,
+  validateWeeklySchedule,
+} from "@/lib/utils/schedule";
+import type { WeeklyMealSchedule } from "@/lib/data/types";
 import { PLANS, GOALS } from "@/lib/constants";
 import { Check, X } from "lucide-react";
+
+const DAY_LABELS: [keyof WeeklyMealSchedule, string][] = [
+  [1, "Mon"],
+  [2, "Tue"],
+  [3, "Wed"],
+  [4, "Thu"],
+  [5, "Fri"],
+];
 
 export function SubForm({
   mode,
@@ -36,6 +52,14 @@ export function SubForm({
   const [goal, setGoal] = useState(initial?.goal ?? "cutting");
   const [meals, setMeals] = useState(initial?.mealsPerDay ?? 2);
   const [trialDays, setTrialDays] = useState(initial?.trialDays ?? 3);
+
+  // Custom weekly schedule state
+  const [useCustomSchedule, setUseCustomSchedule] = useState(
+    !!initial?.weeklyScheduleJson
+  );
+  const [schedule, setSchedule] = useState<WeeklyMealSchedule>(() =>
+    parseWeeklySchedule(initial?.weeklyScheduleJson ?? null, initial?.mealsPerDay ?? 2)
+  );
   const [startDate, setStartDate] = useState(
     initial?.startDate ? localDateStr(new Date(initial.startDate)) : localDateStr(new Date())
   );
@@ -63,6 +87,9 @@ export function SubForm({
       const match = pricing.find((p) => p.plan === plan && p.goal === goal && p.mealsPerDay === meals);
       if (match && mode === "create") setSubPrice(String(match.totalPrice));
     }
+    // Reset custom schedule when mealsPerDay or plan changes
+    setSchedule(defaultWeeklySchedule(meals));
+    if (plan === "trial") setUseCustomSchedule(false);
   }, [plan, goal, meals, pricing, mode, mealPrices, trialDays]);
 
   useEffect(() => {
@@ -83,6 +110,9 @@ export function SubForm({
       fd.set("plan", plan);
       fd.set("goal", goal);
       fd.set("mealsPerDay", String(meals));
+      if (useCustomSchedule && plan !== "trial") {
+        fd.set("weeklyScheduleJson", serializeWeeklySchedule(schedule));
+      }
       fd.set("subscriptionPrice", subPrice);
       fd.set("shippingPrice", shipPrice || "0");
       fd.set("discount", discount || "0");
@@ -110,6 +140,9 @@ export function SubForm({
       startSave(async () => {
         await updateSubscriptionAction(subId, {
           plan, goal, mealsPerDay: meals,
+          weeklyScheduleJson: useCustomSchedule && plan !== "trial"
+            ? serializeWeeklySchedule(schedule)
+            : null,
           subscriptionPrice: parseFloat(subPrice) || 0,
           shippingPrice: parseFloat(shipPrice) || 0,
           discount: parseFloat(discount) || 0,
@@ -129,6 +162,12 @@ export function SubForm({
   const sel = "w-full border rounded px-1 py-0.5 text-xs bg-background outline-none focus:ring-1 focus:ring-ring";
   const inp = "w-full border rounded px-1 py-0.5 text-xs bg-background outline-none focus:ring-1 focus:ring-ring";
   const defaultCreditAmt = String(Math.min(customerCreditBalance, Math.max(0, totalPrice)));
+
+  const scheduleTotal = weeklyScheduleTotal(schedule);
+  const scheduleError =
+    useCustomSchedule && plan !== "trial"
+      ? validateWeeklySchedule(schedule, plan, meals)
+      : null;
 
   return (
     <div className="border rounded-lg p-2 space-y-1 bg-muted/20 text-xs">
@@ -219,12 +258,56 @@ export function SubForm({
           )}
         </div>
       )}
+      {/* Custom weekly schedule (non-trial only) */}
+      {plan !== "trial" && (
+        <div className="space-y-0.5">
+          <label className="flex items-center gap-1 cursor-pointer">
+            <input
+              type="checkbox"
+              className="h-3 w-3"
+              checked={useCustomSchedule}
+              onChange={(e) => {
+                setUseCustomSchedule(e.target.checked);
+                if (e.target.checked) setSchedule(defaultWeeklySchedule(meals));
+              }}
+            />
+            <span className="text-[10px] text-muted-foreground">Custom schedule</span>
+          </label>
+          {useCustomSchedule && (
+            <div className="border rounded p-1.5 space-y-1">
+              <div className="grid grid-cols-5 gap-1">
+                {DAY_LABELS.map(([day, label]) => (
+                  <label key={day} className="flex flex-col items-center gap-0.5">
+                    <span className="text-[9px] text-muted-foreground">{label}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      className="w-full border rounded px-1 py-0.5 text-xs bg-background text-center outline-none focus:ring-1 focus:ring-ring"
+                      value={schedule[day]}
+                      onChange={(e) =>
+                        setSchedule((prev) => ({
+                          ...prev,
+                          [day]: Math.max(0, parseInt(e.target.value, 10) || 0),
+                        }))
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className={`text-[10px] ${scheduleError ? "text-red-500" : "text-muted-foreground"}`}>
+                {scheduleError ?? `Total: ${scheduleTotal} / ${meals * 5} meals/week`}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-muted-foreground">
           {totalMeals} meals · {totalPrice.toLocaleString()} VND
         </span>
         <div className="flex gap-1">
-          <button type="button" onClick={submit} disabled={saving || !subPrice}
+          <button type="button" onClick={submit} disabled={saving || !subPrice || !!scheduleError}
             className="flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
             <Check size={10} /> {mode === "create" ? "Create" : "Save"}
           </button>

@@ -1,18 +1,21 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { deleteSkip, getSubscriptionById } from "@/lib/data/subscriptions";
+import { deleteSkip, getAllSkips, getSubscriptionById } from "@/lib/data/subscriptions";
 import { createSkip } from "@/lib/data/subscriptions";
 import { nextWorkingDay } from "@/lib/utils/subscription";
 import {
   createSkipWithExtension,
-  skipAndExtend,
   removeSkipAndRevert,
 } from "@/lib/business/skip";
+import { recalculateSubscriptionEndDate } from "@/lib/business/meal-delivery-plans";
 
 function revalidateAll() {
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
+  revalidatePath("/shipping");
+  revalidatePath("/menu");
+  revalidatePath("/");
 }
 
 export async function createMealSkipAction(formData: FormData) {
@@ -27,6 +30,7 @@ export async function createMealSkipAction(formData: FormData) {
     replacementDay: replacementDayRaw || null,
     reason,
   });
+  recalculateSubscriptionEndDate(subscriptionId);
 
   revalidateAll();
 }
@@ -49,6 +53,7 @@ export async function skipTodayToNextAction(subscriptionId: string) {
     replacementDay: replacement.toISOString(),
     reason: "quick skip",
   });
+  recalculateSubscriptionEndDate(subscriptionId);
 
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
@@ -58,6 +63,7 @@ export async function skipTodayToNextAction(subscriptionId: string) {
 /** Create a skip directly from the menu grid (no replacement day). */
 export async function skipDayFromMenuAction(subscriptionId: string, originalDay: string) {
   createSkipWithExtension({ subscriptionId, originalDay, replacementDay: null, reason: null });
+  recalculateSubscriptionEndDate(subscriptionId);
   revalidatePath("/menu");
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
@@ -70,6 +76,7 @@ export async function createSkipDirectAction(data: {
   reason: string | null;
 }): Promise<void> {
   createSkipWithExtension(data);
+  recalculateSubscriptionEndDate(data.subscriptionId);
   revalidateAll();
 }
 
@@ -95,6 +102,7 @@ export async function deleteMealSkipAction(id: string) {
       updateSubscription(skip.subscriptionId, { endDate: prevEnd.toISOString() });
     }
   }
+  recalculateSubscriptionEndDate(skip.subscriptionId);
 
   revalidateAll();
 }
@@ -105,7 +113,8 @@ export async function skipDayAndExtendAction(
   originalDay: string,
   reason?: string | null
 ): Promise<void> {
-  skipAndExtend({ subscriptionId, originalDay, reason });
+  createSkipWithExtension({ subscriptionId, originalDay, replacementDay: null, reason });
+  recalculateSubscriptionEndDate(subscriptionId);
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
   revalidatePath("/menu");
@@ -116,7 +125,9 @@ export async function skipDayAndExtendAction(
  * end date still matches the skip's replacement day.
  */
 export async function unskipDayAndShortenAction(skipId: string): Promise<void> {
+  const existing = getAllSkips().find((sk) => sk.id === skipId);
   removeSkipAndRevert(skipId);
+  if (existing) recalculateSubscriptionEndDate(existing.subscriptionId);
   revalidatePath("/customers");
   revalidatePath("/subscriptions");
   revalidatePath("/menu");

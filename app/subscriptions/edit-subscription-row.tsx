@@ -22,9 +22,21 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { addWorkingDays } from "@/lib/utils/subscription";
+import {
+  defaultWeeklySchedule,
+  parseWeeklySchedule,
+  serializeWeeklySchedule,
+  weeklyScheduleTotal,
+  validateWeeklySchedule,
+} from "@/lib/utils/schedule";
+import type { WeeklyMealSchedule } from "@/lib/data/types";
 import { CancelSubscriptionForm } from "@/components/cancel-subscription-form";
 import { Pencil, Trash2, Plus } from "lucide-react";
 import type { MealSkip, Payment, SubscriptionExtra } from "@/lib/data/types";
+
+const DAY_LABELS: [keyof WeeklyMealSchedule, string][] = [
+  [1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"],
+];
 
 type Sub = {
   id: string;
@@ -33,6 +45,7 @@ type Sub = {
   goal: string;
   status: string;
   mealsPerDay: number;
+  weeklyScheduleJson?: string | null;
   subscriptionPrice: number;
   shippingPrice: number;
   discount: number;
@@ -90,6 +103,12 @@ export function EditSubscriptionRow({
   const [deletingExtraId, setDeletingExtraId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  // Custom schedule state
+  const [useCustomSchedule, setUseCustomSchedule] = useState(!!sub.weeklyScheduleJson);
+  const [schedule, setSchedule] = useState<WeeklyMealSchedule>(() =>
+    parseWeeklySchedule(sub.weeklyScheduleJson ?? null, sub.mealsPerDay)
+  );
+
   useEffect(() => {
     if (plan === "trial") return;
     const match = pricing.find(
@@ -119,6 +138,8 @@ export function EditSubscriptionRow({
       setAddressId(sub.addressId ?? "none");
       setPendingExtras([]);
       setShowCancel(false);
+      setUseCustomSchedule(!!sub.weeklyScheduleJson);
+      setSchedule(parseWeeklySchedule(sub.weeklyScheduleJson ?? null, sub.mealsPerDay));
     }
   }, [open, sub]);
 
@@ -136,11 +157,18 @@ export function EditSubscriptionRow({
     const endDate = new Date(endDateStr);
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return;
     const mpd = parseInt(mealsPerDay, 10);
+    const scheduleError = useCustomSchedule && plan !== "trial"
+      ? validateWeeklySchedule(schedule, plan, mpd)
+      : null;
+    if (scheduleError) return;
     startTransition(async () => {
       await updateSubscriptionAction(sub.id, {
         plan,
         goal,
         mealsPerDay: mpd,
+        weeklyScheduleJson: useCustomSchedule && plan !== "trial"
+          ? serializeWeeklySchedule(schedule)
+          : null,
         subscriptionPrice,
         shippingPrice,
         discount,
@@ -194,17 +222,72 @@ export function EditSubscriptionRow({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
-              <Label>Meals/day</Label>
-              <Select value={mealsPerDay} onValueChange={(v) => v && setMealsPerDay(v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">1 meal/day</SelectItem>
-                  <SelectItem value="2">2 meals/day</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-1">
+            <Label>Meals/day</Label>
+            <Select value={mealsPerDay} onValueChange={(v) => {
+              if (v) {
+                setMealsPerDay(v);
+                setSchedule(defaultWeeklySchedule(parseInt(v, 10)));
+              }
+            }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">1 meal/day</SelectItem>
+                <SelectItem value="2">2 meals/day</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+        </div>
+
+        {/* Custom weekly schedule */}
+        {plan !== "trial" && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                id="custom-schedule"
+                type="checkbox"
+                className="h-3.5 w-3.5 rounded"
+                checked={useCustomSchedule}
+                onChange={(e) => {
+                  setUseCustomSchedule(e.target.checked);
+                  if (e.target.checked) setSchedule(defaultWeeklySchedule(parseInt(mealsPerDay, 10)));
+                }}
+              />
+              <Label htmlFor="custom-schedule" className="text-sm cursor-pointer">Custom schedule</Label>
+            </div>
+            {useCustomSchedule && (() => {
+              const mpd = parseInt(mealsPerDay, 10);
+              const total = weeklyScheduleTotal(schedule);
+              const err = validateWeeklySchedule(schedule, plan, mpd);
+              return (
+                <div className="space-y-1">
+                  <div className="grid grid-cols-5 gap-1">
+                    {DAY_LABELS.map(([day, label]) => (
+                      <div key={day} className="flex flex-col items-center gap-0.5">
+                        <span className="text-xs text-muted-foreground">{label}</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          className="text-center text-xs px-1"
+                          value={schedule[day]}
+                          onChange={(e) =>
+                            setSchedule((prev) => ({
+                              ...prev,
+                              [day]: Math.max(0, parseInt(e.target.value, 10) || 0),
+                            }))
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className={`text-xs ${err ? "text-destructive" : "text-muted-foreground"}`}>
+                    {err ?? `Total: ${total} / ${mpd * 5} meals/week`}
+                  </p>
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
           <div className="space-y-1">
             <Label>Goal</Label>

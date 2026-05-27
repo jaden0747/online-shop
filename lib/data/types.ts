@@ -20,12 +20,31 @@ export interface CustomerAddress {
   createdAt: string; // ISO string
 }
 
+/**
+ * Per-weekday meal distribution for a subscription.
+ * Keys 1–5 map to Mon–Fri. Values are the number of meals delivered that day.
+ * When absent, every weekday uses `mealsPerDay`.
+ */
+export type WeeklyMealSchedule = {
+  1: number; // Monday
+  2: number; // Tuesday
+  3: number; // Wednesday
+  4: number; // Thursday
+  5: number; // Friday
+};
+
 export interface Subscription {
   id: string;
   customerId: string; // = customer phone
   plan: string; // trial | weekly | monthly
   goal: string; // cutting | maintenance | bulking
   mealsPerDay: number;
+  totalMeals?: number | null; // purchased meal entitlement; null = derive from base period for legacy rows
+  /**
+   * JSON-serialized WeeklyMealSchedule (e.g. `{"1":3,"2":1,"3":2,"4":4,"5":0}`).
+   * null / absent = uniform distribution (every weekday gets `mealsPerDay` meals).
+   */
+  weeklyScheduleJson?: string | null;
   status: string; // active | cancelled
   shippingPrice: number;
   subscriptionPrice: number;
@@ -37,6 +56,15 @@ export interface Subscription {
   cancelReason: string | null;
   cancelledAt: string | null;
   addressId: string | null; // default delivery address for this sub; null = use customer default
+  createdAt: string; // ISO string
+}
+
+export interface MealDeliveryPlan {
+  id: string;
+  subscriptionId: string;
+  date: string; // ISO string for the delivery date
+  plannedMeals: number; // exact meals planned for this date
+  reason: string | null;
   createdAt: string; // ISO string
 }
 

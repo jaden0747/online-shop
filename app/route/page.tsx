@@ -1,11 +1,12 @@
 import { getAllCustomers, getAllAddresses } from "@/lib/data/customers";
-import { getAllSubscriptions, getAllSkips } from "@/lib/data/subscriptions";
+import { getAllSubscriptions, getAllSkips, getAllMealDeliveryPlans } from "@/lib/data/subscriptions";
 import { getAllOrderDayAddresses } from "@/lib/data/order-day-addresses";
 import { getSettings } from "@/lib/data/settings";
 import { getMenuItemsByWeek } from "@/lib/data/menu";
 import { getSelectionsByWeek } from "@/lib/data/selections";
 import { getNotesByWeek } from "@/lib/data/notes";
 import { isSubscriptionLive, localDateStr } from "@/lib/utils/subscription";
+import { plannedMealsForDate } from "@/lib/utils/schedule";
 import { weekLabelForDate, isoDayOfWeek } from "@/lib/utils/week";
 import { DayPicker } from "@/components/day-picker";
 import { RouteMap } from "./route-map";
@@ -44,6 +45,7 @@ export default async function RoutePage({
   const allAddresses = getAllAddresses();
   const subscriptions = getAllSubscriptions();
   const skips = getAllSkips();
+  const mealDeliveryPlans = getAllMealDeliveryPlans();
   const settings = getSettings();
 
   const dayNum = isoDayOfWeek(selectedDate);
@@ -114,7 +116,9 @@ export default async function RoutePage({
       .sort((a, b) => a.mealNum - b.mealNum);
 
     const meals: string[] = [];
-    for (let mealNum = 1; mealNum <= sub.mealsPerDay; mealNum++) {
+    const mealCount = plannedMealsForDate(sub, selectedDate, mealDeliveryPlans, skips);
+    if (mealCount === 0 && !isReplacement) continue;
+    for (let mealNum = 1; mealNum <= mealCount; mealNum++) {
       const sel = subSelections.find((s) => s.mealNum === mealNum);
       if (sel) {
         const name = menuName(dayNum, sel.menuSlot);

@@ -20,7 +20,6 @@ import type { Details, RouteMap } from "./types";
 import type { SectionRef } from "./section-ref";
 import { FinancialSummary } from "./financial-summary";
 import { CustomerHeader } from "./customer-header";
-import { CustomerNote } from "./customer-note";
 import { AddressSection } from "./address-section";
 import { SubscriptionSection } from "./subscription-section";
 import { CreditPanel } from "./credit-panel";
@@ -42,6 +41,7 @@ export function CustomerOverlay({
   const [routes, setRoutes] = useState<RouteMap>(new Map());
   const [loadingRoutes, setLoadingRoutes] = useState(false);
   const [noteValue, setNoteValue] = useState("");
+  const [activeTab, setActiveTab] = useState<"customer" | "calendar">("customer");
 
   const headerRef = useRef<SectionRef>(null);
   const addrRef = useRef<SectionRef>(null);
@@ -71,6 +71,7 @@ export function CustomerOverlay({
       headerRef.current?.reset();
       addrRef.current?.reset();
       subRef.current?.reset();
+      setActiveTab("customer");
       load(customerId);
     }
     prevOpenRef.current = open;
@@ -224,8 +225,11 @@ export function CustomerOverlay({
   }, [details?.addresses, details?.hub, routes, loadingRoutes]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:w-[62vw] sm:max-w-[62vw] h-[88vh] max-h-[88vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
+      <DialogContent
+        showOverlay={false}
+        className="top-[calc(50%+1.5rem)] sm:w-[62vw] sm:max-w-[62vw] h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] overflow-y-auto"
+      >
         {!details ? (
           <div className="py-10 text-center text-sm text-muted-foreground">Loading…</div>
         ) : details.customer === null ? (
@@ -233,82 +237,109 @@ export function CustomerOverlay({
             Customer not found.
           </div>
         ) : (
-          <>
-            <DialogHeader>
-              <CustomerHeader
-                ref={headerRef}
-                customer={details.customer}
-                customerId={currentId}
-                onSaved={(newId) => {
-                  setCurrentId(newId);
-                  reload(newId);
-                }}
-                externalUserId={details.externalUserId}
-                handoffActive={details.handoffActive}
-              />
-            </DialogHeader>
-
-            <FinancialSummary details={details} />
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 pt-1">
-              {/* ── LEFT COLUMN ── */}
-              <div className="space-y-4">
-                <AddressSection
-                  ref={addrRef}
-                  addresses={details.addresses}
+          <div className="space-y-4">
+            <div className="sticky top-0 z-20 -mx-6 -mt-6 border-b bg-background/95 px-6 pt-6 pb-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+              <DialogHeader>
+                <CustomerHeader
+                  ref={headerRef}
+                  customer={details.customer}
                   customerId={currentId}
-                  routes={routes}
-                  loadingRoutes={loadingRoutes}
-                  onReload={reload}
+                  onSaved={(newId) => {
+                    setCurrentId(newId);
+                    reload(newId);
+                  }}
+                  noteValue={noteValue}
+                  onNoteChange={setNoteValue}
+                  onNoteBlur={handleNoteBlur}
+                  noteSaving={isPending}
+                  externalUserId={details.externalUserId}
+                  handoffActive={details.handoffActive}
                 />
-                <CustomerNote
-                  value={noteValue}
-                  onChange={setNoteValue}
-                  onBlur={handleNoteBlur}
-                  isSaving={isPending}
-                />
-                <CreditPanel
-                  customerId={currentId}
-                  creditTransactions={details.creditTransactions}
-                  subscriptions={details.subscriptions}
-                  onReload={reload}
-                />
-              </div>
+              </DialogHeader>
 
-              {/* ── RIGHT COLUMN ── */}
-              <div className="space-y-4">
-                <SubscriptionSection
-                  ref={subRef}
-                  subscriptions={details.subscriptions}
-                  customerId={currentId}
-                  creditTransactions={details.creditTransactions}
-                  pricing={details.pricing}
-                  mealPrices={details.mealPrices}
-                  skips={details.skips}
-                  skipCounts={details.skipCounts}
-                  payments={details.payments}
-                  extras={details.extras}
-                  onPaymentCreated={handlePaymentCreated}
-                  onPaymentDeleted={handlePaymentDeleted}
-                  onSubscriptionCancelled={handleSubscriptionCancelled}
-                  onReload={reload}
-                />
+              <div className="mt-3 flex gap-1 border-b">
+                {[
+                  ["customer", "Customer"],
+                  ["calendar", "Calendar"],
+                ].map(([key, label]) => {
+                  const active = activeTab === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setActiveTab(key as "customer" | "calendar")}
+                      className={[
+                        "px-3 py-1.5 text-sm font-medium border-b-2 -mb-px transition-colors",
+                        active
+                          ? "border-primary text-primary"
+                          : "border-transparent text-muted-foreground hover:text-foreground",
+                      ].join(" ")}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            <SchedulePanel
-              subscriptions={details.subscriptions}
-              addresses={details.addresses}
-              skips={details.skips}
-              allSelections={details.allSelections}
-              allMenuItems={details.allMenuItems}
-              kitchenNotes={details.kitchenNotes}
-              dayAddresses={details.dayAddresses}
-              customerId={currentId}
-              onReload={reload}
-              minimap={minimap}
-            />
-          </>
+            {activeTab === "customer" ? (
+              <>
+                <FinancialSummary details={details} />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 pt-1">
+                  <div className="space-y-4">
+                    <AddressSection
+                      ref={addrRef}
+                      addresses={details.addresses}
+                      customerId={currentId}
+                      routes={routes}
+                      loadingRoutes={loadingRoutes}
+                      onReload={reload}
+                    />
+                    {minimap}
+                  </div>
+
+                  <div className="space-y-4">
+                    <SubscriptionSection
+                      ref={subRef}
+                      subscriptions={details.subscriptions}
+                      customerId={currentId}
+                      creditTransactions={details.creditTransactions}
+                      pricing={details.pricing}
+                      mealPrices={details.mealPrices}
+                      skips={details.skips}
+                      skipCounts={details.skipCounts}
+                      payments={details.payments}
+                      extras={details.extras}
+                      onPaymentCreated={handlePaymentCreated}
+                      onPaymentDeleted={handlePaymentDeleted}
+                      onSubscriptionCancelled={handleSubscriptionCancelled}
+                      onReload={reload}
+                    />
+                    <CreditPanel
+                      customerId={currentId}
+                      creditTransactions={details.creditTransactions}
+                      subscriptions={details.subscriptions}
+                      onReload={reload}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <SchedulePanel
+                subscriptions={details.subscriptions}
+                addresses={details.addresses}
+                skips={details.skips}
+                allSelections={details.allSelections}
+                mealDeliveryPlans={details.mealDeliveryPlans}
+                allMenuItems={details.allMenuItems}
+                kitchenNotes={details.kitchenNotes}
+                dayAddresses={details.dayAddresses}
+                customerId={currentId}
+                onReload={reload}
+              />
+            )}
+          </div>
         )}
       </DialogContent>
     </Dialog>

@@ -14,11 +14,26 @@ export const CustomerHeader = forwardRef<
     customer: Customer;
     customerId: string;
     onSaved: (newId: string) => void;
+    noteValue: string;
+    onNoteChange: (value: string) => void;
+    onNoteBlur: () => void;
+    noteSaving: boolean;
     externalUserId: string | null;
     handoffActive: boolean;
   }
->(function CustomerHeader({ customer, customerId, onSaved, externalUserId, handoffActive: initialHandoffActive }, ref) {
+>(function CustomerHeader({
+  customer,
+  customerId,
+  onSaved,
+  noteValue,
+  onNoteChange,
+  onNoteBlur,
+  noteSaving,
+  externalUserId,
+  handoffActive: initialHandoffActive,
+}, ref) {
   const [editingInfo, setEditingInfo] = useState(false);
+  const [editingNote, setEditingNote] = useState(false);
   const [infoForm, setInfoForm] = useState({ name: "", phone: "", zone: "" });
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -44,10 +59,15 @@ export const CustomerHeader = forwardRef<
         setEditingInfo(false);
         return true;
       }
+      if (editingNote) {
+        setEditingNote(false);
+        return true;
+      }
       return false;
     },
     reset: () => {
       setEditingInfo(false);
+      setEditingNote(false);
       setCopiedKey(null);
     },
   }));
@@ -116,7 +136,7 @@ export const CustomerHeader = forwardRef<
   }
 
   return (
-    <div className="space-y-0.5 pr-12">
+    <div className="space-y-1 pr-12">
       <div className="flex items-center gap-2 flex-wrap">
         <DialogTitle>{customer.name}</DialogTitle>
         <button
@@ -181,6 +201,53 @@ export const CustomerHeader = forwardRef<
             <Copy size={11} />
           )}
         </button>
+      </div>
+      <div className="text-xs text-muted-foreground max-w-full">
+        {editingNote ? (
+          <div className="flex items-start gap-1.5">
+            <textarea
+              autoFocus
+              className="min-h-[38px] flex-1 rounded border border-input bg-transparent px-2 py-1 text-xs resize-none outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30 placeholder:text-muted-foreground/60"
+              placeholder="Customer note"
+              value={noteValue}
+              onChange={(e) => onNoteChange(e.target.value)}
+              onBlur={() => {
+                onNoteBlur();
+                setEditingNote(false);
+              }}
+            />
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onNoteBlur();
+                setEditingNote(false);
+              }}
+              className="h-7 px-2 rounded border text-[11px] hover:bg-accent"
+            >
+              Done
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditingNote(true)}
+            className="group flex max-w-full items-center gap-1.5 text-left"
+            title="Edit customer note"
+          >
+            <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground/70">
+              Note
+            </span>
+            <span className={`line-clamp-2 ${noteValue ? "text-muted-foreground" : "text-muted-foreground/50 italic"}`}>
+              {noteValue || "Add customer note"}
+            </span>
+            {noteSaving ? (
+              <span className="shrink-0 text-[10px] opacity-60">saving...</span>
+            ) : (
+              <Pencil size={10} className="shrink-0 opacity-0 transition-opacity group-hover:opacity-70" />
+            )}
+          </button>
+        )}
       </div>
     </div>
   );

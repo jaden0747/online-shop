@@ -1,4 +1,4 @@
-import { getAllSubscriptions, getAllExtras, getAllSkips } from "@/lib/data/subscriptions";
+import { getAllSubscriptions, getAllExtras, getAllSkips, getAllMealDeliveryPlans } from "@/lib/data/subscriptions";
 import { getAllPayments } from "@/lib/data/payments";
 import { getAllCreditTransactions } from "@/lib/data/credits";
 import { getAllCostItems } from "@/lib/data/cost-items";
@@ -27,6 +27,7 @@ function lastNWeekLabels(n: number): string[] {
 
 export default async function ReportsPage() {
   const subscriptions = getAllSubscriptions();
+  const mealDeliveryPlans = getAllMealDeliveryPlans();
   const knownSubIds = new Set(subscriptions.map((s) => s.id));
   const allPayments = getAllPayments().filter((p) => knownSubIds.has(p.subscriptionId));
   const allCreditTransactions = getAllCreditTransactions();
@@ -51,7 +52,7 @@ export default async function ReportsPage() {
 
   // All-time recognized revenue (accrual: earned as meals delivered, up to today)
   const totalEarned = subscriptions.reduce(
-    (s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, new Date(sub.startDate), today),
+    (s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, new Date(sub.startDate), today, mealDeliveryPlans),
     0
   );
 
@@ -59,7 +60,7 @@ export default async function ReportsPage() {
   const totalDeferred = subscriptions
     .filter((s) => s.status !== "cancelled")
     .reduce(
-      (s, sub) => s + deferredRevenue(sub, allPayments, allCreditTransactions, allSkips, allExtras, today),
+      (s, sub) => s + deferredRevenue(sub, allPayments, allCreditTransactions, allSkips, allExtras, today, mealDeliveryPlans),
       0
     );
 
@@ -68,7 +69,7 @@ export default async function ReportsPage() {
   const goalBreakdown = GOALS.map((goal) => {
     const subs = activeSubs.filter((s) => s.goal === goal);
     const revenue = subs.reduce(
-      (s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, new Date(sub.startDate), today),
+      (s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, new Date(sub.startDate), today, mealDeliveryPlans),
       0
     );
     return {
@@ -97,7 +98,7 @@ export default async function ReportsPage() {
   function weekEarnedRevenue(label: string): number {
     const { from, to } = weekDateRange(label);
     return subscriptions.reduce(
-      (s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, from, to),
+      (s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, from, to, mealDeliveryPlans),
       0
     );
   }
@@ -158,7 +159,7 @@ export default async function ReportsPage() {
   const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   monthEnd.setHours(0, 0, 0, 0);
   const thisMonthEarned = subscriptions.reduce(
-    (s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, monthStart, monthEnd),
+    (s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, monthStart, monthEnd, mealDeliveryPlans),
     0
   );
   const thisMonthCost = allCostItems.filter((i) => {
@@ -177,7 +178,7 @@ export default async function ReportsPage() {
     const weekOps = allOps.find((o) => o.weekLabel === wl);
     const mealsDelivered = weekOps?.mealsDelivered ?? 0;
     const revenue = Math.round(
-      subscriptions.reduce((s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, monday, friday), 0)
+      subscriptions.reduce((s, sub) => s + earnedRevenueInRange(sub, allSkips, allExtras, monday, friday, mealDeliveryPlans), 0)
     );
     return {
       weekLabel: wl,

@@ -12,6 +12,7 @@ import {
   deleteExtrasBySubscription,
 } from "@/lib/data/subscriptions";
 import { addWorkingDays } from "@/lib/utils/subscription";
+import { totalScheduledMeals } from "@/lib/utils/schedule";
 import type { Subscription } from "@/lib/data/types";
 
 export async function createSubscriptionAction(formData: FormData): Promise<{ id: string }> {
@@ -23,6 +24,11 @@ export async function createSubscriptionAction(formData: FormData): Promise<{ id
   const discount = parseFloat(formData.get("discount") as string) || 0;
   const trialDaysRaw = formData.get("trialDays");
   const trialDays = plan === "trial" && trialDaysRaw ? parseInt(trialDaysRaw as string, 10) : null;
+
+  // Custom weekly schedule (JSON string); null means uniform mealsPerDay.
+  const weeklyScheduleJsonRaw = formData.get("weeklyScheduleJson") as string | null;
+  const weeklyScheduleJson =
+    weeklyScheduleJsonRaw && weeklyScheduleJsonRaw !== "" ? weeklyScheduleJsonRaw : null;
 
   const startDateRaw = formData.get("startDate") as string;
   const startDate = startDateRaw ? new Date(startDateRaw) : new Date();
@@ -44,6 +50,12 @@ export async function createSubscriptionAction(formData: FormData): Promise<{ id
     plan,
     goal: formData.get("goal") as string,
     mealsPerDay,
+    totalMeals: totalScheduledMeals(
+      { mealsPerDay, weeklyScheduleJson, totalMeals: null },
+      startDate,
+      endDate
+    ),
+    weeklyScheduleJson,
     subscriptionPrice,
     shippingPrice,
     discount,
@@ -85,6 +97,8 @@ export async function updateSubscriptionAction(
     plan: string;
     goal: string;
     mealsPerDay: number;
+    totalMeals?: number | null;
+    weeklyScheduleJson?: string | null;
     subscriptionPrice: number;
     shippingPrice: number;
     discount: number;
@@ -97,6 +111,11 @@ export async function updateSubscriptionAction(
 ) {
   updateSubscription(id, {
     ...data,
+    totalMeals: data.totalMeals ?? totalScheduledMeals(
+      { mealsPerDay: data.mealsPerDay, weeklyScheduleJson: data.weeklyScheduleJson ?? null, totalMeals: null },
+      data.startDate,
+      data.endDateNoSkip
+    ),
     startDate: data.startDate.toISOString(),
     endDate: data.endDate.toISOString(),
     endDateNoSkip: data.endDateNoSkip.toISOString(),
