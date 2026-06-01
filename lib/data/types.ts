@@ -147,6 +147,14 @@ export interface KitchenNote {
   note: string;
 }
 
+export interface SubscriptionDayNote {
+  id: string; // `${subscriptionId}-${weekLabel}-${day}`
+  subscriptionId: string;
+  weekLabel: string;
+  day: number; // 1-5
+  note: string;
+}
+
 export interface OrderDayAddress {
   id: string; // `${subscriptionId}-${weekLabel}-${day}`
   subscriptionId: string;

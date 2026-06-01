@@ -69,25 +69,69 @@ export default async function DashboardPage() {
     }
   }
 
-  // Kitchen prep: top 3 meal options this week
+  // Meal totals: replicate Menu page's eligible-selection logic so counts match
   const selections = getSelectionsByWeek(weekLabel);
   const menuItems = getMenuItemsByWeek(weekLabel);
 
-  const DAY_NAMES_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+  const eligibleSelectionKeys = new Set<string>();
+  for (const sub of subscriptions) {
+    const subStart = new Date(sub.startDate);
+    subStart.setHours(0, 0, 0, 0);
+    const subEnd = new Date(sub.endDate);
+    subEnd.setHours(0, 0, 0, 0);
 
-  // Per (day × slot) selection counts — correct name lookup
-  const mealSelectionsPerDay = DAY_NAMES_SHORT.flatMap((dayLabel, i) =>
-    [1, 2].map((slot) => {
-      const day = i + 1;
-      const count = selections.filter((s) => s.day === day && s.menuSlot === slot).length;
-      const item = menuItems.find((m) => m.day === day && m.slot === slot);
-      return { name: `${dayLabel} · ${item?.name ?? `Option ${slot}`}`, count, day };
-    })
-  );
+    let effectiveEnd = new Date(subEnd);
+    if (sub.status === "cancelled" && sub.cancelledAt) {
+      const lastServed = new Date(sub.cancelledAt);
+      lastServed.setHours(0, 0, 0, 0);
+      lastServed.setDate(lastServed.getDate() - 1);
+      effectiveEnd = new Date(Math.min(subEnd.getTime(), lastServed.getTime()));
+    }
 
-  // Top meal by highest single (day × slot) count
-  const topMealEntry = [...mealSelectionsPerDay].sort((a, b) => b.count - a.count)[0];
-  const topMeals = topMealEntry ? [topMealEntry] : [];
+    if (subStart > weekDates[4] || effectiveEnd < weekDates[0]) continue;
+
+    const subSkips = allSkips.filter((sk) => sk.subscriptionId === sub.id);
+
+    for (let dayNum = 1; dayNum <= 5; dayNum++) {
+      const dayDate = weekDates[dayNum - 1];
+      if (dayDate < subStart || dayDate > effectiveEnd) continue;
+
+      const isSkipped = subSkips.some((sk) => {
+        const d = new Date(sk.originalDay);
+        d.setHours(0, 0, 0, 0);
+        return d.getTime() === dayDate.getTime();
+      });
+      if (isSkipped) continue;
+
+      const mealCount = plannedMealsForDate(sub, dayDate, mealDeliveryPlans, allSkips);
+      for (let mealNum = 1; mealNum <= mealCount; mealNum++) {
+        eligibleSelectionKeys.add(`${sub.id}-${dayNum}-${mealNum}`);
+      }
+    }
+  }
+
+  const mealTotalsMap = new Map<string, number>();
+  for (const sel of selections) {
+    if (!eligibleSelectionKeys.has(`${sel.subscriptionId}-${sel.day}-${sel.mealNum}`)) continue;
+    const key = `${sel.day}-${sel.menuSlot}`;
+    mealTotalsMap.set(key, (mealTotalsMap.get(key) || 0) + 1);
+  }
+
+  const MEAL_DAYS = [
+    { num: 1, label: "Mon" },
+    { num: 2, label: "Tue" },
+    { num: 3, label: "Wed" },
+    { num: 4, label: "Thu" },
+    { num: 5, label: "Fri" },
+  ] as const;
+
+  const mealTotalsData = MEAL_DAYS.map(({ num, label }) => {
+    const slot1 = menuItems.find((m) => m.day === num && m.slot === 1);
+    const slot2 = menuItems.find((m) => m.day === num && m.slot === 2);
+    const countA = mealTotalsMap.get(`${num}-1`) || 0;
+    const countB = mealTotalsMap.get(`${num}-2`) || 0;
+    return { day: label, dayNum: num, countA, nameA: slot1?.name ?? null, countB, nameB: slot2?.name ?? null, total: countA + countB };
+  });
 
   function scheduledMealsForWeek(weekMonday: Date): number {
     const dates: Date[] = [];
@@ -134,17 +178,7 @@ export default async function DashboardPage() {
   const planMix = Array.from(planCounts.entries()).map(([name, value]) => ({ name, value }));
   const goalMix = Array.from(goalCounts.entries()).map(([name, value]) => ({ name, value }));
 
-  // Chart 2: Deliveries per weekday this week
-  const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri"];
-  const weekdayDeliveries = weekDates.map((d, i) => ({
-    day: DAY_NAMES[i],
-    count: subscriptions.filter((s) => isSubscriptionLive(s.status, s.startDate, s.endDate, d)).length,
-  }));
-
-  // Chart 3: All meal selections this week (per day × slot)
-  const mealSelections = mealSelectionsPerDay;
-
-  // Chart 4: Active customers by zone
+  // Chart 2: Active customers by zone
   const activeCustomerPhones = new Set(activeSubs.map((s) => s.customerId));
   const zoneCounts = new Map<string, number>();
   for (const c of customers) {
@@ -157,7 +191,7 @@ export default async function DashboardPage() {
     .map(([zone, count]) => ({ zone, count }))
     .sort((a, b) => b.count - a.count);
 
-  // Chart 5: Renewal timeline buckets
+  // Chart 3: Renewal timeline buckets
   const renewalBuckets = [
     { bucket: "0-2d", min: -Infinity, max: 2 },
     { bucket: "3-7d", min: 3, max: 7 },
@@ -172,15 +206,6 @@ export default async function DashboardPage() {
       return d >= min && d <= max;
     }).length,
   }));
-
-  // Chart 6: Meals-per-day distribution
-  const mpdCounts = new Map<number, number>();
-  for (const s of activeSubs) {
-    mpdCounts.set(s.mealsPerDay, (mpdCounts.get(s.mealsPerDay) ?? 0) + 1);
-  }
-  const mealsPerDayData = Array.from(mpdCounts.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([meals, count]) => ({ meals: `${meals} meal${meals > 1 ? "s" : ""}`, count }));
 
   // Recent customers: last 7 by createdAt
   const recentCustomers = [...customers]
@@ -241,7 +266,7 @@ export default async function DashboardPage() {
         <OpenInFinderButton file="customers.xlsx" label="Open Data Folder" />
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {/* Today's Deliveries */}
         <Card>
           <CardHeader className="pb-1 pt-4 px-4">
@@ -279,22 +304,6 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Kitchen Top Meal */}
-        <Card>
-          <CardHeader className="pb-1 pt-4 px-4">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Top Meal Today</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            {topMeals[0] ? (
-              <>
-                <p className="text-sm font-semibold leading-tight truncate">{topMeals[0].name}</p>
-                <p className="text-2xl font-bold mt-0.5">{topMeals[0].count}<span className="text-base font-normal text-muted-foreground ml-1">orders</span></p>
-              </>
-            ) : (
-              <p className="text-muted-foreground text-sm">No selections yet</p>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       {/* ── Row 1b: Financial summary (this week) ── */}
@@ -430,11 +439,9 @@ export default async function DashboardPage() {
       <DashboardCharts
         planMix={planMix}
         goalMix={goalMix}
-        weekdayDeliveries={weekdayDeliveries}
-        mealSelections={mealSelections}
+        mealTotalsData={mealTotalsData}
         zoneData={zoneData}
         renewalData={renewalData}
-        mealsPerDayData={mealsPerDayData}
         weeklyMeals={weeklyMeals}
         totalMealsThisWeek={totalMealsThisWeek}
       />

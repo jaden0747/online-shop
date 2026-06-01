@@ -9,6 +9,7 @@ import type {
   MealDeliveryPlan,
   MenuItem,
   KitchenNote,
+  SubscriptionDayNote,
   OrderDayAddress,
   Payment,
   CreditTransaction,
@@ -26,6 +27,7 @@ export type Details = {
   mealDeliveryPlans: MealDeliveryPlan[];
   allMenuItems: MenuItem[];
   kitchenNotes: KitchenNote[];
+  subscriptionDayNotes: SubscriptionDayNote[];
   dayAddresses: OrderDayAddress[];
   hub: { lat: number; lng: number };
   mealPrices: Record<string, number>;

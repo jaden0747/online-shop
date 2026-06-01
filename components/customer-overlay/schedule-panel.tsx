@@ -4,9 +4,9 @@ import { memo, useCallback, useMemo, useState, useTransition } from "react";
 import { skipDayAndExtendAction, unskipDayAndShortenAction } from "@/app/actions/skips";
 import { upsertSelectionDirectAction, deleteSelectionDirectAction } from "@/app/actions/selections";
 import { updateMealPlanForDateAction } from "@/app/actions/meal-delivery-plans";
-import { upsertKitchenNoteAction } from "@/app/actions/notes";
+import { upsertSubscriptionDayNoteAction } from "@/app/actions/subscription-day-notes";
 import { upsertDayAddressAction, deleteDayAddressAction } from "@/app/actions/order-day-addresses";
-import type { Subscription, CustomerAddress, MealSkip, MealSelection, MealDeliveryPlan, MenuItem, KitchenNote, OrderDayAddress } from "@/lib/data/types";
+import type { Subscription, CustomerAddress, MealSkip, MealSelection, MealDeliveryPlan, MenuItem, SubscriptionDayNote, OrderDayAddress } from "@/lib/data/types";
 import { subscriptionStatus, localDateStr, addWorkingDays } from "@/lib/utils/subscription";
 import { plannedMealsBeforeDate, plannedMealsForDate, totalMealEntitlement } from "@/lib/utils/schedule";
 import { weekLabelForDate } from "@/lib/utils/week";
@@ -158,8 +158,9 @@ export const SchedulePanel = memo(function SchedulePanel({
   allSelections,
   mealDeliveryPlans,
   allMenuItems,
-  kitchenNotes,
+  subscriptionDayNotes,
   dayAddresses,
+  customerNote,
   customerId,
   onReload,
 }: {
@@ -169,8 +170,9 @@ export const SchedulePanel = memo(function SchedulePanel({
   allSelections: MealSelection[];
   mealDeliveryPlans: MealDeliveryPlan[];
   allMenuItems: MenuItem[];
-  kitchenNotes: KitchenNote[];
+  subscriptionDayNotes: SubscriptionDayNote[];
   dayAddresses: OrderDayAddress[];
+  customerNote: string;
   customerId: string;
   onReload: () => void;
 }) {
@@ -278,14 +280,7 @@ export const SchedulePanel = memo(function SchedulePanel({
     return map;
   }, [selectedDateStr, selectedSubscriptions, mealDeliveryPlans, skips]);
 
-  const dayNoteKey = selectedWeekLabel && selectedDayNum ? `${selectedWeekLabel}-${selectedDayNum}` : null;
-  const savedDayNoteValue = useMemo(() => {
-    if (!selectedWeekLabel || !selectedDayNum) return "";
-    const note = kitchenNotes.find((n) => n.weekLabel === selectedWeekLabel && n.day === selectedDayNum);
-    return note?.note ?? "";
-  }, [selectedWeekLabel, selectedDayNum, kitchenNotes]);
-  const [dayNoteDraft, setDayNoteDraft] = useState<{ key: string | null; value: string }>({ key: null, value: "" });
-  const dayNoteValue = dayNoteDraft.key === dayNoteKey ? dayNoteDraft.value : savedDayNoteValue;
+  const [subDayNoteDrafts, setSubDayNoteDrafts] = useState<Record<string, string>>({});
   const [mealCountDraft, setMealCountDraft] = useState<{
     date: string | null;
     values: Record<string, string>;
@@ -321,12 +316,25 @@ export const SchedulePanel = memo(function SchedulePanel({
     });
   }
 
-  function handleDayNoteBlur() {
+  function handleSubDayNoteBlur(subscriptionId: string) {
     if (!selectedWeekLabel || !selectedDayNum) return;
+    const draftKey = `${subscriptionId}-${selectedWeekLabel}-${selectedDayNum}`;
+    const value = subDayNoteDrafts[draftKey] ?? subscriptionDayNotes.find(
+      (n) => n.subscriptionId === subscriptionId && n.weekLabel === selectedWeekLabel && n.day === selectedDayNum
+    )?.note ?? "";
     startTransition(async () => {
-      await upsertKitchenNoteAction(selectedWeekLabel, customerId, selectedDayNum, dayNoteValue.trim());
+      await upsertSubscriptionDayNoteAction(subscriptionId, selectedWeekLabel, selectedDayNum, value.trim());
       onReload();
     });
+  }
+
+  function subDayNoteValueFor(subscriptionId: string): string {
+    if (!selectedWeekLabel || !selectedDayNum) return "";
+    const draftKey = `${subscriptionId}-${selectedWeekLabel}-${selectedDayNum}`;
+    if (draftKey in subDayNoteDrafts) return subDayNoteDrafts[draftKey];
+    return subscriptionDayNotes.find(
+      (n) => n.subscriptionId === subscriptionId && n.weekLabel === selectedWeekLabel && n.day === selectedDayNum
+    )?.note ?? "";
   }
 
   function mealCountValueFor(subscriptionId: string, plannedMeals: number) {
@@ -522,12 +530,33 @@ export const SchedulePanel = memo(function SchedulePanel({
             Skip subscription
           </button>
         )}
+
+        <div className="space-y-0.5">
+          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Day note</label>
+          <textarea
+            className="w-full min-h-[36px] rounded border border-input bg-transparent px-2 py-1 text-xs resize-none outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30 placeholder:text-muted-foreground/50 disabled:opacity-50"
+            placeholder="Note for this day…"
+            value={subDayNoteValueFor(sub.id)}
+            onChange={(e) => {
+              const draftKey = `${sub.id}-${selectedWeekLabel}-${selectedDayNum}`;
+              setSubDayNoteDrafts((prev) => ({ ...prev, [draftKey]: e.target.value }));
+            }}
+            onBlur={() => handleSubDayNoteBlur(sub.id)}
+            disabled={isPending}
+          />
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-2 border-t pt-3 mt-1">
+      {customerNote && (
+        <div className="rounded border border-input bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
+          <span className="block text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70 mb-0.5">Permanent note</span>
+          <span className="whitespace-pre-wrap break-words">{customerNote}</span>
+        </div>
+      )}
       <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Schedule</p>
       <div className="space-y-3">
         <div className="space-y-0.5">
@@ -572,18 +601,6 @@ export const SchedulePanel = memo(function SchedulePanel({
           )}
         </div>
 
-        {selectedDateStr && selectedDayNum && (
-          <div className="space-y-0.5">
-            <textarea
-              className="w-full min-h-[36px] rounded border border-input bg-transparent px-2 py-1 text-xs resize-none outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30 placeholder:text-muted-foreground/50 disabled:opacity-50"
-              placeholder="Note..."
-              value={dayNoteValue}
-              onChange={(e) => setDayNoteDraft({ key: dayNoteKey, value: e.target.value })}
-              onBlur={handleDayNoteBlur}
-              disabled={isPending || isPast}
-            />
-          </div>
-        )}
       </div>
     </div>
   );

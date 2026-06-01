@@ -20,6 +20,7 @@ import type { Details, RouteMap } from "./types";
 import type { SectionRef } from "./section-ref";
 import { FinancialSummary } from "./financial-summary";
 import { CustomerHeader } from "./customer-header";
+import { CustomerNote } from "./customer-note";
 import { AddressSection } from "./address-section";
 import { SubscriptionSection } from "./subscription-section";
 import { CreditPanel } from "./credit-panel";
@@ -248,10 +249,6 @@ export function CustomerOverlay({
                     setCurrentId(newId);
                     reload(newId);
                   }}
-                  noteValue={noteValue}
-                  onNoteChange={setNoteValue}
-                  onNoteBlur={handleNoteBlur}
-                  noteSaving={isPending}
                   externalUserId={details.externalUserId}
                   handoffActive={details.handoffActive}
                 />
@@ -284,6 +281,12 @@ export function CustomerOverlay({
 
             {activeTab === "customer" ? (
               <>
+                <CustomerNote
+                  value={noteValue}
+                  onChange={setNoteValue}
+                  onBlur={handleNoteBlur}
+                  isSaving={isPending}
+                />
                 <FinancialSummary details={details} />
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 pt-1">
@@ -333,8 +336,9 @@ export function CustomerOverlay({
                 allSelections={details.allSelections}
                 mealDeliveryPlans={details.mealDeliveryPlans}
                 allMenuItems={details.allMenuItems}
-                kitchenNotes={details.kitchenNotes}
+                subscriptionDayNotes={details.subscriptionDayNotes}
                 dayAddresses={details.dayAddresses}
+                customerNote={noteValue}
                 customerId={currentId}
                 onReload={reload}
               />

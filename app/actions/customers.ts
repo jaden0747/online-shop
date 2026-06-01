@@ -19,13 +19,14 @@ import { getAllSelections } from "@/lib/data/selections";
 import { getAllMenuItems } from "@/lib/data/menu";
 import { getAllPricing } from "@/lib/data/pricing";
 import { getNotesByCustomer } from "@/lib/data/notes";
+import { getSubscriptionDayNotesBySubscription } from "@/lib/data/subscription-day-notes";
 import { getAllOrderDayAddresses } from "@/lib/data/order-day-addresses";
 import { getSettings, getMealPrices } from "@/lib/data/settings";
 import { getAllPayments } from "@/lib/data/payments";
 import { getCreditTransactionsByCustomer } from "@/lib/data/credits";
 import { getAllLeads } from "@/lib/data/leads";
 import { getConversationControl } from "@/lib/data/conversation-control";
-import type { Customer, CustomerAddress, Subscription, SubscriptionExtra, Pricing, MealSkip, MealSelection, MealDeliveryPlan, MenuItem, KitchenNote, OrderDayAddress, Payment, CreditTransaction } from "@/lib/data/types";
+import type { Customer, CustomerAddress, Subscription, SubscriptionExtra, Pricing, MealSkip, MealSelection, MealDeliveryPlan, MenuItem, KitchenNote, SubscriptionDayNote, OrderDayAddress, Payment, CreditTransaction } from "@/lib/data/types";
 
 export async function createCustomerAction(formData: FormData) {
   const phone = formData.get("phone") as string;
@@ -95,6 +96,7 @@ export async function getCustomerDetailsAction(customerId: string): Promise<{
   mealDeliveryPlans: MealDeliveryPlan[];
   allMenuItems: MenuItem[];
   kitchenNotes: KitchenNote[];
+  subscriptionDayNotes: SubscriptionDayNote[];
   dayAddresses: OrderDayAddress[];
   hub: { lat: number; lng: number };
   mealPrices: Record<string, number>;
@@ -123,6 +125,7 @@ export async function getCustomerDetailsAction(customerId: string): Promise<{
   const mealDeliveryPlans = getAllMealDeliveryPlans().filter((p) => subIds.has(p.subscriptionId));
   const allMenuItems = getAllMenuItems();
   const kitchenNotes = getNotesByCustomer(customerId);
+  const subscriptionDayNotes = subscriptions.flatMap((s) => getSubscriptionDayNotesBySubscription(s.id));
   const dayAddresses = getAllOrderDayAddresses().filter((r) => subIds.has(r.subscriptionId));
 
   const settings = getSettings();
@@ -144,7 +147,7 @@ export async function getCustomerDetailsAction(customerId: string): Promise<{
     handoff.lockExpiresAt != null &&
     new Date(handoff.lockExpiresAt) > new Date();
 
-  return { customer, addresses, subscriptions, skipCounts, totalSpend, pricing, skips, allSelections, mealDeliveryPlans, allMenuItems, kitchenNotes, dayAddresses, hub: { lat: settings.hubLat, lng: settings.hubLng }, mealPrices: getMealPrices(settings), payments, extras, creditTransactions, externalUserId, handoffActive };
+  return { customer, addresses, subscriptions, skipCounts, totalSpend, pricing, skips, allSelections, mealDeliveryPlans, allMenuItems, kitchenNotes, subscriptionDayNotes, dayAddresses, hub: { lat: settings.hubLat, lng: settings.hubLng }, mealPrices: getMealPrices(settings), payments, extras, creditTransactions, externalUserId, handoffActive };
 }
 
 export async function updateCustomerNoteAction(id: string, notes: string | null) {

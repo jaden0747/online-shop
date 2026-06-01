@@ -25,14 +25,16 @@ export function PhoneDisplay({ phone, className }: { phone: string; className?: 
       >
         {phone}
       </a>
-      <button
-        type="button"
+      <span
+        role="button"
+        tabIndex={0}
         onClick={handleCopy}
-        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground/60 hover:text-muted-foreground"
+        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleCopy(e as never)}
+        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground/60 hover:text-muted-foreground cursor-pointer"
         title="Copy phone number"
       >
         {copied ? <Check size={10} className="text-green-600" /> : <Copy size={10} />}
-      </button>
+      </span>
     </span>
   );
 }

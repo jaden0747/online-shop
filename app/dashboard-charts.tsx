@@ -36,9 +36,6 @@ const PALETTE = [
   "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16",
 ];
 
-// One color per weekday (Mon–Fri), used for meal selection bars
-const DAY_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#06b6d4"];
-
 const PLAN_COLORS: Record<string, string> = {
   trial: "#f59e0b",
   weekly: "#6366f1",
@@ -54,11 +51,9 @@ const GOAL_COLORS: Record<string, string> = {
 type ChartProps = {
   planMix: { name: string; value: number }[];
   goalMix: { name: string; value: number }[];
-  weekdayDeliveries: { day: string; count: number }[];
-  mealSelections: { name: string; count: number; day: number }[];
+  mealTotalsData: { day: string; dayNum: number; countA: number; nameA: string | null; countB: number; nameB: string | null; total: number }[];
   zoneData: { zone: string; count: number }[];
   renewalData: { bucket: string; count: number }[];
-  mealsPerDayData: { meals: string; count: number }[];
   weeklyMeals: { week: string; weekLabel: string; meals: number }[];
   totalMealsThisWeek: number;
 };
@@ -154,11 +149,9 @@ function DonutChart({
 export function DashboardCharts({
   planMix,
   goalMix,
-  weekdayDeliveries,
-  mealSelections,
+  mealTotalsData,
   zoneData,
   renewalData,
-  mealsPerDayData,
   weeklyMeals,
   totalMealsThisWeek,
 }: ChartProps) {
@@ -181,54 +174,6 @@ export function DashboardCharts({
             <DonutChart data={planMix} colors={PLAN_COLORS} title="By Plan" />
             <DonutChart data={goalMix} colors={GOAL_COLORS} title="By Goal" />
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Deliveries This Week */}
-      <Card className="col-span-2 lg:col-span-1">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Deliveries This Week</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {weekdayDeliveries.every((d) => d.count === 0) ? (
-            <EmptyState />
-          ) : (
-            <div className="h-[160px]">
-              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                <BarChart data={weekdayDeliveries} barSize={24}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={border} vertical={false} />
-                  <XAxis dataKey="day" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} allowDecimals={false} width={20} />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: accent }} />
-                  <Bar dataKey="count" name="Deliveries" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Meals per Day */}
-      <Card className="col-span-2 lg:col-span-1">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Meals per Day</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {mealsPerDayData.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <div className="h-[160px]">
-              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                <BarChart data={mealsPerDayData} barSize={32}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={border} vertical={false} />
-                  <XAxis dataKey="meals" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} allowDecimals={false} width={20} />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: accent }} />
-                  <Bar dataKey="count" name="Subscribers" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -259,52 +204,43 @@ export function DashboardCharts({
         </CardContent>
       </Card>
 
-      {/* Meal Selections — full width */}
+      {/* Meal Totals — same table as Menu page */}
       <Card className="col-span-2">
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
-          <CardTitle className="text-sm">Meal Selections This Week</CardTitle>
+          <CardTitle className="text-sm">Meal Totals</CardTitle>
           <span className="text-sm font-semibold tabular-nums">
             {totalMealsThisWeek} <span className="text-xs font-normal text-muted-foreground">meals total</span>
           </span>
         </CardHeader>
         <CardContent>
-          {mealSelections.every((m) => m.count === 0) ? (
-            <EmptyState />
-          ) : (
-            <>
-              <div className="flex gap-4 mb-3">
-                {["Mon", "Tue", "Wed", "Thu", "Fri"].map((label, i) => (
-                  <div key={label} className="flex items-center gap-1.5 text-xs">
-                    <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: DAY_COLORS[i] }} />
-                    <span className="text-muted-foreground">{label}</span>
-                  </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50">
+                  <th className="text-left px-3 py-1.5 font-medium">Day</th>
+                  <th className="text-center px-3 py-1.5 font-medium">Option A</th>
+                  <th className="text-center px-3 py-1.5 font-medium">Option B</th>
+                  <th className="text-center px-3 py-1.5 font-medium">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {mealTotalsData.map((row) => (
+                  <tr key={row.dayNum}>
+                    <td className="px-3 py-1.5 font-medium">{row.day}</td>
+                    <td className="px-3 py-1.5 text-center">
+                      <span className="font-mono">{row.countA}</span>
+                      {row.nameA && <span className="text-xs text-muted-foreground ml-1">({row.nameA})</span>}
+                    </td>
+                    <td className="px-3 py-1.5 text-center">
+                      <span className="font-mono">{row.countB}</span>
+                      {row.nameB && <span className="text-xs text-muted-foreground ml-1">({row.nameB})</span>}
+                    </td>
+                    <td className="px-3 py-1.5 text-center font-bold">{row.total}</td>
+                  </tr>
                 ))}
-              </div>
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                  <BarChart data={mealSelections} layout="vertical" barSize={16}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={border} horizontal={false} />
-                    <XAxis type="number" tick={axisStyle} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      tick={axisStyle}
-                      axisLine={false}
-                      tickLine={false}
-                      width={140}
-                      tickFormatter={(v: string) => v.length > 22 ? v.slice(0, 21) + "…" : v}
-                    />
-                    <Tooltip content={<ChartTooltip />} cursor={{ fill: accent }} />
-                    <Bar dataKey="count" name="Selections" radius={[0, 4, 4, 0]}>
-                      {mealSelections.map((entry) => (
-                        <Cell key={entry.name} fill={DAY_COLORS[(entry.day - 1) % 5]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </>
-          )}
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
 

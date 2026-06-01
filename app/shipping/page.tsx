@@ -6,6 +6,7 @@ import { plannedMealsForDate } from "@/lib/utils/schedule";
 import { getMenuItemsByWeek } from "@/lib/data/menu";
 import { getSelectionsByWeek } from "@/lib/data/selections";
 import { getNotesByWeek } from "@/lib/data/notes";
+import { getSubscriptionDayNotesByWeek } from "@/lib/data/subscription-day-notes";
 import { getSettings } from "@/lib/data/settings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +58,7 @@ export default async function ShippingPage({
   const menuItems = getMenuItemsByWeek(weekLabel);
   const selections = getSelectionsByWeek(weekLabel);
   const dayNotes = getNotesByWeek(weekLabel).filter((n) => n.day === dayNum);
+  const subDayNotes = getSubscriptionDayNotesByWeek(weekLabel).filter((n) => n.day === dayNum);
   const dayAddresses = getAllOrderDayAddresses();
 
   // Per-day address override lookup: key = `${subscriptionId}-${day}`
@@ -80,19 +82,29 @@ export default async function ShippingPage({
     return m?.name ?? null;
   };
 
-  // Build one entry per active-and-not-skipped subscription
-  type SubDelivery = {
-    sub: typeof subscriptions[number];
-    customer: typeof customers[number];
-    effectiveAddr: typeof allAddresses[number] | null;
-    effectiveAddressId: string | null;
+  const activeDeliveries: {
+    customerId: string;
+    name: string;
+    phone: string;
+    address: string;
+    zone: string;
+    plan: string;
+    mealsPerDay: number;
+    isReplacement: boolean;
     meals: string[];
     mealSlots: number[];
-    isReplacement: boolean;
-    customerAddresses: typeof allAddresses;
-  };
-
-  const subDeliveries: SubDelivery[] = [];
+    lat: number | null;
+    lng: number | null;
+    addresses: { id: string; label: string; address: string; zone: string; isDefault: boolean; latitude: number | null; longitude: number | null }[];
+    defaultAddressId: string | null;
+    effectiveAddressId: string | null;
+    subscriptionId: string;
+    createdAt: string;
+    weekLabel: string;
+    day: number;
+    permanentNote: string | null;
+    subscriptionDayNote: string | null;
+  }[] = [];
 
   for (const sub of subscriptions) {
     if (!isSubscriptionLive(sub.status, sub.startDate, sub.endDate, selectedDate)) continue;
@@ -104,8 +116,6 @@ export default async function ShippingPage({
       skip.subscriptionId === sub.id &&
       localDateStr(new Date(skip.originalDay + (skip.originalDay.length === 10 ? "T00:00:00" : ""))) === selectedDateStr
     );
-    // Only count a replacement from another day if THIS day is not explicitly skipped.
-    // An explicit skip on this day must win over a rescheduled delivery from a different day.
     const isReplacement = !isSkipped && skips.some((skip) =>
       skip.subscriptionId === sub.id &&
       skip.replacementDay !== null &&
@@ -118,7 +128,6 @@ export default async function ShippingPage({
     );
     const defaultAddress = customerAddresses.find((a) => a.isDefault) ?? customerAddresses[0] ?? null;
 
-    // Effective address: per-day override → sub.addressId → customer default
     const overrideAddrId = dayAddrMap.get(`${sub.id}-${dayNum}`);
     const subDefaultAddr = sub.addressId
       ? customerAddresses.find((a) => a.id === sub.addressId) ?? defaultAddress
@@ -131,11 +140,7 @@ export default async function ShippingPage({
       .filter((sel) => sel.subscriptionId === sub.id && sel.day === dayNum)
       .sort((a, b) => a.mealNum - b.mealNum);
 
-    // Use the schedule-aware count for this specific date, not the uniform mealsPerDay.
     const mealsThisDay = plannedMealsForDate(sub, selectedDate, mealDeliveryPlans, skips);
-
-    // If this day has 0 meals scheduled (and it's not an ad-hoc replacement from a skip),
-    // skip building a delivery row for it.
     if (mealsThisDay === 0 && !isReplacement) continue;
 
     const meals: string[] = [];
@@ -149,47 +154,21 @@ export default async function ShippingPage({
       }
     }
 
-    subDeliveries.push({
-      sub,
-      customer,
-      effectiveAddr,
-      effectiveAddressId: effectiveAddr?.id ?? null,
-      meals,
-      mealSlots,
-      isReplacement,
-      customerAddresses,
-    });
-  }
+    // Permanent note: customer.notes + old kitchen note (backward compat)
+    const oldKitchenNote = dayNotes.find((n) => n.customerId === customer.phone)?.note ?? null;
+    const permanentNote = [customer.notes, oldKitchenNote].filter(Boolean).join(" · ") || null;
 
-  // Group by (customerId, effectiveAddressId) — same customer + same address = one row
-  type GroupKey = string;
-  const groups = new Map<GroupKey, SubDelivery[]>();
-  for (const d of subDeliveries) {
-    const key: GroupKey = `${d.customer.id}::${d.effectiveAddressId ?? "none"}`;
-    const list = groups.get(key) ?? [];
-    list.push(d);
-    groups.set(key, list);
-  }
+    const subscriptionDayNote = subDayNotes.find((n) => n.subscriptionId === sub.id)?.note ?? null;
 
-  const activeDeliveries = [...groups.values()].map((group) => {
-    // Latest-created sub owns the per-day address override UI
-    group.sort((a, b) => new Date(b.sub.createdAt).getTime() - new Date(a.sub.createdAt).getTime());
-    const latest = group[0];
-    const { customer, effectiveAddr, customerAddresses } = latest;
-    const defaultAddress = customerAddresses.find((a) => a.isDefault) ?? customerAddresses[0] ?? null;
-
-    const meals = group.flatMap((d) => d.meals);
-    const mealSlots = group.flatMap((d) => d.mealSlots);
-
-    return {
+    activeDeliveries.push({
       customerId: customer.id,
       name: customer.name,
       phone: customer.phone,
       address: effectiveAddr?.address ?? customer.address,
       zone: effectiveAddr?.zone ?? customer.zone,
-      plan: latest.sub.plan,
-      mealsPerDay: group.reduce((sum, d) => sum + plannedMealsForDate(d.sub, selectedDate, mealDeliveryPlans, skips), 0),
-      isReplacement: group.some((d) => d.isReplacement),
+      plan: sub.plan,
+      mealsPerDay: mealsThisDay,
+      isReplacement,
       meals,
       mealSlots,
       lat: effectiveAddr?.latitude ?? null,
@@ -204,18 +183,29 @@ export default async function ShippingPage({
         longitude: a.longitude,
       })),
       defaultAddressId: defaultAddress?.id ?? null,
-      effectiveAddressId: latest.effectiveAddressId,
-      subscriptionId: latest.sub.id,
+      effectiveAddressId: effectiveAddr?.id ?? null,
+      subscriptionId: sub.id,
+      createdAt: sub.createdAt,
       weekLabel,
       day: dayNum,
-    };
-  });
+      permanentNote,
+      subscriptionDayNote,
+    });
+  }
+
+  // Stops are deduped by (customer, effective address): two subscriptions delivering
+  // to the same place are one stop / one shipper. Only geocoded stops can be routed,
+  // matching the route page's stop count.
+  const stopKeys = new Set(
+    activeDeliveries
+      .filter((d) => d.lat !== null && d.lng !== null)
+      .map((d) => `${d.customerId}::${d.effectiveAddressId ?? ""}`)
+  );
+  const stopCount = stopKeys.size;
+  const mealCount = activeDeliveries.reduce((sum, d) => sum + d.mealsPerDay, 0);
+  const missingCoordCount = activeDeliveries.filter((d) => d.lat === null || d.lng === null).length;
 
   const isToday = selectedDateStr === localDateStr(new Date());
-
-  const permanentNotes = customers
-    .map((c) => ({ customerId: c.phone, note: c.notes }))
-    .filter((n): n is { customerId: string; note: string } => n.note !== null && n.note !== "");
 
   return (
     <div className="space-y-6">
@@ -230,8 +220,13 @@ export default async function ShippingPage({
         <div className="flex items-center gap-3">
           <DayPicker date={selectedDateStr} />
           <Badge variant="outline" className="text-sm">
-            {activeDeliveries.length} deliveries
+            {stopCount} stop{stopCount === 1 ? "" : "s"} · {mealCount} meal{mealCount === 1 ? "" : "s"}
           </Badge>
+          {missingCoordCount > 0 && (
+            <Badge variant="outline" className="text-sm border-destructive/50 text-destructive">
+              {missingCoordCount} need GPS
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -243,8 +238,6 @@ export default async function ShippingPage({
           <ShippingTable
             deliveries={activeDeliveries}
             date={selectedDateStr}
-            notes={dayNotes.map((n) => ({ customerId: n.customerId, note: n.note }))}
-            permanentNotes={permanentNotes}
             defaultHub={{ lat: settings.hubLat, lng: settings.hubLng }}
             menuOptionA={menuItems.find((m) => m.day === dayNum && m.slot === 1)?.name ?? null}
             menuOptionB={menuItems.find((m) => m.day === dayNum && m.slot === 2)?.name ?? null}

@@ -41,8 +41,11 @@ type Delivery = {
   defaultAddressId: string | null;
   effectiveAddressId: string | null;
   subscriptionId: string;
+  createdAt: string;
   weekLabel: string;
   day: number;
+  permanentNote: string | null;
+  subscriptionDayNote: string | null;
 };
 
 const DEFAULT_HUB = { lat: 10.7769, lng: 106.7009 };
@@ -154,8 +157,8 @@ function CustomerCell({
   );
 }
 
-function NotesCell({ permanentNote, note }: { permanentNote: string | null; note: string | null }) {
-  if (!permanentNote && !note) {
+function NotesCell({ permanentNote, subscriptionDayNote }: { permanentNote: string | null; subscriptionDayNote: string | null }) {
+  if (!permanentNote && !subscriptionDayNote) {
     return <span className="text-xs text-muted-foreground/40">—</span>;
   }
 
@@ -171,13 +174,13 @@ function NotesCell({ permanentNote, note }: { permanentNote: string | null; note
           </span>
         </div>
       )}
-      {note && (
+      {subscriptionDayNote && (
         <div>
           <span className="block text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
             Today
           </span>
           <span className="block whitespace-pre-wrap break-words text-blue-600 dark:text-blue-400">
-            {note}
+            {subscriptionDayNote}
           </span>
         </div>
       )}
@@ -210,18 +213,13 @@ function MealsCell({ meals }: { meals: string[] }) {
 export function ShippingTable({
   deliveries,
   date,
-  notes = [],
-  permanentNotes = [],
   defaultHub,
   menuOptionA = null,
   menuOptionB = null,
 }: {
   deliveries: Delivery[];
   date: string;
-  notes?: { customerId: string; note: string }[];
-  permanentNotes?: { customerId: string; note: string | null }[];
   defaultHub?: { lat: number; lng: number };
-  onCustomerClick?: (customerId: string) => void;
   menuOptionA?: string | null;
   menuOptionB?: string | null;
 }) {
@@ -298,18 +296,21 @@ export function ShippingTable({
   // Resolve effective address/zone/lat/lng for each delivery based on selection
   const effectiveDeliveries = useMemo(() => deliveries.map((d) => {
     const selId = selectedAddressIds.get(d.subscriptionId) ?? d.defaultAddressId;
-    if (!selId || d.addresses.length === 0) return d;
+    if (!selId || d.addresses.length === 0) return { ...d, effAddrId: selId ?? null };
     const selAddr = d.addresses.find((a) => a.id === selId);
-    if (!selAddr) return d;
+    if (!selAddr) return { ...d, effAddrId: selId ?? null };
     const isDefault = selAddr.id === d.defaultAddressId;
     return {
       ...d,
+      effAddrId: selId,
       address: selAddr.address,
       zone: selAddr.zone,
       lat: isDefault ? d.lat : (selAddr.latitude ?? null),
       lng: isDefault ? d.lng : (selAddr.longitude ?? null),
     };
   }), [deliveries, selectedAddressIds]);
+
+  type EffectiveDelivery = typeof effectiveDeliveries[number];
 
   // Split deliveries: those with coordinates (assignable to a shipper) vs without
   const withCoords = useMemo(
@@ -321,50 +322,88 @@ export function ShippingTable({
     [effectiveDeliveries]
   );
 
-  // Run clustering only client-side (after localStorage loaded)
+  // Dedupe routable deliveries into stops: subscriptions that deliver to the same
+  // (customer, address) are a single stop / single shipper visit. The representative
+  // subscription id (latest-created) is the cluster key — identical to the route
+  // page's grouping — so manual shipper assignments stay in sync across both pages.
+  type Stop = { repId: string; lat: number; lng: number; members: EffectiveDelivery[] };
+  const stops = useMemo(() => {
+    const groups = new Map<string, EffectiveDelivery[]>();
+    for (const d of withCoords) {
+      const key = `${d.customerId}::${d.effAddrId ?? ""}`;
+      const list = groups.get(key) ?? [];
+      list.push(d);
+      groups.set(key, list);
+    }
+    return [...groups.values()].map((members): Stop => {
+      const byCreated = [...members].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      const rep = byCreated[0];
+      // Display members oldest-first for stable row order within the stop.
+      const orderedMembers = [...members].sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+      return { repId: rep.subscriptionId, lat: rep.lat as number, lng: rep.lng as number, members: orderedMembers };
+    });
+  }, [withCoords]);
+
+  // Run clustering only client-side (after localStorage loaded), on deduped stops.
   const cluster = useMemo(() => {
-    if (!ready || withCoords.length === 0) {
+    if (!ready || stops.length === 0) {
       return { assignments: [] as number[], routes: [] as number[][], k: 0 };
     }
-    const points = withCoords.map((d) => ({ lat: d.lat as number, lng: d.lng as number }));
+    const points = stops.map((s) => ({ lat: s.lat, lng: s.lng }));
     const base = manualK !== null
       ? fixedKClusters(points, hub, manualK)
       : depotAwareClusters(points, hub, constraints);
     if (manualAssign.size === 0) return base;
-    // Apply manual cluster assignments from the Route page
+    // Apply manual cluster assignments from the Route page (keyed by representative sub id)
     const assignments = base.assignments.slice();
-    withCoords.forEach((d, i) => {
-      const override = manualAssign.get(d.subscriptionId);
+    stops.forEach((s, i) => {
+      const override = manualAssign.get(s.repId);
       if (override !== undefined) assignments[i] = override;
     });
     return clustersFromAssignments(points, hub, assignments);
-  }, [ready, withCoords, hub, constraints, manualK, manualAssign]);
+  }, [ready, stops, hub, constraints, manualK, manualAssign]);
 
-  // Build sorted rows: by shipper# then by delivery order within shipper
+  // Build sorted rows: by shipper# then by stop order within shipper. Each stop
+  // expands to one row per member subscription, all sharing the same shipper#/stop#.
   const sortedRows = useMemo(() => {
-    if (cluster.k === 0) return withCoords.map((d) => ({ delivery: d, shipper: null as number | null, stop: null as number | null }));
-    const rows: { delivery: typeof effectiveDeliveries[number]; shipper: number; stop: number }[] = [];
+    if (cluster.k === 0) {
+      return stops.flatMap((s) =>
+        s.members.map((d) => ({ delivery: d, shipper: null as number | null, stop: null as number | null }))
+      );
+    }
+    const rows: { delivery: EffectiveDelivery; shipper: number; stop: number }[] = [];
     for (let ci = 0; ci < cluster.k; ci++) {
-      const algorithmStops = cluster.routes[ci].map((i) => withCoords[i]);
+      const algorithmStops = cluster.routes[ci].map((i) => stops[i]);
       const customOrder = manualOrder.get(ci);
-      let stops: typeof effectiveDeliveries[number][];
+      let orderedStops: Stop[];
       if (customOrder) {
-        const stopMap = new Map(algorithmStops.map((d) => [d.subscriptionId, d]));
-        stops = customOrder
+        const stopMap = new Map(algorithmStops.map((s) => [s.repId, s]));
+        orderedStops = customOrder
           .map((id) => stopMap.get(id))
-          .filter((d): d is typeof effectiveDeliveries[number] => d !== undefined);
-        for (const d of algorithmStops) {
-          if (!customOrder.includes(d.subscriptionId)) stops.push(d);
+          .filter((s): s is Stop => s !== undefined);
+        for (const s of algorithmStops) {
+          if (!customOrder.includes(s.repId)) orderedStops.push(s);
         }
       } else {
-        stops = algorithmStops;
+        orderedStops = algorithmStops;
       }
-      stops.forEach((d, stopIdx) => {
-        rows.push({ delivery: d, shipper: ci, stop: stopIdx + 1 });
+      orderedStops.forEach((s, stopIdx) => {
+        s.members.forEach((d) => {
+          rows.push({ delivery: d, shipper: ci, stop: stopIdx + 1 });
+        });
       });
     }
     return rows;
-  }, [cluster, withCoords, effectiveDeliveries, manualOrder]);
+  }, [cluster, stops, manualOrder]);
+
+  // Distinct stop count within a set of rows (rows may share a stop number when
+  // multiple subscriptions deliver to the same address).
+  const countStops = (rows: { shipper: number | null; stop: number | null }[]) =>
+    new Set(rows.map((r) => r.stop)).size;
 
   const tableRef = useRef<HTMLDivElement>(null);
   const [copying, setCopying] = useState(false);
@@ -423,17 +462,16 @@ export function ShippingTable({
     }
 
     for (const [shipperIdx, rows] of [...shipperGroups.entries()].sort((a, b) => a[0] - b[0])) {
-      lines.push(`--- Shipper ${shipperIdx + 1} (${rows.length} stop${rows.length !== 1 ? "s" : ""}) ---`);
+      const nStops = countStops(rows);
+      lines.push(`--- Shipper ${shipperIdx + 1} (${nStops} stop${nStops !== 1 ? "s" : ""}) ---`);
       for (const row of rows) {
         const d = row.delivery;
-        const note = notes.find((n) => n.customerId === d.phone)?.note ?? null;
-        const permanentNote = permanentNotes.find((n) => n.customerId === d.customerId)?.note ?? null;
         lines.push(`${row.stop}. ${d.name}`);
         lines.push(`   Phone: ${d.phone}`);
         lines.push(`   Address: ${d.address}`);
         if (d.meals.length > 0) lines.push(`   Meals: ${d.meals.join(", ")}`);
-        if (permanentNote) lines.push(`   Note: ${permanentNote}`);
-        if (note) lines.push(`   Today: ${note}`);
+        if (d.permanentNote) lines.push(`   Note: ${d.permanentNote}`);
+        if (d.subscriptionDayNote) lines.push(`   Today: ${d.subscriptionDayNote}`);
       }
       lines.push("");
     }
@@ -441,14 +479,12 @@ export function ShippingTable({
     if (withoutCoords.length > 0) {
       lines.push(`--- No route (${withoutCoords.length} stop${withoutCoords.length !== 1 ? "s" : ""}) ---`);
       withoutCoords.forEach((d, i) => {
-        const note = notes.find((n) => n.customerId === d.phone)?.note ?? null;
-        const permanentNote = permanentNotes.find((n) => n.customerId === d.customerId)?.note ?? null;
         lines.push(`${i + 1}. ${d.name}`);
         lines.push(`   Phone: ${d.phone}`);
         lines.push(`   Address: ${d.address}`);
         if (d.meals.length > 0) lines.push(`   Meals: ${d.meals.join(", ")}`);
-        if (permanentNote) lines.push(`   Note: ${permanentNote}`);
-        if (note) lines.push(`   Today: ${note}`);
+        if (d.permanentNote) lines.push(`   Note: ${d.permanentNote}`);
+        if (d.subscriptionDayNote) lines.push(`   Today: ${d.subscriptionDayNote}`);
       });
     }
 
@@ -489,11 +525,9 @@ export function ShippingTable({
       shipperGroups.set(row.shipper, group);
     }
 
-    const getNote = (d: typeof allDeliveries[number]) =>
-      notes.find((n) => n.customerId === d.phone)?.note ?? null;
-    const getPermNote = (d: typeof allDeliveries[number]) =>
-      permanentNotes.find((n) => n.customerId === d.customerId)?.note ?? null;
-    const hasNote = (d: typeof allDeliveries[number]) => !!(getNote(d) || getPermNote(d));
+    const getNote = (d: typeof allDeliveries[number]) => d.subscriptionDayNote;
+    const getPermNote = (d: typeof allDeliveries[number]) => d.permanentNote;
+    const hasNote = (d: typeof allDeliveries[number]) => !!(d.subscriptionDayNote || d.permanentNote);
 
     // First pass: emit all rows, track global number per customerId
     const globalNumMap = new Map<string, number>();
@@ -513,7 +547,8 @@ export function ShippingTable({
     };
 
     for (const [shipperIdx, rows] of [...shipperGroups.entries()].sort((a, b) => a[0] - b[0])) {
-      lines.push(`--- Shipper ${shipperIdx + 1} (${rows.length} stop${rows.length !== 1 ? "s" : ""}) ---`);
+      const nStops = countStops(rows);
+      lines.push(`--- Shipper ${shipperIdx + 1} (${nStops} stop${nStops !== 1 ? "s" : ""}) ---`);
       for (const row of rows) emitRow(row.delivery, String(row.stop));
       lines.push("");
     }
@@ -576,9 +611,9 @@ export function ShippingTable({
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
     const allDels = [...sortedRows.map((r) => r.delivery), ...withoutCoords];
-    const gNote = (d: typeof allDels[number]) => notes.find((n) => n.customerId === d.phone)?.note ?? null;
-    const gPerm = (d: typeof allDels[number]) => permanentNotes.find((n) => n.customerId === d.customerId)?.note ?? null;
-    const hNote = (d: typeof allDels[number]) => !!(gNote(d) || gPerm(d));
+    const gNote = (d: typeof allDels[number]) => d.subscriptionDayNote;
+    const gPerm = (d: typeof allDels[number]) => d.permanentNote;
+    const hNote = (d: typeof allDels[number]) => !!(d.subscriptionDayNote || d.permanentNote);
 
     let cA = 0, cB = 0;
     for (const d of allDels) for (const s of d.mealSlots) { if (s === 1) cA++; else if (s === 2) cB++; }
@@ -620,11 +655,12 @@ export function ShippingTable({
     let shipperHtml = "";
     for (const [si, rows] of sortedSh) {
       const color = CLUSTER_COLORS[si % CLUSTER_COLORS.length];
+      const nStops = countStops(rows);
       const rowsHtml = rows.map((r, i) => mkRow(r.delivery, String(r.stop), i)).join("");
       shipperHtml += `<div style="margin-bottom:14px">
         <div style="display:flex;align-items:center;gap:8px;padding:5px 10px;background:${color}33;border-left:5px solid ${color};border-radius:0 6px 6px 0;margin-bottom:4px">
           <span style="color:${color};font-weight:800;font-size:14px">Shipper ${si + 1}</span>
-          <span style="color:${fg};font-size:13px;font-weight:700">${rows.length} stop${rows.length !== 1 ? "s" : ""}</span>
+          <span style="color:${fg};font-size:13px;font-weight:700">${nStops} stop${nStops !== 1 ? "s" : ""}</span>
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:13px;color:${fg}">${rowsHtml}</table>
       </div>`;
@@ -719,7 +755,7 @@ export function ShippingTable({
           <input
             type="number"
             min={1}
-            max={Math.max(1, withCoords.length)}
+            max={Math.max(1, stops.length)}
             value={manualK ?? cluster.k}
             onChange={(e) => {
               const v = parseInt(e.target.value);
@@ -787,6 +823,17 @@ export function ShippingTable({
         </div>
       </div>
 
+      {withoutCoords.length > 0 && (
+        <div className="mx-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs">
+          <p className="font-medium text-destructive">
+            {withoutCoords.length} deliver{withoutCoords.length === 1 ? "y is" : "ies are"} missing GPS coordinates — they cannot be assigned to a shipper.
+          </p>
+          <p className="mt-0.5 text-muted-foreground">
+            Set the address coordinates (open the customer, edit the address) so they appear on the route. They are listed at the bottom of the table.
+          </p>
+        </div>
+      )}
+
        <div className="overflow-x-auto px-3 pb-3" ref={tableRef}>
          <table className="w-full min-w-[1080px] table-fixed text-sm">
            <thead>
@@ -810,8 +857,6 @@ export function ShippingTable({
             {sortedRows.map((row, idx) => {
               const d = row.delivery;
               const color = row.shipper !== null ? CLUSTER_COLORS[row.shipper % CLUSTER_COLORS.length] : null;
-              const note = notes.find((n) => n.customerId === d.phone)?.note ?? null;
-              const permanentNote = permanentNotes.find((n) => n.customerId === d.customerId)?.note ?? null;
               return (
                 <tr key={d.subscriptionId} className="align-top hover:bg-accent/50 transition-colors">
                   <td className="px-3 py-2 align-top text-xs text-muted-foreground">{idx + 1}</td>
@@ -840,7 +885,7 @@ export function ShippingTable({
                     />
                   </td>
                   <td className="px-3 py-2 align-top">
-                    <NotesCell permanentNote={permanentNote} note={note} />
+                    <NotesCell permanentNote={d.permanentNote} subscriptionDayNote={d.subscriptionDayNote} />
                   </td>
                   <td className="px-3 py-2 align-top">
                     <MealsCell meals={d.meals} />
@@ -856,9 +901,7 @@ export function ShippingTable({
               );
             })}
             {/* Deliveries without coordinates appear at bottom unsorted */}
-            {cluster.k > 0 && withoutCoords.map((d) => {
-              const note = notes.find((n) => n.customerId === d.phone)?.note ?? null;
-              const permanentNote = permanentNotes.find((n) => n.customerId === d.customerId)?.note ?? null;
+            {withoutCoords.map((d) => {
               return (
                 <tr key={d.subscriptionId} className="align-top bg-amber-50/30 hover:bg-accent/50 transition-colors">
                   <td className="px-3 py-2 align-top text-xs text-muted-foreground">—</td>
@@ -876,7 +919,7 @@ export function ShippingTable({
                     />
                   </td>
                   <td className="px-3 py-2 align-top">
-                    <NotesCell permanentNote={permanentNote} note={note} />
+                    <NotesCell permanentNote={d.permanentNote} subscriptionDayNote={d.subscriptionDayNote} />
                   </td>
                   <td className="px-3 py-2 align-top">
                     <MealsCell meals={d.meals} />

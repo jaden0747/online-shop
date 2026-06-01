@@ -21,6 +21,7 @@ Key functions in `lib/data/excel.ts`:
 - `getDataDir()` — returns `data/test/` when `.testing-mode` flag file exists, otherwise `data/`
 
 Each domain has its own file+sheet: `customers.xlsx/Customers`, `subscriptions.xlsx/Subscriptions`, etc.
+Data layer for new types: `lib/data/subscription-day-notes.ts` → `subscription-day-notes.xlsx/SubscriptionDayNotes`
 
 ## Domain types (`lib/data/types.ts`)
 Key interfaces:
@@ -32,6 +33,8 @@ Key interfaces:
 - `MealSkip` — originalDay + optional replacementDay; extends endDate
 - `MenuItem` — weekLabel (e.g. "2025-W21") + day (1–5) + slot (1 or 2)
 - `MealSelection` — which slot a customer picked for a given week/day/mealNum
+- `KitchenNote` — legacy per-customer per-day note keyed `${weekLabel}-${customerId}-${day}`; kept for backward compat (displayed alongside permanent note in shipping)
+- `SubscriptionDayNote` — per-subscription per-day note keyed `${subscriptionId}-${weekLabel}-${day}`; stored in `subscription-day-notes.xlsx`
 - `Settings` — hub GPS coords, per-goal meal prices, formula pricing, 4-zone shipping fees
 
 ## Constants (`lib/constants.ts`)
@@ -68,8 +71,8 @@ All in `lib/business/` and `lib/utils/`:
 | `/menu` | Weekly menu grid — meal slots per day, customer selections |
 | `/costs` | Cost items by week + category breakdown |
 | `/reports` | Revenue/cost charts across weeks |
-| `/shipping` | Today's delivery list with addresses |
-| `/route` | Leaflet map with delivery route clustering |
+| `/shipping` | Today's delivery list — one row per subscription; clustering deduped by (customer, address) stop so shipper count matches `/route`; header shows "N stops · M meals" |
+| `/route` | Leaflet map with delivery route clustering; stops = (customer, address) groups |
 | `/coverage` | Coverage area map |
 | `/addresses` | Address management |
 | `/settings` | Hub location, meal prices, shipping zones, cost categories |
@@ -80,7 +83,7 @@ All in `lib/business/` and `lib/utils/`:
 Next.js Server Actions — one file per domain. They read/write Excel files via `lib/data/` functions and call `revalidatePath("/")` (or specific paths) to refresh data.
 
 ## Components
-- `components/customer-overlay/` — slide-out panel with full customer detail: sub info, payments, credits, skips, meal selections, address
+- `components/customer-overlay/` — slide-out panel with full customer detail: sub info, payments, credits, skips, meal selections, address. Customer tab has editable permanent note at top. Calendar tab has per-subscription day-note textarea per selected date.
 - `components/ui/` — shadcn primitives
 - `components/global-search.tsx` — ⌘K customer search
 - `components/sidebar-client.tsx` — horizontal top nav bar
@@ -103,6 +106,8 @@ Format: `"YYYY-WNN"` (e.g. `"2025-W21"`). Utilities in `lib/utils/week.ts`: `cur
 - Revenue recognition is accrual — never recognize cash received, always recognize by meals delivered
 - `cancelledAt` is the first **unserved** day (exclusive upper bound for delivered meals)
 - All weekday numbering: 1=Mon … 5=Fri (JavaScript `getDay()` returns 1–5 for Mon–Fri)
+- Shipping/route clustering groups subscriptions by `(customerId, effectiveAddressId)` into stops; representative = latest-created sub — `manualAssign` overrides are keyed by this sub id so both pages stay in sync
+- GPS coordinates on delivery addresses are **compulsory** — un-geocoded deliveries are excluded from routing and shown as an error on both shipping and route pages
 
 ---
 
