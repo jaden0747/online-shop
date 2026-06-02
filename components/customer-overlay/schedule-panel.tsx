@@ -581,7 +581,7 @@ export const SchedulePanel = memo(function SchedulePanel({
             <p className="text-muted-foreground text-[11px]">No active subscriptions.</p>
           ) : (
             calendarSubscriptions.map((sub) => (
-              <div key={sub.id} className="grid grid-cols-1 gap-3 border-b pb-3 last:border-b-0 last:pb-0 xl:grid-cols-[minmax(240px,0.9fr)_minmax(280px,1.1fr)]">
+              <div key={sub.id} className="grid gap-3 border-b pb-3 last:border-b-0 last:pb-0 grid-cols-[minmax(240px,0.9fr)_minmax(280px,1.1fr)]">
                 <SubscriptionCalendar
                   subscription={sub}
                   year={year}

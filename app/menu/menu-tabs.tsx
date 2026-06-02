@@ -46,6 +46,7 @@ export type WeekData = {
   selections: Selection[];
   customerGroups: CustomerGroup[];
   notes: { customerId: string; day: number; note: string }[];
+  subDayNotes: { subscriptionId: string; day: number; note: string }[];
 };
 
 
@@ -200,7 +201,7 @@ export function MenuTabs({ thisWeek, nextWeek }: { thisWeek: WeekData; nextWeek:
       </Card>
 
       {/* Kitchen notes summary */}
-      <KitchenNotesSummary notes={data.notes} customerGroups={data.customerGroups} />
+      <KitchenNotesSummary notes={data.notes} subDayNotes={data.subDayNotes} customerGroups={data.customerGroups} />
 
       {/* Customer meal selections */}
       <Card>
@@ -224,6 +225,7 @@ export function MenuTabs({ thisWeek, nextWeek }: { thisWeek: WeekData; nextWeek:
             menuItems={data.menuItems.map((i) => ({ day: i.day, slot: i.slot, name: i.name, goals: i.goals }))}
             selections={data.selections}
             notes={data.notes}
+            subDayNotes={data.subDayNotes}
           />
         </CardContent>
       </Card>
@@ -233,17 +235,20 @@ export function MenuTabs({ thisWeek, nextWeek }: { thisWeek: WeekData; nextWeek:
 
 function KitchenNotesSummary({
   notes,
+  subDayNotes,
   customerGroups,
 }: {
   notes: { customerId: string; day: number; note: string }[];
+  subDayNotes: { subscriptionId: string; day: number; note: string }[];
   customerGroups: CustomerGroup[];
 }) {
   const todayNum = new Date().getDay(); // 0=Sun
   const defaultDay = todayNum >= 1 && todayNum <= 5 ? todayNum : 1;
   const [activeDay, setActiveDay] = useState(defaultDay);
 
-  const hasAnyNote = notes.length > 0;
-  const dayNotes = notes.filter((n) => n.day === activeDay);
+  const hasAnyNote = notes.length > 0 || subDayNotes.length > 0;
+  const dayKitchenNotes = notes.filter((n) => n.day === activeDay);
+  const daySubNotes = subDayNotes.filter((n) => n.day === activeDay);
 
   return (
     <Card>
@@ -254,7 +259,7 @@ function KitchenNotesSummary({
         {/* Day tabs */}
         <div className="flex gap-1 border-b mb-3">
           {DAYS.map(({ num, label }) => {
-            const count = notes.filter((n) => n.day === num).length;
+            const count = notes.filter((n) => n.day === num).length + subDayNotes.filter((n) => n.day === num).length;
             return (
               <button
                 key={num}
@@ -279,13 +284,30 @@ function KitchenNotesSummary({
           })}
         </div>
 
-        {dayNotes.length === 0 ? (
+        {dayKitchenNotes.length === 0 && daySubNotes.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {hasAnyNote ? "No notes for this day." : "No notes yet. Add them in the meal selections grid above."}
           </p>
         ) : (
           <div className="space-y-2">
-            {dayNotes.map((n) => {
+            {daySubNotes.map((n) => {
+              const group = customerGroups.find((g) =>
+                g.subscriptions.some((s) => s.subscriptionId === n.subscriptionId)
+              );
+              const sub = group?.subscriptions.find((s) => s.subscriptionId === n.subscriptionId);
+              const label = group
+                ? group.subscriptions.length > 1
+                  ? `${group.name} (${sub?.plan ?? ""})`
+                  : group.name
+                : n.subscriptionId;
+              return (
+                <div key={n.subscriptionId} className="flex gap-3 text-sm">
+                  <span className="font-medium min-w-[120px] shrink-0 text-foreground">{label}</span>
+                  <span className="text-muted-foreground whitespace-pre-wrap">{n.note}</span>
+                </div>
+              );
+            })}
+            {dayKitchenNotes.map((n) => {
               const group = customerGroups.find((g) => g.customerId === n.customerId);
               return (
                 <div key={n.customerId} className="flex gap-3 text-sm">

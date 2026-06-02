@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { upsertSelectionAction, deleteSelectionAction } from "../actions/selections";
 import { skipDayFromMenuAction, deleteMealSkipAction } from "../actions/skips";
-import { upsertKitchenNoteAction } from "../actions/notes";
+import { upsertSubscriptionDayNoteAction } from "../actions/notes";
 
 type SubRow = {
   subscriptionId: string;
@@ -31,6 +31,7 @@ type Props = {
   menuItems: { day: number; slot: number; name: string; goals: string }[];
   selections: { subscriptionId: string; day: number; mealNum: number; menuSlot: number }[];
   notes?: { customerId: string; day: number; note: string }[];
+  subDayNotes?: { subscriptionId: string; day: number; note: string }[];
   onCustomerClick?: (customerId: string) => void;
 };
 
@@ -42,13 +43,13 @@ const DAYS = [
   { num: 5, label: "Fri" },
 ];
 
-export function MealSelectionGrid({ weekLabel, weekMonday, customerGroups, menuItems, selections, notes = [], onCustomerClick }: Props) {
+export function MealSelectionGrid({ weekLabel, weekMonday, customerGroups, menuItems, selections, notes = [], subDayNotes = [], onCustomerClick }: Props) {
   const router = useRouter();
   const [showNames, setShowNames] = useState(true);
   const [pending, setPending] = useState<string | null>(null);
   const [editingNoteKey, setEditingNoteKey] = useState<string | null>(null);
   const [noteValues, setNoteValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(notes.map((n) => [`${n.customerId}-${n.day}`, n.note]))
+    Object.fromEntries(subDayNotes.map((n) => [`${n.subscriptionId}-${n.day}`, n.note]))
   );
   const noteInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -112,16 +113,16 @@ export function MealSelectionGrid({ weekLabel, weekMonday, customerGroups, menuI
     router.refresh();
   }
 
-  function startEditNote(customerId: string, day: number) {
-    setEditingNoteKey(`${customerId}-${day}`);
+  function startEditNote(subscriptionId: string, day: number) {
+    setEditingNoteKey(`${subscriptionId}-${day}`);
     setTimeout(() => noteInputRef.current?.focus(), 0);
   }
 
-  async function saveNote(customerId: string, day: number) {
-    const key = `${customerId}-${day}`;
+  async function saveNote(subscriptionId: string, day: number) {
+    const key = `${subscriptionId}-${day}`;
     setEditingNoteKey(null);
     const note = noteValues[key] ?? "";
-    await upsertKitchenNoteAction(weekLabel, customerId, day, note);
+    await upsertSubscriptionDayNoteAction(subscriptionId, weekLabel, day, note);
     router.refresh();
   }
 
@@ -231,7 +232,7 @@ export function MealSelectionGrid({ weekLabel, weekMonday, customerGroups, menuI
                       }
 
                       // Normal selectable day
-                      const noteKey = `${group.customerId}-${num}`;
+                      const noteKey = `${sub.subscriptionId}-${num}`;
                       const noteValue = noteValues[noteKey] ?? "";
                       const isEditingNote = editingNoteKey === noteKey;
                       return (
@@ -289,36 +290,34 @@ export function MealSelectionGrid({ weekLabel, weekMonday, customerGroups, menuI
                                 {isSkipPending ? "…" : "Skip"}
                               </button>
                             </div>
-                            {/* Per-day note — only on the first sub row for this customer */}
-                            {isFirst && (
-                              isEditingNote ? (
-                                <textarea
-                                  ref={noteInputRef}
-                                  value={noteValue}
-                                  onChange={(e) => setNoteValues((prev) => ({ ...prev, [noteKey]: e.target.value }))}
-                                  onBlur={() => saveNote(group.customerId, num)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Escape") setEditingNoteKey(null);
-                                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveNote(group.customerId, num); }
-                                  }}
-                                  rows={2}
-                                  placeholder="Note for kitchen…"
-                                  className="w-full mt-0.5 text-[10px] bg-transparent border border-primary rounded px-1 py-0.5 outline-none resize-none leading-tight"
-                                />
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => startEditNote(group.customerId, num)}
-                                  className={`w-full mt-0.5 text-left text-[10px] px-1 py-0.5 rounded transition-colors leading-tight ${
-                                    noteValue
-                                      ? "text-blue-600 hover:bg-blue-50"
-                                      : "text-muted-foreground/40 hover:text-muted-foreground hover:bg-accent/50"
-                                  }`}
-                                  title="Click to add/edit note"
-                                >
-                                  {noteValue || "+ note"}
-                                </button>
-                              )
+                            {/* Per-subscription per-day note */}
+                            {isEditingNote ? (
+                              <textarea
+                                ref={noteInputRef}
+                                value={noteValue}
+                                onChange={(e) => setNoteValues((prev) => ({ ...prev, [noteKey]: e.target.value }))}
+                                onBlur={() => saveNote(sub.subscriptionId, num)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Escape") setEditingNoteKey(null);
+                                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveNote(sub.subscriptionId, num); }
+                                }}
+                                rows={2}
+                                placeholder="Note for kitchen…"
+                                className="w-full mt-0.5 text-[10px] bg-transparent border border-primary rounded px-1 py-0.5 outline-none resize-none leading-tight"
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => startEditNote(sub.subscriptionId, num)}
+                                className={`w-full mt-0.5 text-left text-[10px] px-1 py-0.5 rounded transition-colors leading-tight ${
+                                  noteValue
+                                    ? "text-blue-600 hover:bg-blue-50"
+                                    : "text-muted-foreground/40 hover:text-muted-foreground hover:bg-accent/50"
+                                }`}
+                                title="Click to add/edit note"
+                              >
+                                {noteValue || "+ note"}
+                              </button>
                             )}
                           </div>
                         </td>

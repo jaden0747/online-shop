@@ -3,6 +3,7 @@ import { getAllCustomers } from "@/lib/data/customers";
 import { getAllSubscriptions, getAllSkips, getAllMealDeliveryPlans } from "@/lib/data/subscriptions";
 import { getSelectionsByWeek } from "@/lib/data/selections";
 import { getNotesByWeek } from "@/lib/data/notes";
+import { getSubscriptionDayNotesByWeek } from "@/lib/data/subscription-day-notes";
 import {
   currentWeekLabel,
   currentWeekMonday,
@@ -28,6 +29,7 @@ function buildWeekData(
   const items = getMenuItemsByWeek(weekLabel);
   const selections = getSelectionsByWeek(weekLabel);
   const weekNotes = getNotesByWeek(weekLabel);
+  const weekSubDayNotes = getSubscriptionDayNotesByWeek(weekLabel);
 
   const weekDates = Array.from({ length: 5 }, (_, i) => {
     const d = new Date(weekMonday);
@@ -105,6 +107,7 @@ function buildWeekData(
     isCurrentWeek,
     menuItems: items,
     notes: weekNotes.map((n) => ({ customerId: n.customerId, day: n.day, note: n.note })),
+    subDayNotes: weekSubDayNotes.map((n) => ({ subscriptionId: n.subscriptionId, day: n.day, note: n.note })),
     selections: selections.map((s) => ({
       subscriptionId: s.subscriptionId,
       day: s.day,

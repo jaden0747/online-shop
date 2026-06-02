@@ -229,7 +229,7 @@ export function CustomerOverlay({
     <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
       <DialogContent
         showOverlay={false}
-        className="top-[calc(50%+1.5rem)] sm:w-[62vw] sm:max-w-[62vw] h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] overflow-y-auto"
+        className="top-[calc(50%+1.5rem)] sm:w-[74vw] sm:max-w-[74vw] h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] overflow-y-auto"
       >
         {!details ? (
           <div className="py-10 text-center text-sm text-muted-foreground">Loading…</div>
@@ -239,7 +239,7 @@ export function CustomerOverlay({
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="sticky top-0 z-20 -mx-6 -mt-6 border-b bg-background/95 px-6 pt-6 pb-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <div className="sticky top-0 z-20 -mx-4 -mt-4 border-b bg-background/95 px-4 pt-4 pb-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
               <DialogHeader>
                 <CustomerHeader
                   ref={headerRef}
